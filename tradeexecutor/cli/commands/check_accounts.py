@@ -12,6 +12,7 @@ from tradeexecutor.exchange_account.lighter import (
     validate_lighter_exchange_account_pairs,
 )
 from tradeexecutor.ethereum.lighter.transfer_verification import reconcile_verified_lighter_transfers
+from tradeexecutor.exchange_account.lighter_operator import load_lighter_operator_record
 from tradeexecutor.strategy.account_correction import check_accounts as _check_accounts
 
 from ...state.state import UncleanState
@@ -62,6 +63,7 @@ def check_accounts(
     test_evm_uniswap_v2_init_code_hash: Optional[str] = shared_options.test_evm_uniswap_v2_init_code_hash,
     unit_testing: bool = shared_options.unit_testing,
     raise_on_unclean: bool = typer.Option(False, is_flag=False, envvar="RAISE_ON_UNCLEAN", help="Raise an exception if unclean. Unit test option."),
+    lighter_operator_record_file: Optional[Path] = typer.Option(None, envvar="LIGHTER_OPERATOR_RECORD_FILE", help="Owner-only Lighter operator record used to read transfer history for an interrupted sub-account funding"),
 ):
     """Check that the state ledger matches onchain and external balances.
 
@@ -125,7 +127,12 @@ def check_accounts(
     assert not store.is_pristine(), f"State does not exists yet: {state_file}"
 
     state = store.load()
-    verified_transfers = reconcile_verified_lighter_transfers(state, web3, mutate=False)
+    verified_transfers = reconcile_verified_lighter_transfers(
+        state,
+        web3,
+        mutate=False,
+        operator_record=load_lighter_operator_record(lighter_operator_record_file) if lighter_operator_record_file else None,
+    )
     if verified_transfers:
         logger.info(
             "Found %d verified but unreconciled Lighter transfer(s); run correct-accounts or repair",

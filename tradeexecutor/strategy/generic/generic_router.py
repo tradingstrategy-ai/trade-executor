@@ -130,7 +130,7 @@ class GenericRouting(RoutingModel):
 
         for t in trades:
             if t.pair.is_exchange_account():
-                assert TradeFlag.external_account_transfer in (t.flags or set()), \
+                assert t.is_exchange_account_transfer(), \
                     f"Unsupported unflagged exchange account trade: {t}"
             router, protocol_config = self.get_router(t.pair)
             # Set the router, so we know

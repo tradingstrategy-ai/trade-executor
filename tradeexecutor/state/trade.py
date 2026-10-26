@@ -225,6 +225,15 @@ class TradeFlag(enum.Enum):
     #: movement routed by a protocol-specific execution model.
     external_account_transfer = "external_account_transfer"
 
+    #: Movement of capital between two external exchange accounts of one owner.
+    #:
+    #: The trade is a buy on the destination account position, funded from
+    #: the source account rather than from reserves. It executes off-chain,
+    #: has no blockchain transaction, and books the source account decrease
+    #: as a balance update when it settles. Used for Lighter master to
+    #: sub-account funding.
+    internal_account_transfer = "internal_account_transfer"
+
     #: If there is an existing open position, do not try to match the trade for an open position.
     #:
     #: We trade by pair. If in same cycle we close and open position for the same pair, the trade
@@ -922,6 +931,8 @@ class TradeExecution:
             if self.is_buy():
                 return "Deposit to external account"
             return "Withdraw from external account"
+        elif TradeFlag.internal_account_transfer in (self.flags or set()):
+            return "Transfer between external accounts"
         elif self.pair.is_cctp_bridge():
             if self.is_buy():
                 return "Bridge out"
@@ -1126,6 +1137,39 @@ class TradeExecution:
                 TradeStatus.failed,
             )
         )
+
+    def is_internal_account_transfer_pending(self) -> bool:
+        """Return whether a transfer between exchange accounts is in flight.
+
+        A timed-out transfer stays pending: a timeout does not prove that no
+        funds moved. Only a definitive exchange rejection before funds moved,
+        recorded as ``outcome == "transfer_rejected"``, releases it.
+        """
+        if self.other_data.get("outcome") == "transfer_rejected":
+            return False
+        return (
+            TradeFlag.internal_account_transfer in (self.flags or set())
+            and self.get_status() in (
+                TradeStatus.planned,
+                TradeStatus.started,
+                TradeStatus.broadcasted,
+                TradeStatus.failed,
+            )
+        )
+
+    def is_exchange_account_transfer_pending(self) -> bool:
+        """Return whether any exchange-account custody movement is in flight.
+
+        Covers both reserve to exchange-account transfers and transfers
+        between exchange accounts. Use it for gating, such as a clean-state
+        check before new trades; use the specific predicates where the
+        verification differs.
+        """
+        return self.is_external_account_transfer_pending() or self.is_internal_account_transfer_pending()
+
+    def is_exchange_account_transfer(self) -> bool:
+        """Is this a custody movement to, from or between exchange accounts."""
+        return bool({TradeFlag.external_account_transfer, TradeFlag.internal_account_transfer} & (self.flags or set()))
 
     def is_repaired(self) -> bool:
         """The automatic execution failed and this was later repaired.
@@ -1524,6 +1568,11 @@ class TradeExecution:
         reduce_order_bump = 40_000_000
         exchange_withdrawal_order_bump = 60_000_000
         exchange_deposit_order_bump = 10_000_000
+        exchange_internal_funding_order_bump = 20_000_000
+        if TradeFlag.internal_account_transfer in (self.flags or set()):
+            # Fund destination accounts after reserve deposits have reached
+            # the source account in the same cycle.
+            return self.trade_id + exchange_internal_funding_order_bump
         if TradeFlag.external_account_transfer in (self.flags or set()):
             if self.is_sell():
                 return -self.trade_id - exchange_withdrawal_order_bump

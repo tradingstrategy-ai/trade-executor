@@ -40,20 +40,25 @@ logger = logging.getLogger(__name__)
 LIGHTER_REDEEM_IGNORE_THRESHOLD_USDC = Decimal(5)
 
 
-def _get_redemption_nav(vault, safe_balance: Decimal, lighter_account_index: int | None) -> Decimal:
+def _get_redemption_nav(vault, safe_balance: Decimal, lighter_account_indices: list[int] | None) -> Decimal:
     """Return the NAV to post for a redemption settlement.
 
-    A Lighter-enabled vault can retain a small activation balance outside its
-    Safe. Lagoon can only pay a redemption from the Safe, so exclude a Lighter
-    balance below :data:`LIGHTER_REDEEM_IGNORE_THRESHOLD_USDC` from this
-    terminal redemption. Larger external balances must be withdrawn first.
+    A Lighter-enabled vault can retain small balances outside its Safe, such
+    as the activation deposit or sub-account dust below Lighter's withdrawal
+    minimum. Lagoon can only pay a redemption from the Safe, so exclude
+    Lighter balances that together stay below
+    :data:`LIGHTER_REDEEM_IGNORE_THRESHOLD_USDC` from this terminal
+    redemption. Larger external balances must be withdrawn first.
     """
     nav = vault.fetch_nav()
-    if lighter_account_index is None:
+    if not lighter_account_indices:
         return nav
 
     with create_lighter_session() as session:
-        lighter_equity = fetch_lighter_total_equity(session, lighter_account_index).get_total()
+        lighter_equity = sum(
+            (fetch_lighter_total_equity(session, index).get_total() for index in lighter_account_indices),
+            Decimal(0),
+        )
 
     if lighter_equity < LIGHTER_REDEEM_IGNORE_THRESHOLD_USDC:
         logger.warning(
@@ -150,7 +155,7 @@ def _claim_leftover_deposits(vault, hot_wallet, web3):
         logger.info("  Claimed deposit — share balance is now %s %s", share_balance, vault.share_token.symbol)
 
 
-def _claim_leftover_redemptions(vault, hot_wallet, web3, share_token, lighter_account_index: int | None) -> bool:
+def _claim_leftover_redemptions(vault, hot_wallet, web3, share_token, lighter_account_indices: list[int] | None) -> bool:
     """Claim any leftover redemptions from a previous interrupted run.
 
     Handles two states:
@@ -193,7 +198,7 @@ def _claim_leftover_redemptions(vault, hot_wallet, web3, share_token, lighter_ac
             pending_human, share_token.symbol,
         )
         safe_balance = vault.denomination_token.fetch_balance_of(vault.safe_address)
-        nav = _get_redemption_nav(vault, safe_balance, lighter_account_index)
+        nav = _get_redemption_nav(vault, safe_balance, lighter_account_indices)
         hot_wallet.sync_nonce(web3)
         # Wait for all read RPCs to see valuation before settling
         _broadcast_and_wait(web3, hot_wallet, vault.post_new_valuation(nav))
@@ -230,6 +235,11 @@ def lagoon_redeem(
         envvar="LIGHTER_ACCOUNT_INDEX",
         help="Lighter account index: exclude equity below 5 USDC from a full redemption settlement.",
     ),
+    lighter_account_indexes: str | None = Option(
+        None,
+        envvar="LIGHTER_ACCOUNT_INDEXES",
+        help="Comma-separated Lighter master and sub-account indices: exclude combined equity below 5 USDC from a full redemption settlement. Overrides --lighter-account-index.",
+    ),
 
     unit_testing: bool = shared_options.unit_testing,
     simulate: bool = shared_options.simulate,
@@ -249,6 +259,13 @@ def lagoon_redeem(
     assert private_key, "PRIVATE_KEY is required"
     assert vault_address, "VAULT_ADDRESS is required"
     assert vault_adapter_address, "VAULT_ADAPTER_ADDRESS is required"
+
+    if lighter_account_indexes:
+        lighter_account_indices = [int(part) for part in lighter_account_indexes.split(",") if part.strip()]
+    elif lighter_account_index is not None:
+        lighter_account_indices = [lighter_account_index]
+    else:
+        lighter_account_indices = None
 
     mod = read_strategy_module(strategy_file)
 
@@ -293,7 +310,7 @@ def lagoon_redeem(
         hot_wallet,
         web3,
         share_token,
-        lighter_account_index,
+        lighter_account_indices,
     )
 
     share_balance = share_token.fetch_balance_of(hot_wallet.address)
@@ -315,7 +332,7 @@ def lagoon_redeem(
         # Phase 2: Settle (post valuation + settleDeposit which also settles redeems)
         logger.info("Phase 2: Settling vault")
         safe_balance = denomination_token.fetch_balance_of(vault.safe_address)
-        nav = _get_redemption_nav(vault, safe_balance, lighter_account_index)
+        nav = _get_redemption_nav(vault, safe_balance, lighter_account_indices)
         logger.info("  Redemption settlement NAV: %s %s", nav, denomination_token.symbol)
 
         hot_wallet.sync_nonce(web3)

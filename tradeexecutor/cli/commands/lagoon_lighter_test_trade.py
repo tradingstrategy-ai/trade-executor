@@ -848,7 +848,7 @@ def lagoon_lighter_test_trade(
                 web3,
                 vault.safe_address,
                 reserve_asset,
-                operator.account_index,
+                [operator.account_index],
                 session,
             )
             sync_model = LagoonVaultSyncModel(

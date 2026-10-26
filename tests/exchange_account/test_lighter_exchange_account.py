@@ -154,7 +154,7 @@ def test_lighter_runtime_auto_discovery_wires_account_and_nav_readers(
         web3=web3,
         safe_address=safe_address,
         reserve_asset=strategy_universe.get_reserve_asset(),
-        account_index=EXAMPLE_LIGHTER_ACCOUNT_INDEX,
+        account_indices=[EXAMPLE_LIGHTER_ACCOUNT_INDEX],
         session=session,
     )
 
@@ -369,7 +369,7 @@ def test_lighter_vault_valuation_adds_safe_balance_and_external_equity(
         web3=web3,
         safe_address="0x0000000000000000000000000000000000000002",
         reserve_asset=usdc,
-        account_index=EXAMPLE_LIGHTER_ACCOUNT_INDEX,
+        account_indices=[EXAMPLE_LIGHTER_ACCOUNT_INDEX],
         session=object(),
     )
     result = valuation(None, block_number=42)
@@ -407,7 +407,7 @@ def test_negative_lighter_vault_valuation_aborts_before_nav(
         web3=object(),
         safe_address="0x0000000000000000000000000000000000000002",
         reserve_asset=usdc,
-        account_index=124,
+        account_indices=[124],
         session=object(),
     )
 

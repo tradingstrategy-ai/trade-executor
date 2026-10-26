@@ -777,12 +777,18 @@ class EthereumExecution(ExecutionModel):
             # uncertainty marker, not refund possibly moved Safe capital.
             self.sync_state_before_broadcast()
 
-            self._execute_trade_batch(
-                routing_model,
-                state,
-                [trade],
-                rebroadcast=rebroadcast,
-            )
+            if TradeFlag.internal_account_transfer in (trade.flags or set()):
+                # A transfer between exchange accounts is executed off-chain by
+                # setup_trades() and has no Ethereum transaction to broadcast or
+                # receipt to read. Settle it directly from exchange evidence.
+                routing_model.settle_trade(self.web3, state, trade, receipts={})
+            else:
+                self._execute_trade_batch(
+                    routing_model,
+                    state,
+                    [trade],
+                    rebroadcast=rebroadcast,
+                )
 
             freeze_position_on_failed_trade(ts, state, [trade])
             self._log_trade_outcome(trade)
@@ -838,7 +844,7 @@ class EthereumExecution(ExecutionModel):
 
         for t in trades:
             if t.pair.is_exchange_account():
-                assert TradeFlag.external_account_transfer in (t.flags or set()), \
+                assert t.is_exchange_account_transfer(), \
                     f"Unsupported unflagged exchange account trade: {t}"
 
         if self.disable_broadcast:

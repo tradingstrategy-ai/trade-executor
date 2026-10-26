@@ -276,7 +276,8 @@ def translate_trading_pair(dex_pair: DEXPair, cache: dict | None = None) -> Trad
         # so we do not carry a duplicate address field in other_data.
         for key in ("exchange_protocol", "exchange_subaccount_id", "exchange_is_testnet",
                      "ccxt_account_id", "ccxt_exchange_id", "bridge_protocol",
-                     "vault_protocol"):
+                     "vault_protocol", "lighter_deployment", "lighter_account_role",
+                     "lighter_master_account_index", "lighter_strategy_label"):
             val = dex_pair.other_data.get(key)
             if val is not None and key not in pair.other_data:
                 pair.other_data[key] = val

@@ -36,6 +36,7 @@ from tradeexecutor.ethereum.vault.hypercore_transit_recovery import (
 from tradeexecutor.exchange_account.derive import DeriveNetwork
 from tradeexecutor.exchange_account.lighter import LIGHTER_PROTOCOL
 from tradeexecutor.ethereum.lighter.transfer_verification import reconcile_verified_lighter_transfers
+from tradeexecutor.exchange_account.lighter_operator import load_lighter_operator_record
 from tradeexecutor.exchange_account.sync_model import ExchangeAccountSyncModel
 from tradeexecutor.exchange_account.utils import create_exchange_account_value_func
 from tradeexecutor.strategy.account_correction import (
@@ -669,6 +670,7 @@ def correct_accounts(
     ccxt_exchange_id: Optional[str] = Option(None, envvar="CCXT_EXCHANGE_ID", help="CCXT exchange identifier (e.g. aster, binance, bybit)"),
     ccxt_options: Optional[str] = Option(None, envvar="CCXT_OPTIONS", help="CCXT exchange constructor options as JSON string"),
     ccxt_sandbox: bool = Option(False, envvar="CCXT_SANDBOX", help="Use CCXT exchange sandbox/testnet mode"),
+    lighter_operator_record_file: Optional[Path] = Option(None, envvar="LIGHTER_OPERATOR_RECORD_FILE", help="Owner-only Lighter operator record used to read transfer history for an interrupted sub-account funding"),
 ):
     """Correct accounting errors in the internal ledger of the trade executor.
 
@@ -799,6 +801,7 @@ def correct_accounts(
             state,
             web3,
             mutate=not dry_run,
+            operator_record=load_lighter_operator_record(lighter_operator_record_file) if lighter_operator_record_file else None,
         )
         if reconciled_transfers:
             if not dry_run:

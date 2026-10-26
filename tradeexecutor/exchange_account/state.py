@@ -8,12 +8,16 @@ import datetime
 from decimal import Decimal
 
 from eth_defi.compat import native_datetime_utc_now
+from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdateCause, BalanceUpdatePositionType
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
+from tradeexecutor.state.sync import BalanceEventRef
 from tradeexecutor.state.trade import TradeExecution, TradeFlag, TradeStatus, TradeType
 from tradeexecutor.strategy.position_internal_share_price import (
+    apply_capital_outflow,
     create_share_price_state,
+    update_share_price_state_for_balance_update,
 )
 
 
@@ -127,6 +131,219 @@ def complete_exchange_account_transfer(
         native_token_price=0,
         force=recovery,
     )
+    return trade
+
+
+def create_exchange_account_funding(
+    *,
+    state: State,
+    source_position: TradingPosition,
+    destination_position: TradingPosition,
+    strategy_cycle_at: datetime.datetime,
+    reserve_currency: AssetIdentifier,
+    amount: Decimal,
+    notes: str,
+    metadata: dict[str, str | int] | None = None,
+) -> TradeExecution:
+    """Create one planned transfer between two exchange accounts of one owner.
+
+    The trade is a buy on the destination position funded from the source
+    account, not from reserves. It carries
+    :py:attr:`TradeFlag.internal_account_transfer`, executes off-chain and
+    books the source decrease when it settles, see
+    :py:func:`complete_exchange_account_funding`.
+
+    :param state:
+        Strategy state.
+    :param source_position:
+        Exchange-account position paying for the transfer.
+    :param destination_position:
+        Exchange-account position receiving it.
+    :param strategy_cycle_at:
+        Strategy cycle timestamp.
+    :param reserve_currency:
+        Reserve asset, used for the 1:1 USD price.
+    :param amount:
+        Amount credited to the destination.
+    :param notes:
+        Human-readable trade notes.
+    :param metadata:
+        Extra public fields stored in ``other_data``.
+    :return:
+        Planned funding trade.
+    """
+    if not source_position.is_exchange_account() or not destination_position.is_exchange_account():
+        raise ExchangeAccountTransferError("Expected exchange-account positions")
+    if source_position.position_id == destination_position.position_id:
+        raise ExchangeAccountTransferError("Funding source and destination must differ")
+    if amount <= 0:
+        raise ExchangeAccountTransferError("Exchange-account funding amount must be positive")
+    _position, trade, _created = state.create_trade(
+        strategy_cycle_at=strategy_cycle_at,
+        pair=destination_position.pair,
+        quantity=amount,
+        reserve=None,
+        assumed_price=1.0,
+        trade_type=TradeType.rebalance,
+        reserve_currency=reserve_currency,
+        reserve_currency_price=1.0,
+        notes=notes,
+        pair_fee=0.0,
+        lp_fees_estimated=0,
+        position=destination_position,
+        flags={
+            TradeFlag.internal_account_transfer,
+        },
+    )
+    trade.other_data = {
+        **(metadata or {}),
+        "funding_source_position_id": source_position.position_id,
+        "funding_source_account_id": source_position.pair.get_exchange_account_id(),
+        "funding_destination_account_id": destination_position.pair.get_exchange_account_id(),
+    }
+    return trade
+
+
+def _book_exchange_account_balance_update(
+    *,
+    state: State,
+    position: TradingPosition,
+    quantity: Decimal,
+    timestamp: datetime.datetime,
+    notes: str,
+) -> BalanceUpdate:
+    """Record a non-trade quantity change on an exchange-account position.
+
+    :param state:
+        Strategy state owning the accounting references.
+    :param position:
+        Exchange-account position.
+    :param quantity:
+        Signed quantity change.
+    :param timestamp:
+        Event timestamp.
+    :param notes:
+        Human-readable reason.
+    :return:
+        The stored balance update.
+    """
+    event_id = state.portfolio.next_balance_update_id
+    state.portfolio.next_balance_update_id += 1
+    event = BalanceUpdate(
+        balance_update_id=event_id,
+        position_type=BalanceUpdatePositionType.open_position,
+        cause=BalanceUpdateCause.vault_flow,
+        asset=position.pair.base,
+        block_mined_at=timestamp,
+        strategy_cycle_included_at=timestamp,
+        chain_id=position.pair.base.chain_id,
+        old_balance=position.get_quantity(),
+        usd_value=float(quantity),
+        quantity=quantity,
+        owner_address=None,
+        tx_hash=None,
+        log_index=None,
+        position_id=position.position_id,
+        block_number=None,
+        notes=notes,
+    )
+    position.balance_updates[event.balance_update_id] = event
+    state.sync.accounting.balance_update_refs.append(BalanceEventRef.from_balance_update_event(event))
+    return event
+
+
+def complete_exchange_account_funding(
+    *,
+    state: State,
+    trade: TradeExecution,
+    executed_amount: Decimal,
+    fee: Decimal,
+    executed_at: datetime.datetime,
+    recovery: bool = False,
+) -> TradeExecution:
+    """Complete a verified transfer between two exchange accounts.
+
+    The destination trade is marked successful without touching reserves.
+    The source decrease is booked as balance updates: the principal as a
+    capital outflow, which burns internal shares instead of reporting a loss,
+    and the exchange fee as an expense. Booking is idempotent per trade, so
+    a recovery run cannot apply the source decrease twice.
+
+    :param state:
+        Strategy state.
+    :param trade:
+        Funding trade created by :py:func:`create_exchange_account_funding`.
+    :param executed_amount:
+        Amount credited to the destination, from exchange evidence.
+    :param fee:
+        Fee charged to the source on top of the amount.
+    :param executed_at:
+        Completion timestamp.
+    :param recovery:
+        Allow a verified ``started`` or ``failed`` transfer to be reconciled.
+    :return:
+        The completed trade.
+    """
+    if TradeFlag.internal_account_transfer not in (trade.flags or set()):
+        raise ExchangeAccountTransferError("Expected an exchange-account funding trade")
+    if executed_amount <= 0 or fee < 0:
+        raise ExchangeAccountTransferError("Funding amounts must be positive and the fee non-negative")
+    allowed_statuses = {TradeStatus.broadcasted}
+    if recovery:
+        allowed_statuses.update({TradeStatus.started, TradeStatus.failed})
+    if trade.get_status() not in allowed_statuses:
+        raise ExchangeAccountTransferError("Exchange-account funding has an invalid lifecycle state")
+    source_position = state.portfolio.get_position_by_id(int(trade.other_data["funding_source_position_id"]))
+    if not source_position.is_exchange_account():
+        raise ExchangeAccountTransferError("Funding source is not an exchange-account position")
+    if source_position.get_quantity() < executed_amount + fee:
+        raise ExchangeAccountTransferError("Funding would create a negative source account quantity")
+
+    if recovery and trade.failed_at is not None:
+        trade.failed_at = None
+    state.mark_trade_success(
+        executed_at=executed_at,
+        trade=trade,
+        executed_price=1.0,
+        executed_amount=executed_amount,
+        executed_reserve=executed_amount,
+        # The fee is charged to the source account and booked there below,
+        # so it is not a cost of the destination trade.
+        lp_fees=0,
+        native_token_price=0,
+        force=recovery,
+    )
+
+    if "funding_source_balance_update_ids" in trade.other_data:
+        return trade
+    label = f"Exchange-account funding trade #{trade.trade_id} to account {trade.other_data.get('funding_destination_account_id')}"
+    booked = []
+    # Book the fee before the principal. The fee lowers the share price; the
+    # principal then burns shares at that price. In the other order, a
+    # transfer that empties the source would leave a zero share price.
+    if fee > 0:
+        fee_event = _book_exchange_account_balance_update(
+            state=state,
+            position=source_position,
+            quantity=-fee,
+            timestamp=executed_at,
+            notes=f"{label}: exchange fee",
+        )
+        booked.append(fee_event.balance_update_id)
+        if source_position.share_price_state is not None:
+            source_position.share_price_state = update_share_price_state_for_balance_update(source_position.share_price_state, fee_event)
+    principal = _book_exchange_account_balance_update(
+        state=state,
+        position=source_position,
+        quantity=-executed_amount,
+        timestamp=executed_at,
+        notes=f"{label}: principal",
+    )
+    booked.append(principal.balance_update_id)
+    if source_position.share_price_state is not None:
+        source_position.share_price_state = apply_capital_outflow(source_position.share_price_state, float(executed_amount), executed_at)
+    trade.other_data["funding_source_balance_update_ids"] = booked
+    trade.other_data["funding_fee_usdc"] = str(fee)
     return trade
 
 

@@ -250,6 +250,7 @@ def create_execution_model(
             max_slippage=max_slippage,
             min_balance_threshold=min_gas_balance,
             mainnet_fork=mainnet_fork,
+            lighter_routing_config=lighter_routing_config,
         )
         valuation_model_factory = GenericValuationModelFactory()
         pricing_model_factory = EthereumGenericPricingFactory(sync_model.web3)

@@ -351,7 +351,8 @@ def test_lighter_withdrawal_keeps_trade_started_until_safe_claim(
     trade.started_at = native_datetime_utc_now()
     router = LighterRouting(
         reserve_asset.address,
-        config=LighterRoutingConfig(operator_record=mocker.Mock()),
+        # The withdrawal signer must sign for the trade's account.
+        config=LighterRoutingConfig(operator_record=mocker.Mock(account_index=position.pair.get_exchange_account_id())),
         session=mocker.Mock(),
     )
     routing_state = SimpleNamespace(

@@ -149,6 +149,45 @@ def update_share_price_state(
     return state
 
 
+def apply_capital_outflow(
+    state: PositionInternalSharePriceState,
+    amount: float,
+    at: datetime.datetime,
+) -> PositionInternalSharePriceState:
+    """Remove principal from a position without treating it as a loss.
+
+    Used when capital leaves an exchange-account position for another
+    account of the same strategy, for example Lighter master account funding
+    a sub-account. The share price is marked to the current assets, then
+    shares are burned in proportion to the amount removed, exactly like the
+    sell branch of :py:func:`update_share_price_state` at a price of one.
+
+    :param state:
+        Current share price state.
+    :param amount:
+        Principal removed, in USD. Must be positive.
+    :param at:
+        Timestamp of the outflow.
+    :return:
+        New share price state.
+    """
+    assert amount > 0, f"Capital outflow must be positive, got {amount}"
+    if state.cumulative_quantity <= 0:
+        return state
+    proportion = min(amount / state.cumulative_quantity, 1.0)
+    new_share_price = state.cumulative_quantity / state.total_supply if state.total_supply > 0 else state.current_share_price
+    new_total_supply = max(0.0, state.total_supply - state.total_supply * proportion)
+    return PositionInternalSharePriceState(
+        current_share_price=new_share_price,
+        total_supply=new_total_supply,
+        cumulative_quantity=state.cumulative_quantity - amount,
+        total_invested=state.total_invested,
+        peak_total_supply=state.peak_total_supply,
+        initial_share_price=state.initial_share_price,
+        last_updated_at=at,
+    )
+
+
 def update_share_price_state_for_balance_update(
     state: PositionInternalSharePriceState,
     balance_update: BalanceUpdate,

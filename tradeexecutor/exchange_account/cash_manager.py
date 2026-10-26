@@ -118,3 +118,103 @@ def _validate_non_negative_decimal(name: str, value: Decimal) -> None:
         raise ExchangeCashManagementError(
             f"{name} must be a finite non-negative Decimal"
         )
+
+
+@dataclass(frozen=True, slots=True)
+class SubAccountBalance:
+    """Latest balances of one exchange sub-account."""
+
+    #: Account equity, including unrealised profit and loss.
+    equity: Decimal
+
+    #: Collateral the exchange permits moving out of the account.
+    free: Decimal
+
+
+def plan_sub_account_rebalance(
+    *,
+    master_free_usdc: Decimal,
+    sub_accounts: dict[int, SubAccountBalance],
+    target_weights: dict[int, Decimal],
+    minimum_transfer_usdc: Decimal,
+    rebalance_band_usdc: Decimal,
+    transfer_fee_usdc: Decimal = Decimal(0),
+) -> list[tuple[int, Decimal]]:
+    """Plan one kind of capital movement towards sub-account target weights.
+
+    Capital is split between sub-accounts by ``target_weights`` of the
+    investable capital: the master's free collateral plus every
+    sub-account's equity. Any weight left unassigned stays on the master.
+
+    The plan contains either withdrawals or fundings, never both, so no
+    movement in a cycle depends on another one in the same cycle:
+
+    - Overweight sub-accounts are withdrawn to the Safe, capped by their free
+      collateral, because margin in use cannot move. A later cycle deposits
+      the proceeds to the master.
+    - Otherwise underweight sub-accounts are funded from the master's free
+      collateral, most underweight first, with the transfer fee budgeted on
+      top of each amount.
+
+    Accounts within ``rebalance_band_usdc`` of their target and movements
+    below ``minimum_transfer_usdc`` are skipped. The function is pure and
+    idempotent: a converged snapshot returns no movements.
+
+    :param master_free_usdc:
+        Master account free collateral available for funding, net of any
+        buffer the caller keeps on the master.
+    :param sub_accounts:
+        Balances keyed by sub-account index, in creation order.
+    :param target_weights:
+        Target share of investable capital per sub-account index.
+    :param minimum_transfer_usdc:
+        Smallest movement worth submitting.
+    :param rebalance_band_usdc:
+        Tolerated distance from a target before moving capital.
+    :param transfer_fee_usdc:
+        Fee charged on top of each funding transfer.
+    :return:
+        ``(account_index, amount)`` pairs. A negative amount withdraws from
+        the sub-account to the Safe; a positive amount funds it from the
+        master.
+    """
+    for name, value in {
+        "master_free_usdc": master_free_usdc,
+        "minimum_transfer_usdc": minimum_transfer_usdc,
+        "rebalance_band_usdc": rebalance_band_usdc,
+        "transfer_fee_usdc": transfer_fee_usdc,
+    }.items():
+        _validate_non_negative_decimal(name, value)
+    unknown = set(target_weights) - set(sub_accounts)
+    if unknown:
+        raise ExchangeCashManagementError(f"Target weights for unknown sub-accounts: {sorted(unknown)}")
+    if any(weight < 0 for weight in target_weights.values()) or sum(target_weights.values(), Decimal(0)) > 1:
+        raise ExchangeCashManagementError("Sub-account target weights must be non-negative and sum to at most one")
+
+    investable = master_free_usdc + sum((balance.equity for balance in sub_accounts.values()), Decimal(0))
+    targets = {index: target_weights.get(index, Decimal(0)) * investable for index in sub_accounts}
+
+    withdrawals = []
+    for index, balance in sub_accounts.items():
+        excess = balance.equity - targets[index]
+        if excess > rebalance_band_usdc:
+            amount = min(excess, balance.free)
+            if amount >= minimum_transfer_usdc and amount > 0:
+                withdrawals.append((index, -amount))
+    if withdrawals:
+        return withdrawals
+
+    fundings = []
+    budget = master_free_usdc
+    deficits = {index: targets[index] - balance.equity for index, balance in sub_accounts.items()}
+    # Most underweight first; the stable sort keeps creation order for ties.
+    for index in sorted(deficits, key=lambda index: -deficits[index]):
+        deficit = deficits[index]
+        if deficit <= rebalance_band_usdc:
+            continue
+        amount = min(deficit, budget - transfer_fee_usdc)
+        if amount < minimum_transfer_usdc or amount <= 0:
+            continue
+        fundings.append((index, amount))
+        budget -= amount + transfer_fee_usdc
+    return fundings

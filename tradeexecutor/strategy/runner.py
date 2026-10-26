@@ -343,7 +343,7 @@ class StrategyRunner(abc.ABC):
 
             logger.info("Fetching post-execution price data for %s at %s", t.get_short_label(), ts)
 
-            if TradeFlag.external_account_transfer in (t.flags or set()):
+            if t.is_exchange_account_transfer():
                 # Custody transfers have a fixed 1 USDC/USD price and no AMM
                 # price structure to collect.
                 t.post_execution_price_structure = None
@@ -1366,7 +1366,7 @@ def post_process_trade_decision(
     if max_price_impact is not None:
         for t in trades:
 
-            if TradeFlag.external_account_transfer in (t.flags or set()):
+            if t.is_exchange_account_transfer():
                 continue
 
             if t.is_credit_supply():
@@ -1392,7 +1392,7 @@ def post_process_trade_decision(
                 t.price_impact_tolerance = max_price_impact
 
     for t in trades:
-        if TradeFlag.external_account_transfer in (t.flags or set()):
+        if t.is_exchange_account_transfer():
             if t.planned_reserve <= 0 or t.planned_price != 1.0:
                 raise ValueError(
                     f"Exchange-account transfer must be a positive 1:1 transfer: {t}"

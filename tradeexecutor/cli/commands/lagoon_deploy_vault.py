@@ -130,6 +130,7 @@ from tradeexecutor.ethereum.lagoon.universe_config import (
 )
 from tradeexecutor.exchange_account.lighter import (
     LIGHTER_PUBLIC_METADATA_LABELS,
+    format_lighter_sub_account_lines,
     get_public_lighter_metadata,
 )
 from tradeexecutor.monkeypatch.web3 import \
@@ -377,6 +378,71 @@ def _write_lighter_private_record(
         exclusive=True,
     )
     logger.info("Saved private Lighter deployment data to %s (mode 0600)", os.path.abspath(json_path))
+
+
+def _get_lighter_private_setup(lighter_setup: Any) -> dict[str, Any]:
+    """Build the executor's private Lighter record from a deployment setup.
+
+    The executor record holds only the master API key. Sub-account keys
+    belong to the external traders and are written to separate hand-over
+    files by :py:func:`_write_lighter_handover_records`.
+
+    :param lighter_setup:
+        ``LighterAccountSetup`` returned by the eth-defi deployment.
+    :return:
+        JSON-friendly master setup with public sub-account metadata.
+    """
+    payload = {
+        field.name: _serialise_artifact_value(getattr(lighter_setup, field.name))
+        for field in fields(lighter_setup)
+        if field.name != "sub_accounts"
+    }
+    payload["sub_accounts"] = [sub.as_public_dict() for sub in getattr(lighter_setup, "sub_accounts", ())]
+    return payload
+
+
+def _write_lighter_handover_records(
+    vault_record_file: Path,
+    lighter_setup: Any,
+    *,
+    safe_address: str,
+    vault_address: str | None,
+    logger: logging.Logger,
+) -> list[Path]:
+    """Write one owner-only hand-over record per Lighter sub-account.
+
+    Each file holds a single sub-account's API key for the external trader,
+    such as a Nautilus strategy. Files are created exclusively with mode
+    ``0600`` next to the executor's private record and are never read by the
+    executor.
+
+    :param vault_record_file:
+        ``VAULT_RECORD_FILE`` path chosen by the operator.
+    :param lighter_setup:
+        ``LighterAccountSetup`` returned by the eth-defi deployment.
+    :param safe_address:
+        Safe owning the Lighter accounts.
+    :param vault_address:
+        Lagoon vault address.
+    :param logger:
+        Command logger.
+    :return:
+        Written hand-over paths.
+    """
+    _text_path, json_path = _resolve_deployment_artifact_paths(vault_record_file)
+    assert json_path is not None
+    paths = []
+    for sub in getattr(lighter_setup, "sub_accounts", ()):
+        path = json_path.with_name(f"{json_path.stem}.nautilus.{sub.account_index}.json")
+        _write_private_json_file(
+            path,
+            sub.as_handover_dict(safe_address=safe_address, vault_address=vault_address),
+            indent=2,
+            exclusive=True,
+        )
+        logger.info("Saved Lighter sub-account %d hand-over record to %s (mode 0600)", sub.account_index, os.path.abspath(path))
+        paths.append(path)
+    return paths
 
 
 def _write_deployment_artifacts(
@@ -828,6 +894,7 @@ def _format_lighter_metadata_text(metadata: dict[str, Any] | None) -> str:
     for key, label in LIGHTER_PUBLIC_METADATA_LABELS.items():
         if key in metadata:
             lines.append(f"{label}: {metadata[key]}")
+    lines.extend(format_lighter_sub_account_lines(metadata, indent=""))
     return "\n".join(lines) + "\n"
 
 
@@ -1175,6 +1242,8 @@ def lagoon_deploy_vault(
     safe_salt_nonce: int | None = Option(None, envvar="SAFE_SALT_NONCE", help="CREATE2 salt nonce for deterministic Safe address across chains. Random if not given."),
     generate_lighter_api_key: bool = Option(False, envvar="GENERATE_LIGHTER_API_KEY", help="Activate the Safe-owned Lighter account and register a trading API key."),
     lighter_api_key_index: int = Option(MIN_API_KEY_INDEX, envvar="LIGHTER_API_KEY_INDEX", help="Lighter API-key slot to register during a fresh Ethereum deployment."),
+    lighter_sub_account_count: int = Option(0, envvar="LIGHTER_SUB_ACCOUNT_COUNT", help="Lighter sub-accounts to create during activation, each with one API key handed over in its own owner-only file. Requires --generate-lighter-api-key."),
+    lighter_sub_account_api_key_index: int = Option(MIN_API_KEY_INDEX, envvar="LIGHTER_SUB_ACCOUNT_API_KEY_INDEX", help="API-key slot registered on each Lighter sub-account."),
     trading_strategy_api_key: str | None = shared_options.trading_strategy_api_key,
     hypersync_api_key: str | None = shared_options.hypersync_api_key,
     chain_name: str | None = shared_options.chain_name,
@@ -1222,6 +1291,8 @@ def lagoon_deploy_vault(
         raise ValueError("Lighter API-key generation cannot be used with --simulate")
     if generate_lighter_api_key and guard_only:
         raise ValueError("Lighter API-key generation cannot be combined with --guard-only")
+    if lighter_sub_account_count and not generate_lighter_api_key:
+        raise ValueError("--lighter-sub-account-count requires --generate-lighter-api-key")
     if manual_safe_migration and not guard_only:
         raise ValueError("--manual-safe-migration requires --guard-only")
 
@@ -1322,6 +1393,8 @@ def lagoon_deploy_vault(
             token_cache=token_cache,
             generate_lighter_api_key=generate_lighter_api_key,
             lighter_api_key_index=effective_lighter_api_key_index,
+            lighter_sub_account_count=lighter_sub_account_count,
+            lighter_sub_account_api_key_index=lighter_sub_account_api_key_index,
             private_json_path=private_json_path,
             private_key=private_key,
             expected_old_guard_address=vault_adapter_address,
@@ -1544,6 +1617,8 @@ def lagoon_deploy_vault(
         lighter_deployment=lighter_deployment,
         generate_lighter_api_key=generate_lighter_api_key,
         lighter_api_key_index=effective_lighter_api_key_index,
+        lighter_sub_account_count=lighter_sub_account_count,
+        lighter_sub_account_api_key_index=lighter_sub_account_api_key_index,
     )
 
     if generate_lighter_api_key:
@@ -1558,9 +1633,16 @@ def lagoon_deploy_vault(
                 "safe_address": deploy_info.safe_address,
                 "vault_address": deploy_info.vault.address,
                 "module_address": deploy_info.trading_strategy_module.address,
-                "lighter_account_setup": lighter_setup,
+                "lighter_account_setup": _get_lighter_private_setup(lighter_setup),
             },
             logger,
+        )
+        _write_lighter_handover_records(
+            vault_record_file,
+            lighter_setup,
+            safe_address=deploy_info.safe_address,
+            vault_address=deploy_info.vault.address,
+            logger=logger,
         )
 
     text_payload = _redact_private_key_from_text(deploy_info.pformat(), deploy_info)
@@ -1807,6 +1889,8 @@ def _deploy_multichain(
     token_cache: TokenDiskCache | None = None,
     generate_lighter_api_key: bool = False,
     lighter_api_key_index: int = MIN_API_KEY_INDEX,
+    lighter_sub_account_count: int = 0,
+    lighter_sub_account_api_key_index: int = MIN_API_KEY_INDEX,
     private_json_path: Path | None = None,
     private_key: str | None = None,
     expected_old_guard_address: str | None = None,
@@ -1942,6 +2026,8 @@ def _deploy_multichain(
         source_config.lighter_deployment = LighterDeployment.create_ethereum()
         source_config.generate_lighter_api_key = True
         source_config.lighter_api_key_index = effective_lighter_api_key_index
+        source_config.lighter_sub_account_count = lighter_sub_account_count
+        source_config.lighter_sub_account_api_key_index = lighter_sub_account_api_key_index
         source_denomination_token = fetch_erc20_details(
             source_chain_web3,
             source_config.parameters.underlying,
@@ -2036,11 +2122,18 @@ def _deploy_multichain(
                         "safe_address": result.deployments[source_chain_slug].safe_address,
                         "vault_address": result.deployments[source_chain_slug].vault.address,
                         "module_address": result.deployments[source_chain_slug].trading_strategy_module.address,
-                        "lighter_account_setup": lighter_setup,
+                        "lighter_account_setup": _get_lighter_private_setup(lighter_setup),
                     },
                 },
             },
             logger,
+        )
+        _write_lighter_handover_records(
+            vault_record_file,
+            lighter_setup,
+            safe_address=result.deployments[source_chain_slug].safe_address,
+            vault_address=result.deployments[source_chain_slug].vault.address,
+            logger=logger,
         )
 
     logger.info("Deployment complete")

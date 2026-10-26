@@ -222,7 +222,7 @@ def test_lighter_lagoon_nav_uses_safe_balance_and_total_equity(
         web3=web3_ethereum,
         safe_address=deployment.safe_address,
         reserve_asset=usdc_asset,
-        account_index=LIGHTER_ACCOUNT_INDEX,
+        account_indices=[LIGHTER_ACCOUNT_INDEX],
         session=session,
     )
     sync_model.calculate_valuation_func = nav_func

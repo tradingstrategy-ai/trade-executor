@@ -33,6 +33,7 @@ from ..version_info import VersionInfo
 from ..watchdog import stop_watchdog
 from ...ethereum.enzyme.vault import EnzymeVaultSyncModel
 from ...ethereum.lighter.lighter_routing import (
+    DEFAULT_LIGHTER_TRANSFER_TIMEOUT_SECONDS,
     DEFAULT_LIGHTER_WITHDRAWAL_TIMEOUT_SECONDS,
     LighterRoutingConfig,
 )
@@ -69,6 +70,7 @@ def _create_lighter_routing_config(
     strategy_parameters: dict[str, object],
     operator_record_file: Path | None,
     withdrawal_timeout: int,
+    transfer_timeout: int = DEFAULT_LIGHTER_TRANSFER_TIMEOUT_SECONDS,
 ) -> LighterRoutingConfig | None:
     """Build automatic Lighter transfer settings from parsed CLI inputs.
 
@@ -80,6 +82,8 @@ def _create_lighter_routing_config(
         Owner-only operator record parsed by the CLI.
     :param withdrawal_timeout:
         CLI timeout for the secure withdrawal wait.
+    :param transfer_timeout:
+        CLI timeout for a master to sub-account transfer to appear in history.
     :return:
         Lighter routing settings, or ``None`` when the strategy does not use them.
     """
@@ -97,6 +101,7 @@ def _create_lighter_routing_config(
     return LighterRoutingConfig(
         operator_record=load_lighter_operator_record(operator_record_file),
         withdrawal_timeout=withdrawal_timeout,
+        transfer_timeout=transfer_timeout,
     )
 
 
@@ -159,6 +164,11 @@ def start(
         DEFAULT_LIGHTER_WITHDRAWAL_TIMEOUT_SECONDS,
         envvar="LIGHTER_WITHDRAWAL_TIMEOUT",
         help="Maximum seconds to wait for a secure Lighter withdrawal",
+    ),
+    lighter_transfer_timeout: int = typer.Option(
+        DEFAULT_LIGHTER_TRANSFER_TIMEOUT_SECONDS,
+        envvar="LIGHTER_TRANSFER_TIMEOUT",
+        help="Maximum seconds to wait for a Lighter master to sub-account transfer",
     ),
 
     gas_price_method: Optional[GasPriceMethod] = shared_options.gas_price_method,
@@ -386,6 +396,7 @@ def start(
             strategy_parameters=mod.parameters or {},
             operator_record_file=lighter_operator_record_file,
             withdrawal_timeout=lighter_withdrawal_timeout,
+            transfer_timeout=lighter_transfer_timeout,
         )
 
         execution_model, sync_model, valuation_model_factory, pricing_model_factory = create_execution_and_sync_model(

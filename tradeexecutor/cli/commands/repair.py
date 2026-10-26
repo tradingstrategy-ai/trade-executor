@@ -15,6 +15,7 @@ from ...ethereum.velvet.execution import VelvetExecution
 from ...ethereum.velvet.vault import VelvetVaultSyncModel
 from ...ethereum.velvet.velvet_enso_routing import VelvetEnsoRouting
 from ...ethereum.lighter.transfer_verification import reconcile_verified_lighter_transfers
+from ...exchange_account.lighter_operator import load_lighter_operator_record
 from ...state.repair import repair_trades, repair_tx_not_generated, repair_zero_quantity
 from ...state.trade import has_unresolved_hypercore_accounting
 from ...strategy.approval import UncheckedApprovalModel
@@ -60,6 +61,7 @@ def repair(
     test_evm_uniswap_v2_init_code_hash: Optional[str] = shared_options.test_evm_uniswap_v2_init_code_hash,
     unit_testing: bool = shared_options.unit_testing,
     auto_approve: bool = Option(False, envvar="AUTO_APPROVE", help="Approve the repair trade without asking for confirmation"),
+    lighter_operator_record_file: Optional[Path] = Option(None, envvar="LIGHTER_OPERATOR_RECORD_FILE", help="Owner-only Lighter operator record used to read transfer history for an interrupted sub-account funding"),
 ):
     """Repair broken state.
 
@@ -153,6 +155,7 @@ def repair(
         state,
         web3,
         mutate=True,
+        operator_record=load_lighter_operator_record(lighter_operator_record_file) if lighter_operator_record_file else None,
     )
     if reconciled_transfers:
         store.sync(state)

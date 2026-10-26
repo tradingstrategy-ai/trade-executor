@@ -8,13 +8,13 @@ owner-only operator record for authenticated requests.
 
 import logging
 import math
-from collections.abc import Iterable
+from collections.abc import Collection, Iterable
 from decimal import Decimal, InvalidOperation
 from typing import Any, Callable
 
 from eth_defi.lighter.constants import LIGHTER_L1_CONTRACT
 from eth_defi.lighter.session import LighterSession, create_lighter_session
-from eth_defi.lighter.valuation import fetch_lighter_total_equity
+from eth_defi.lighter.valuation import fetch_lighter_accounts_equity, fetch_lighter_total_equity
 from eth_defi.token import fetch_erc20_details
 from web3 import Web3
 
@@ -33,6 +33,21 @@ LIGHTER_ACCOUNT_SYMBOL = "LIGHTER-ACCOUNT"
 LIGHTER_PROTOCOL = "lighter"
 #: Only Lighter deployment supported by the initial integration.
 LIGHTER_DEPLOYMENT = "ethereum"
+#: ``other_data`` role of the Safe-owned master account pair.
+LIGHTER_ROLE_MASTER = "master"
+#: ``other_data`` role of a sub-account pair.
+LIGHTER_ROLE_SUB_ACCOUNT = "sub_account"
+#: Synthetic address prefix for sub-account pairs, ``"LI"`` in ASCII.
+#:
+#: A sub-account pair needs its own base asset: pair equality and hashing
+#: compare base address, quote address and fee only, so pairs sharing the
+#: Lighter L1 contract as base would collide in every portfolio lookup.
+LIGHTER_SUB_ACCOUNT_ADDRESS_PREFIX = "4c49"
+#: Offset keeping sub-account ``internal_id`` values unique in mixed universes.
+#:
+#: Above every Trading Strategy dataset pair id and above the ``2**48``
+#: Lighter account-index range.
+LIGHTER_SUB_ACCOUNT_INTERNAL_ID_OFFSET = 10**15
 #: Explicit allowlist for public deployment artefacts and reports.
 LIGHTER_PUBLIC_METADATA_LABELS = {
     "account_index": "Account index",
@@ -43,15 +58,53 @@ LIGHTER_PUBLIC_METADATA_LABELS = {
     "change_pubkey_tx_hash": "Change public-key transaction hash",
     "observed_collateral": "Observed collateral",
 }
+#: Explicit allowlist for public sub-account fields in deployment reports.
+LIGHTER_PUBLIC_SUB_ACCOUNT_FIELDS = (
+    "account_index",
+    "api_key_index",
+    "public_key",
+    "change_pubkey_tx_hash",
+)
 
 
 def get_public_lighter_metadata(metadata: dict[Any, Any]) -> dict[str, Any]:
     """Copy only fields approved for public Lighter deployment reports."""
-    return {
+    public = {
         key: metadata[key]
         for key in LIGHTER_PUBLIC_METADATA_LABELS
         if key in metadata
     }
+    sub_accounts = metadata.get("sub_accounts")
+    if sub_accounts:
+        public["sub_accounts"] = [
+            {key: sub[key] for key in LIGHTER_PUBLIC_SUB_ACCOUNT_FIELDS if key in sub}
+            for sub in sub_accounts
+        ]
+    return public
+
+
+def format_lighter_sub_account_lines(
+    metadata: dict[str, Any] | None,
+    *,
+    markdown: bool = False,
+    indent: str = "  ",
+) -> list[str]:
+    """Format public sub-account metadata for deployment reports.
+
+    :param metadata:
+        Output of :py:func:`get_public_lighter_metadata`.
+    :param markdown:
+        Produce Markdown bullets instead of indented text.
+    :param indent:
+        Text indent for non-Markdown output.
+    :return:
+        One line per sub-account, empty without sub-accounts.
+    """
+    lines = []
+    for sub in (metadata or {}).get("sub_accounts") or []:
+        description = f"account {sub.get('account_index')}, API-key index {sub.get('api_key_index')}, public key {sub.get('public_key')}, change public-key transaction {sub.get('change_pubkey_tx_hash')}"
+        lines.append(f"- **Sub-account**: `{description}`" if markdown else f"{indent}Sub-account: {description}")
+    return lines
 
 
 class LighterEquityInvariantError(ValueError):
@@ -62,12 +115,31 @@ class NegativeLighterEquityError(LighterEquityInvariantError):
     """Raised when the public Lighter API reports impossible negative equity."""
 
 
+def get_lighter_sub_account_address(account_index: int) -> str:
+    """Return the synthetic address identifying one Lighter sub-account pair.
+
+    :param account_index:
+        Lighter sub-account index.
+    :return:
+        A 20-byte address, ``0x4c49`` followed by the index in hexadecimal.
+    """
+    return "0x" + LIGHTER_SUB_ACCOUNT_ADDRESS_PREFIX + f"{account_index:036x}"
+
+
 def create_lighter_exchange_account_pair(
     quote: AssetIdentifier,
     account_index: int,
     is_testnet: bool = False,
+    role: str = LIGHTER_ROLE_MASTER,
+    master_account_index: int | None = None,
+    strategy_label: str | None = None,
 ) -> TradingPairIdentifier:
     """Create a synthetic pair representing one Lighter account.
+
+    The Safe-owned master account keeps the identity used since the first
+    integration, so existing executor state needs no migration. Each
+    sub-account gets a unique synthetic base asset, pool address and
+    ``internal_id``, so every account is a separate trading position.
 
     :param quote:
         Reserve/quote asset (normally Ethereum USDC).
@@ -76,40 +148,159 @@ def create_lighter_exchange_account_pair(
     :param is_testnet:
         Retained for parity with the other exchange-account pair factories.
         The first integration supports the canonical Ethereum deployment.
+    :param role:
+        :data:`LIGHTER_ROLE_MASTER` or :data:`LIGHTER_ROLE_SUB_ACCOUNT`.
+    :param master_account_index:
+        Master account owning a sub-account. Defaults to ``account_index``
+        for the master itself and is required for a sub-account.
+    :param strategy_label:
+        Optional name of the external strategy trading a sub-account.
     :return:
         Exchange-account pair with public Lighter metadata only.
     """
     if type(account_index) is not int or account_index < 0:
         raise ValueError(f"Lighter account index must be a non-negative integer: {account_index!r}")
+    if role not in (LIGHTER_ROLE_MASTER, LIGHTER_ROLE_SUB_ACCOUNT):
+        raise ValueError(f"Unknown Lighter account role: {role!r}")
+    if role == LIGHTER_ROLE_MASTER:
+        master_account_index = account_index
+    elif type(master_account_index) is not int or master_account_index < 0 or master_account_index == account_index:
+        raise ValueError("A Lighter sub-account pair needs its master account index")
 
-    # Lighter's L1 contract is the stable, canonical identity for this
-    # synthetic asset.  It is not used as an ERC-20 contract by the reader.
+    other_data = {
+        "exchange_protocol": LIGHTER_PROTOCOL,
+        "exchange_subaccount_id": account_index,
+        "exchange_is_testnet": is_testnet,
+        "lighter_deployment": LIGHTER_DEPLOYMENT,
+        "lighter_account_role": role,
+        "lighter_master_account_index": master_account_index,
+    }
+    if strategy_label:
+        other_data["lighter_strategy_label"] = strategy_label
+
+    if role == LIGHTER_ROLE_MASTER:
+        # Lighter's L1 contract is the stable, canonical identity for the
+        # master account. It is not used as an ERC-20 contract by the reader.
+        address = LIGHTER_L1_CONTRACT
+        symbol = LIGHTER_ACCOUNT_SYMBOL
+        internal_id = 1
+    else:
+        address = get_lighter_sub_account_address(account_index)
+        symbol = f"LIGHTER-{account_index}"
+        internal_id = LIGHTER_SUB_ACCOUNT_INTERNAL_ID_OFFSET + account_index
+
     base = AssetIdentifier(
         chain_id=quote.chain_id,
-        address=LIGHTER_L1_CONTRACT,
-        token_symbol=LIGHTER_ACCOUNT_SYMBOL,
+        address=address,
+        token_symbol=symbol,
         decimals=6,
     )
-    # Keep pair addresses valid and deployment-stable, as GMX does for its
-    # exchange-account pair. The account index belongs in ``other_data`` and
-    # must not be encoded as a short, non-address string here.
     return TradingPairIdentifier(
         base=base,
         quote=quote,
-        pool_address=LIGHTER_L1_CONTRACT,
-        exchange_address=LIGHTER_L1_CONTRACT,
-        internal_id=1,
+        pool_address=address,
+        exchange_address=address,
+        internal_id=internal_id,
         internal_exchange_id=1,
         fee=0.0,
         kind=TradingPairKind.exchange_account,
         exchange_name="Lighter",
-        other_data={
-            "exchange_protocol": LIGHTER_PROTOCOL,
-            "exchange_subaccount_id": account_index,
-            "exchange_is_testnet": is_testnet,
-            "lighter_deployment": LIGHTER_DEPLOYMENT,
-        },
+        other_data=other_data,
     )
+
+
+def create_lighter_exchange_account_pairs(
+    quote: AssetIdentifier,
+    master_account_index: int,
+    sub_account_indices: Iterable[int] = (),
+    strategy_labels: dict[int, str] | None = None,
+) -> list[TradingPairIdentifier]:
+    """Create pairs for a master account and its sub-accounts.
+
+    :param quote:
+        Reserve/quote asset (normally Ethereum USDC).
+    :param master_account_index:
+        Safe-owned master account.
+    :param sub_account_indices:
+        Sub-accounts in creation order.
+    :param strategy_labels:
+        Optional external strategy name per sub-account index.
+    :return:
+        Master pair followed by one pair per sub-account.
+    """
+    labels = strategy_labels or {}
+    pairs = [create_lighter_exchange_account_pair(quote, master_account_index)]
+    pairs += [
+        create_lighter_exchange_account_pair(
+            quote,
+            index,
+            role=LIGHTER_ROLE_SUB_ACCOUNT,
+            master_account_index=master_account_index,
+            strategy_label=labels.get(index),
+        )
+        for index in sub_account_indices
+    ]
+    return pairs
+
+
+def get_lighter_account_role(pair: TradingPairIdentifier) -> str:
+    """Return the role of a Lighter exchange-account pair.
+
+    Pairs created before sub-account support carry no role and are the
+    master account.
+
+    :param pair:
+        Lighter exchange-account pair.
+    :return:
+        :data:`LIGHTER_ROLE_MASTER` or :data:`LIGHTER_ROLE_SUB_ACCOUNT`.
+    """
+    return (pair.other_data or {}).get("lighter_account_role", LIGHTER_ROLE_MASTER)
+
+
+def is_lighter_sub_account_pair(pair: TradingPairIdentifier) -> bool:
+    """Check whether a pair is a Lighter sub-account."""
+    return (
+        pair.is_exchange_account()
+        and pair.get_exchange_account_protocol() == LIGHTER_PROTOCOL
+        and get_lighter_account_role(pair) == LIGHTER_ROLE_SUB_ACCOUNT
+    )
+
+
+def get_lighter_master_account_index(pair: TradingPairIdentifier) -> int:
+    """Return the master account owning a Lighter account pair.
+
+    :param pair:
+        Lighter exchange-account pair.
+    :return:
+        Master account index; the pair's own index for a master pair.
+    """
+    other_data = pair.other_data or {}
+    master_index = other_data.get("lighter_master_account_index")
+    if master_index is None:
+        master_index = pair.get_exchange_account_id()
+    if master_index is None:
+        raise ValueError("Lighter exchange account pair has no account index")
+    return int(master_index)
+
+
+def get_lighter_master_pair(pairs: Iterable[TradingPairIdentifier]) -> TradingPairIdentifier:
+    """Return the single master account pair among Lighter pairs.
+
+    :param pairs:
+        Pairs of a strategy universe.
+    :return:
+        The Lighter master account pair.
+    """
+    masters = [
+        pair
+        for pair in pairs
+        if pair.is_exchange_account()
+        and pair.get_exchange_account_protocol() == LIGHTER_PROTOCOL
+        and get_lighter_account_role(pair) == LIGHTER_ROLE_MASTER
+    ]
+    if len(masters) != 1:
+        raise ValueError(f"Expected one Lighter master account pair, found {len(masters)}")
+    return masters[0]
 
 
 def has_lighter_exchange_account_pairs(strategy_universe: Any) -> bool:
@@ -136,11 +327,18 @@ def validate_lighter_exchange_account_pairs(
     ]
     if not lighter_pairs:
         return []
-    if len(lighter_pairs) != 1:
+    masters = [pair for pair in lighter_pairs if get_lighter_account_role(pair) == LIGHTER_ROLE_MASTER]
+    if len(masters) != 1:
         raise ValueError(
-            "Lighter strategies must contain exactly one exchange-account pair"
+            "Lighter strategies must contain exactly one master account pair"
         )
-    if len(exchange_account_pairs) != 1:
+    master_index = get_lighter_master_account_index(masters[0])
+    account_indices = [pair.get_exchange_account_id() for pair in lighter_pairs]
+    if None in account_indices or len(set(account_indices)) != len(account_indices):
+        raise ValueError("Lighter account pairs must have unique account indices")
+    if any(get_lighter_master_account_index(pair) != master_index for pair in lighter_pairs):
+        raise ValueError("Every Lighter sub-account must belong to the strategy's master account")
+    if len(exchange_account_pairs) != len(lighter_pairs):
         incompatible = sorted({
             pair.get_exchange_account_protocol() or "missing protocol"
             for pair in exchange_account_pairs
@@ -273,17 +471,37 @@ def create_lighter_vault_valuation_func(
     web3: Web3,
     safe_address: str,
     reserve_asset: AssetIdentifier,
-    account_index: int,
+    account_indices: Collection[int],
     session: LighterSession | None = None,
 ) -> Callable[..., float]:
-    """Create the custom Lagoon NAV function for a Lighter account.
+    """Create the custom Lagoon NAV function for the Safe's Lighter accounts.
 
     The base value is the Safe's native reserve balance at the requested
-    treasury-sync block plus the current public Lighter account equity.  The
-    Lagoon sync model adds pending settlement value after this function
-    returns, so the function deliberately returns ``float`` at its public
-    interface boundary.
+    treasury-sync block plus the current public equity of every listed
+    Lighter account.  The Lagoon sync model adds pending settlement value
+    after this function returns, so the function deliberately returns
+    ``float`` at its public interface boundary.
+
+    Several accounts are valued from one by-owner snapshot, so a transfer
+    between them cannot be counted twice or missed. A single account keeps
+    the per-account read used since the first integration.
+
+    :param web3:
+        Ethereum connection.
+    :param safe_address:
+        Safe holding the reserve and owning the Lighter accounts.
+    :param reserve_asset:
+        Native Ethereum USDC.
+    :param account_indices:
+        Master account and any sub-accounts to include.
+    :param session:
+        Reusable public Lighter HTTP session.
+    :return:
+        NAV callable for the Lagoon sync model.
     """
+    indices = tuple(int(index) for index in account_indices)
+    if not indices or len(set(indices)) != len(indices):
+        raise ValueError("Lighter vault valuation needs unique account indices")
     lighter_session = session if session is not None else create_lighter_session()
     account_value_func = create_lighter_account_value_func(lighter_session)
     reserve_token = fetch_erc20_details(
@@ -293,8 +511,24 @@ def create_lighter_vault_valuation_func(
     )
     pair = create_lighter_exchange_account_pair(
         quote=reserve_asset,
-        account_index=account_index,
+        account_index=indices[0],
     )
+
+    def read_lighter_equity() -> Decimal:
+        if len(indices) == 1:
+            return account_value_func(pair)
+        snapshot = fetch_lighter_accounts_equity(lighter_session, safe_address)
+        missing = [index for index in indices if index not in snapshot]
+        if missing:
+            # Fail closed: a missing account would understate the posted NAV.
+            raise ValueError(f"Lighter equity snapshot is missing accounts {missing}")
+        total = Decimal(0)
+        for index in indices:
+            value = snapshot[index].get_total()
+            if not value.is_finite() or value < 0:
+                raise LighterEquityInvariantError(f"Invalid equity for Lighter account {index}")
+            total += value
+        return total
 
     def calculate_nav(state: Any, *, block_number: int | None = None) -> float:
         del state
@@ -302,17 +536,17 @@ def create_lighter_vault_valuation_func(
             safe_address,
             block_identifier=block_number if block_number is not None else "latest",
         )))
-        lighter_equity = account_value_func(pair)
+        lighter_equity = read_lighter_equity()
         nav = safe_usdc + lighter_equity
         if not nav.is_finite() or nav < 0:
-            raise ValueError(f"Invalid NAV for Lighter account {account_index}")
+            raise ValueError(f"Invalid NAV for Lighter accounts {list(indices)}")
         nav_float = float(nav)
         if not math.isfinite(nav_float):
-            raise ValueError(f"Invalid NAV for Lighter account {account_index}")
+            raise ValueError(f"Invalid NAV for Lighter accounts {list(indices)}")
         logger.info(
-            "Lighter vault valuation: Safe reserve=%s, account %d equity=%s, NAV=%s (block=%s)",
+            "Lighter vault valuation: Safe reserve=%s, accounts %s equity=%s, NAV=%s (block=%s)",
             safe_usdc,
-            account_index,
+            list(indices),
             lighter_equity,
             nav,
             block_number,

@@ -997,7 +997,11 @@ class EthereumPairConfigurator(PairConfigurator):
         logger.info("Auto-discovered GMX exchange account pairs — wired up GMX value func")
 
     def _auto_discover_lighter(self, strategy_universe: TradingStrategyUniverse) -> None:
-        """Auto-discover the single Lighter account and wire account/NAV readers."""
+        """Auto-discover the Lighter accounts and wire account/NAV readers.
+
+        The universe holds one master account pair and any sub-account
+        pairs. The Lagoon NAV includes every one of them.
+        """
         pairs = validate_lighter_exchange_account_pairs(
             strategy_universe.iterate_pairs()
         )
@@ -1018,9 +1022,7 @@ class EthereumPairConfigurator(PairConfigurator):
             raise ValueError(
                 "Lighter exchange-account valuation requires the Ethereum deployment"
             )
-        account_index = pairs[0].get_exchange_account_id()
-        if account_index is None:
-            raise ValueError("Lighter exchange-account pair has no account index")
+        account_indices = [int(pair.get_exchange_account_id()) for pair in pairs]
 
         web3 = self.execution_model.web3
         safe_address = self.execution_model.tx_builder.get_token_delivery_address()
@@ -1042,12 +1044,12 @@ class EthereumPairConfigurator(PairConfigurator):
             web3=web3,
             safe_address=safe_address,
             reserve_asset=reserve_asset,
-            account_index=int(account_index),
+            account_indices=account_indices,
             session=self.lighter_session,
         )
         logger.info(
-            "Auto-discovered Lighter account %d — wired public account and vault valuation functions",
-            account_index,
+            "Auto-discovered Lighter accounts %s — wired public account and vault valuation functions",
+            account_indices,
         )
 
     def _auto_discover_hypercore_vault(self, strategy_universe: TradingStrategyUniverse):
