@@ -37,6 +37,9 @@ class PartialWithdrawalRecovery:
     already_returned: bool
     session: HyperliquidSession
 
+    #: Explicit operator attestation for the legacy unsynchronised-nonce failure.
+    retry_before_signing: bool = False
+
 
 def inspect_partial_withdrawal(
     state: State,
@@ -110,6 +113,11 @@ def inspect_partial_withdrawal(
     saved_safe = state.portfolio.get_default_reserve_position().quantity
     baseline = Decimal(trade.other_data["hypercore_phase1_perp_baseline_usdc"])
     audit = trade.other_data.get("hypercore_withdrawal_recovery", {})
+    retry_before_signing = evidence.get("recovery_failed_before_signing") is True
+    if retry_before_signing and (
+        set(audit) != {"expected_return", "completed"} or audit["completed"] != {}
+    ):
+        raise RuntimeError("Pre-signing retry requires the legacy empty recovery checkpoint")
     returned = False
     if audit.get("completed"):
         for tx_hash in audit["completed"].values():
@@ -122,7 +130,7 @@ def inspect_partial_withdrawal(
             and snapshot.spot_total_usdc <= transit.BALANCE_TOLERANCE
         )
     stranded = (
-        not audit
+        (not audit or retry_before_signing)
         and abs(snapshot.evm_usdc_balance - saved_safe) <= transit.BALANCE_TOLERANCE
         and abs(snapshot.perp_withdrawable - baseline - net) <= transit.BALANCE_TOLERANCE
         and snapshot.spot_total_usdc <= transit.BALANCE_TOLERANCE
@@ -136,7 +144,9 @@ def inspect_partial_withdrawal(
         for t in state.portfolio.get_all_trades()
     ):
         raise RuntimeError("Repair unfinished sibling trades before withdrawal reconciliation")
-    return PartialWithdrawalRecovery(trade, snapshot, net, sold, equity.equity, returned, session)
+    if retry_before_signing:
+        logger.warning("Operator attests the previous recovery failed before signing; unchanged custody verified. This does not independently prove absence of a pending transaction.")
+    return PartialWithdrawalRecovery(trade, snapshot, net, sold, equity.equity, returned, session, retry_before_signing)
 
 
 def recover_partial_withdrawal(
@@ -155,6 +165,8 @@ def recover_partial_withdrawal(
     """
     trade = recovery.trade
     actions = [] if recovery.already_returned else transit.plan_hypercore_transit_recovery_actions(recovery.snapshot)
+    if not recovery.already_returned and [a.action_kind for a in actions] != ["perp_to_spot", "spot_to_evm"]:
+        raise RuntimeError("Expected two-leg transit recovery")
     logger.warning("Partial withdrawal #%s: %s USDC proceeds, %s shares sold, %s vault equity retained; not safe to restart until reconciliation completes", trade.trade_id, recovery.net_proceeds, recovery.sold_quantity, recovery.vault_equity)
     for action in actions:
         logger.info("Recovery would execute %s: %s USDC", action.action_kind, action.amount)
@@ -174,12 +186,22 @@ def recover_partial_withdrawal(
     if dry_run:
         return
     if not recovery.already_returned:
-        if [a.action_kind for a in actions] != ["perp_to_spot", "spot_to_evm"]:
-            raise RuntimeError("Expected two-leg transit recovery")
+        if hot_wallet is None:
+            raise RuntimeError("Withdrawal recovery requires a hot wallet/private key")
+        # Initialise signing before writing a checkpoint that could imply a
+        # broadcast. The generic correction hook does this too, but is bypassed
+        # by evidence-led withdrawal recovery.
+        hot_wallet.sync_nonce(web3)
+        if recovery.retry_before_signing and web3.eth.get_transaction_count(hot_wallet.address, "pending") != hot_wallet.current_nonce:
+            raise RuntimeError("Pending wallet transactions prevent a pre-signing recovery retry")
         audit = {
             "expected_return": str(actions[-1].amount),
             "completed": {},
+            "started_at": native_datetime_utc_now().isoformat(),
         }
+        if recovery.retry_before_signing:
+            audit["previous_attempt"] = trade.other_data["hypercore_withdrawal_recovery"]
+            trade.add_note("Operator confirmed legacy recovery failed before signing; live custody rechecked before retry")
         trade.other_data["hypercore_withdrawal_recovery"] = audit
         store.sync(state)
 

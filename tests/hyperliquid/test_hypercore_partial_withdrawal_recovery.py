@@ -7,6 +7,9 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
+from eth_defi.hotwallet import HotWallet
+from eth_defi.provider.anvil import launch_anvil
+from eth_defi.provider.multi_provider import create_multi_provider_web3
 
 from tradeexecutor.ethereum.vault import hypercore_withdrawal_recovery as recovery
 from tradeexecutor.ethereum.vault import hypercore_transit_recovery as transit
@@ -131,3 +134,99 @@ def test_recovery_after_transfer_before_save(incident: SimpleNamespace, monkeypa
     # 4. Reject a mistyped evidence trade ID with an operator-facing error.
     with pytest.raises(RuntimeError, match="identify a HyperCore sell"):
         recovery.inspect_partial_withdrawal(i.state, i.sync, i.web3, dict(i.evidence, trade_id=999999))
+
+
+def test_recovery_signs_with_initialised_nonce(incident: SimpleNamespace, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Exercise real wallet signing and broadcast rather than mocking the transit helper.
+
+    1. Start local Anvil and an unsynchronised wallet.
+    2. Replace HyperCore calls/polls only, because Anvil has no HyperCore backend.
+    3. Run recovery through both real transaction broadcasts and verify consecutive nonces.
+    """
+    # 1. Start local Anvil and an unsynchronised wallet.
+    i = incident
+    legacy_audit = {"expected_return": "3950.476029", "completed": {}}
+    i.state.portfolio.get_trade_by_id(1825).other_data["hypercore_withdrawal_recovery"] = legacy_audit
+    proof = recovery.inspect_partial_withdrawal(
+        i.state, i.sync, i.web3, dict(i.evidence, recovery_failed_before_signing=True),
+    )
+    anvil = launch_anvil()
+    try:
+        web3 = create_multi_provider_web3(anvil.json_rpc_url)
+        wallet = HotWallet.from_private_key("0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80")
+        assert wallet.current_nonce is None
+        initial_nonce = web3.eth.get_transaction_count(wallet.address)
+        # 2. Replace HyperCore calls/polls only, because Anvil has no HyperCore backend.
+        # A bound call to a local empty account accepts calldata and yields a real
+        # EVM receipt; it does not claim to validate HyperCore execution semantics.
+        contract = web3.eth.contract(address=web3.eth.accounts[1], abi=[{
+            "type": "function", "name": "recover", "inputs": [], "outputs": [], "stateMutability": "nonpayable",
+        }])
+        monkeypatch.setattr(transit, "build_hypercore_transfer_usd_class_call", lambda *a, **kw: contract.functions.recover())
+        monkeypatch.setattr(transit, "build_hypercore_send_asset_to_evm_call", lambda *a, **kw: contract.functions.recover())
+        i.sync.vault.underlying_token.convert_to_raw.side_effect = i.state.portfolio.get_default_reserve_position().asset.convert_to_raw_amount
+        def spot_arrived(*args, **kwargs) -> Decimal:
+            i.custody["perp"] -= kwargs["expected_increase"]
+            i.custody["spot"] += kwargs["expected_increase"]
+            return i.custody["spot"]
+        def evm_arrived(*args, **kwargs) -> Decimal:
+            i.custody["safe"] += kwargs["expected_increase"]
+            i.custody["spot"] -= kwargs["expected_increase"]
+            return i.custody["safe"]
+        monkeypatch.setattr(transit, "wait_for_spot_free_balance", spot_arrived)
+        monkeypatch.setattr(transit, "wait_for_evm_usdc_balance", evm_arrived)
+        # 3. Run recovery through both real transaction broadcasts and verify consecutive nonces.
+        recovery.recover_partial_withdrawal(proof, i.state, i.store, i.sync, web3, wallet, False)
+        audit = proof.trade.other_data["hypercore_withdrawal_recovery"]
+        assert audit["previous_attempt"] == legacy_audit
+        transactions = [web3.eth.get_transaction(tx) for tx in audit["completed"].values()]
+        assert [tx["nonce"] for tx in transactions] == [initial_nonce, initial_nonce + 1]
+        assert proof.trade.get_status() == TradeStatus.success
+        assert i.store.load().portfolio.get_trade_by_id(1825).executed_at is None
+    finally:
+        anvil.close()
+
+
+def test_pre_signing_failure_retry_is_explicit(incident: SimpleNamespace, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Do not silently retry an empty checkpoint or persist a failed wallet setup.
+
+    1. Reproduce the legacy empty checkpoint and require explicit operator attestation.
+    2. Verify preview is read-only and a wallet setup failure cannot replace the checkpoint.
+    3. Refuse attestation for new attempts, completed legs or changed custody.
+    """
+    # 1. Reproduce the legacy empty checkpoint and require explicit operator attestation.
+    i = incident
+    trade = i.state.portfolio.get_trade_by_id(1825)
+    trade.other_data["hypercore_withdrawal_recovery"] = {"expected_return": "3950.476029", "completed": {}}
+    i.store.sync(i.state)
+    with pytest.raises(RuntimeError, match="custody"):
+        recovery.inspect_partial_withdrawal(i.state, i.sync, i.web3, i.evidence)
+    evidence = dict(i.evidence, recovery_failed_before_signing=True)
+    proof = recovery.inspect_partial_withdrawal(i.state, i.sync, i.web3, evidence)
+    # 2. Verify preview is read-only and a wallet setup failure cannot replace the checkpoint.
+    before = i.store.path.read_bytes()
+    recovery.recover_partial_withdrawal(proof, i.state, i.store, i.sync, i.web3, None, True)
+    wallet = MagicMock()
+    wallet.sync_nonce.side_effect = RuntimeError("RPC unavailable")
+    with pytest.raises(RuntimeError, match="RPC unavailable"):
+        recovery.recover_partial_withdrawal(proof, i.state, i.store, i.sync, i.web3, wallet, False)
+    assert i.store.path.read_bytes() == before
+    # 3. Refuse attestation for new attempts, completed legs or changed custody.
+    wallet.sync_nonce.side_effect = None
+    wallet.current_nonce = 5
+    i.web3.eth.get_transaction_count.return_value = 6
+    with pytest.raises(RuntimeError, match="Pending wallet"):
+        recovery.recover_partial_withdrawal(proof, i.state, i.store, i.sync, i.web3, wallet, False)
+    assert i.store.path.read_bytes() == before
+    audit = trade.other_data["hypercore_withdrawal_recovery"]
+    audit["started_at"] = "2026-10-26T13:00:00"
+    with pytest.raises(RuntimeError, match="legacy empty"):
+        recovery.inspect_partial_withdrawal(i.state, i.sync, i.web3, evidence)
+    del audit["started_at"]
+    audit["completed"] = {"perp_to_spot": "0xrecovery"}
+    with pytest.raises(RuntimeError, match="legacy empty"):
+        recovery.inspect_partial_withdrawal(i.state, i.sync, i.web3, evidence)
+    audit["completed"] = {}
+    i.custody["spot"] = Decimal("3950")
+    with pytest.raises(RuntimeError, match="custody"):
+        recovery.inspect_partial_withdrawal(i.state, i.sync, i.web3, evidence)

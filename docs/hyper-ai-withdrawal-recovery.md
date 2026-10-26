@@ -91,6 +91,30 @@ receipts or unexplained balances requires operator reconciliation. Do not
 restore old JSON over transactions that already moved funds. This is not an
 automatic recovery path for every interruption window.
 
+### Recovery stopped before signing on 26 October
+
+The initial recovery implementation omitted wallet nonce initialisation. Its
+first transfer could fail with `Nonce is not yet synced from the blockchain`
+after saving an empty recovery checkpoint, but before signing or broadcasting.
+The hotfix initialises the wallet before saving a new checkpoint.
+
+For that specific legacy checkpoint only, an operator who has verified the
+complete traceback proves failure before the first signing/broadcast attempt
+may add `"recovery_failed_before_signing": true` to the evidence JSON. Keep both
+execution hashes and `trade_id` unchanged. Run the same preview first, then the
+live command. This requires a release containing the nonce hotfix.
+
+This field is an operator attestation, not chain-derived proof. Never use it
+for a timeout, missing receipt, unknown broadcast outcome or a later retry.
+The command accepts only the old checkpoint containing `expected_return` and
+an empty `completed` mapping, rechecks the original custody balances, and
+retains the old checkpoint in the new attempt's audit. New attempt checkpoints
+cannot use this override. Do not delete the checkpoint or restore an old state.
+The retry also refuses a wallet with a different pending nonce. This RPC check
+does not replace the operator's review of the original signing failure.
+Failures during call construction or gas estimation can still occur after a
+new checkpoint is saved; these require operator investigation, not this override.
+
 A second preview with the evidence file reports an already-reconciled trade
 without transfers or accounting changes. Run `check-accounts` separately. Check terminal sibling/trade
 statuses, valued residual shares, reserve balances and cleared pending decision
