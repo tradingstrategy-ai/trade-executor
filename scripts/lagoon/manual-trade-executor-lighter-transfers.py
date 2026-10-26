@@ -20,7 +20,8 @@ amounts, fees and balance updates.
    then withdraw everything to the Safe
 5. Redeem all shares with ``lagoon-redeem``
 6. Sweep the Safe back to the deployer and reconcile the deployer's balances
-7. Verify every scripted transfer in the executor state
+7. Verify every scripted transfer in the executor state and print every
+   trade with its description, status and transaction hashes
 
 The transfers sent from a sub-account are signed with that sub-account's
 key, which this tutorial passes to ``start`` from the hand-over files
@@ -90,6 +91,7 @@ from tradeexecutor.testing.lighter_tutorial import (
     deploy,
     get_cli_environment,
     initialise_state,
+    print_trade_summary,
     is_simulate_requested,
     load_tutorial_config,
     prepare_tutorial,
@@ -147,6 +149,7 @@ def verify_state(tutorial: Tutorial) -> None:
     rows = verify_lighter_scripted_transfers(state, build_lighter_transfer_schedule(get_unit()), tutorial.account_indices)
     print(tabulate(rows, headers="keys", tablefmt="simple"))
     logger.info("All %d scripted transfers were booked correctly", len(rows))
+    print_trade_summary(state)
 
 
 def main() -> None:

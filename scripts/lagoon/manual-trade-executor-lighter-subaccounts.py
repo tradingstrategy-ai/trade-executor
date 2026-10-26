@@ -18,6 +18,7 @@ lifecycle with real money:
    and redeem all shares with ``lagoon-redeem``
 10. Sweep the remaining Safe USDC and ETH back to the deployer and print a
     reconciliation table
+11. Print every trade with its description, status and transaction hashes
 
 Every executor custody movement runs through the real ``start`` command and
 the production ``decide_trades()`` helper, with
@@ -96,6 +97,7 @@ from tradeexecutor.testing.lighter_tutorial import (
     initialise_state,
     load_tutorial_config,
     prepare_tutorial,
+    print_trade_summary,
     redeem_all_shares,
     refund,
     run_phases,
@@ -246,6 +248,7 @@ def main() -> None:
             (8, "Transfer from sub-account 1 to sub-account 2 as the external trader", transfer_between_sub_accounts),
             (9, "Drain every account and redeem all shares", lambda t: redeem_all_shares(t, drain_cycles=2, **get_strategy_environment())),
             (10, "Sweep the Safe and reconcile the deployer's balances", lambda t: refund(t, extra_fees_usdc=Decimal(t.progress.get("trader_transfer_fee_usdc", "0")))),
+            (11, "Print every trade with its description and transaction hashes", lambda t: print_trade_summary(State.read_json_file(t.state_file))),
         ])
     finally:
         tutorial.close()
