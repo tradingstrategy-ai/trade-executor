@@ -28,6 +28,7 @@ from typing import Any, Callable
 
 from eth_defi.abi import get_deployed_contract
 from eth_defi.lighter.constants import LIGHTER_L1_CONTRACT
+from eth_defi.lighter.api import LighterAccounts
 from eth_defi.lighter.lagoon import request_usdc_withdrawal_from_lighter_account
 from eth_defi.lighter.testing import credit_lighter_pending_balance_on_anvil, register_lighter_account_on_anvil
 from eth_defi.lighter.transfer import LighterTransferError, LighterTransferRecord
@@ -221,6 +222,13 @@ class FakeLighterCore:
         del session, timeout
         return self.get_account(int(account_index)).get_equity()
 
+    def fetch_lighter_accounts(self, session: Any, l1_address: str, timeout: float = 30.0) -> LighterAccounts | None:
+        """Return the owner's master and sub-accounts."""
+        del session, timeout
+        if self.owner is None or Web3.to_checksum_address(l1_address) != self.owner:
+            return None
+        return LighterAccounts(master_index=self.master_index, sub_account_indices=tuple(self.get_sub_account_indices()))
+
     def fetch_lighter_accounts_equity(self, session: Any, l1_address: str, timeout: float = 30.0) -> dict[int, LighterEquity]:
         """Return every owned account's equity as one snapshot."""
         del session, timeout
@@ -346,6 +354,7 @@ class FakeLighterCore:
             (f"{deployment}.create_lighter_sub_accounts", self.create_lighter_sub_accounts),
             ("tradeexecutor.exchange_account.lighter.fetch_lighter_total_equity", self.fetch_lighter_total_equity),
             ("tradeexecutor.exchange_account.lighter.fetch_lighter_accounts_equity", self.fetch_lighter_accounts_equity),
+            ("tradeexecutor.exchange_account.lighter.fetch_lighter_accounts", self.fetch_lighter_accounts),
             (f"{routing}.fetch_lighter_total_equity", self.fetch_lighter_total_equity),
             (f"{routing}.request_lighter_withdrawal", self.request_lighter_withdrawal),
             (f"{routing}.wait_for_lighter_withdrawal_claimable", self.wait_for_lighter_withdrawal_claimable),

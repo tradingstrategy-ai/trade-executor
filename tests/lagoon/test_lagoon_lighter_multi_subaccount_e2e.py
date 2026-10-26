@@ -156,7 +156,7 @@ def test_cli_lagoon_lighter_multi_subaccount_lifecycle(
     sub-account keys, and the Lagoon NAV includes every account.
 
     1. Deploy with ``lagoon-deploy-vault`` and two sub-accounts; check keys, hand-over files and secrets.
-    2. Initialise state and account for the bootstrap subscription with one position per account.
+    2. Initialise state and account for the bootstrap subscription with one position per account; flag an untracked sub-account.
     3. Subscribe 200 USDC and run ``start``: Lagoon settles it and the idle Safe cash is deposited to the master.
     4. Run ``start`` with 50/50 weights and a transfer fee: the master funds both sub-accounts.
     5. Run ``start`` with 75/25 weights: sub-account 2 is withdrawn to the Safe with the key-free L1 path, then redeposited.
@@ -267,6 +267,11 @@ def test_cli_lagoon_lighter_multi_subaccount_lifecycle(
     assert (master.get_quantity(), sub_1_position.get_quantity(), sub_2_position.get_quantity()) == (LIGHTER_MIN_MAINNET_USDC, 0, 0)
     assert state.portfolio.get_default_reserve_position().quantity == LIGHTER_BOOTSTRAP_SUBSCRIPTION - LIGHTER_MIN_MAINNET_USDC
     _run(cli, "check-accounts")
+    # A sub-account the strategy does not track would be missing from NAV.
+    untracked = fake_lighter_core.create_sub_account()
+    with pytest.raises(AssertionError, match="exited with 1"):
+        _run(cli, "check-accounts")
+    del fake_lighter_core.accounts[untracked]
 
     # 3. Subscribe 200 USDC and run start: Lagoon settles it and the idle Safe cash is deposited to the master.
     vault = LagoonVault(web3_ethereum, VaultSpec(1, deployment["vault_address"]), trading_strategy_module_address=deployment["module_address"])

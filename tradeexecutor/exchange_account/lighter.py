@@ -12,10 +12,12 @@ from collections.abc import Collection, Iterable
 from decimal import Decimal, InvalidOperation
 from typing import Any, Callable
 
+from eth_defi.lighter.api import fetch_lighter_accounts
 from eth_defi.lighter.constants import LIGHTER_L1_CONTRACT
 from eth_defi.lighter.session import LighterSession, create_lighter_session
 from eth_defi.lighter.valuation import fetch_lighter_accounts_equity, fetch_lighter_total_equity
 from eth_defi.token import fetch_erc20_details
+from requests.exceptions import RequestException
 from web3 import Web3
 
 from tradeexecutor.state.identifier import (
@@ -81,6 +83,44 @@ def get_public_lighter_metadata(metadata: dict[Any, Any]) -> dict[str, Any]:
             for sub in sub_accounts
         ]
     return public
+
+
+def check_lighter_account_set(
+    safe_address: str,
+    pairs: Iterable[TradingPairIdentifier],
+    session: LighterSession | None = None,
+) -> tuple[bool, str]:
+    """Compare the Lighter accounts a Safe owns with the tracked positions.
+
+    An owned account that has no position is left out of the posted NAV, so
+    a positive mismatch is an accounting error. When Lighter does not list
+    the Safe at all, or cannot be read, the check cannot conclude and passes
+    with a warning message.
+
+    :param safe_address:
+        Safe owning the Lighter accounts.
+    :param pairs:
+        Lighter exchange-account pairs of the tracked positions.
+    :param session:
+        Public Lighter HTTP session.
+    :return:
+        ``(clean, message)``.
+    """
+    tracked = {int(pair.get_exchange_account_id()) for pair in pairs}
+    lighter_session = session if session is not None else create_lighter_session()
+    try:
+        accounts = fetch_lighter_accounts(lighter_session, safe_address)
+    except (RequestException, ValueError) as error:
+        return True, f"Could not read Lighter accounts for {safe_address} ({type(error).__name__})"
+    finally:
+        if session is None:
+            lighter_session.close()
+    if accounts is None:
+        return True, f"Lighter lists no accounts for {safe_address}"
+    owned = set(accounts.get_all_indices())
+    if owned == tracked:
+        return True, f"Lighter accounts match the tracked positions: {sorted(owned)}"
+    return False, f"Lighter accounts {sorted(owned - tracked)} have no position and positions {sorted(tracked - owned)} have no Lighter account"
 
 
 def format_lighter_sub_account_lines(

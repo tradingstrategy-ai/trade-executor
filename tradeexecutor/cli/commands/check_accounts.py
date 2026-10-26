@@ -8,6 +8,7 @@ from eth_defi.hotwallet import HotWallet
 from tabulate import tabulate
 
 from tradeexecutor.exchange_account.lighter import (
+    check_lighter_account_set,
     create_lighter_account_value_func,
     validate_lighter_exchange_account_pairs,
 )
@@ -206,6 +207,16 @@ def check_accounts(
         sync_model,
         exchange_account_value_func=exchange_account_value_func,
     )
+
+    vault = getattr(sync_model, "vault", None)
+    if lighter_pairs and vault is not None:
+        # Every Lighter account the Safe owns must be a position, or NAV misses it.
+        accounts_clean, message = check_lighter_account_set(vault.safe_address, lighter_pairs)
+        if accounts_clean:
+            logger.info("%s", message)
+        else:
+            logger.error("%s", message)
+            clean = False
 
     output = tabulate(
         df,

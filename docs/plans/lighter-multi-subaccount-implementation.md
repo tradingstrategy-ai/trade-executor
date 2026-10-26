@@ -29,6 +29,55 @@ under one Lagoon vault, because Lighter only allows key-only transfers between
 accounts of the same L1 owner. Two separate Lagoon vaults cannot transfer to
 each other without an L1 signature a Safe cannot produce.
 
+## Implementation status
+
+Implemented on 2026-10-26 on branch `lighter-multi-subaccount` in both
+repositories. The mainnet tutorial is written but has not been run live; the
+four mainnet verifications below remain open until it is.
+
+Verified by tests:
+
+- `tests/lagoon/test_lagoon_lighter_multi_subaccount_e2e.py`: real
+  `lagoon-deploy-vault` with two sub-accounts, `init`, `correct-accounts`,
+  ten `start` cycles, `check-accounts`, `lighter-move-funds`, `lagoon-redeem`
+  and the Safe sweep on the Ethereum fork, with only Lighter Core faked.
+- `tests/exchange_account/test_lighter_multi_account_positions.py`,
+  `test_lighter_sub_account_allocator.py` and `test_lighter_funding_trade.py`.
+- eth-defi: `tests/lighter/test_lighter_sub_accounts.py` (including a live
+  public-API read of a real owner's account tree),
+  `tests/guard/test_guard_lighter_lagoon.py::test_guard_lighter_sub_account_withdraw_and_claim`
+  and `tests/lagoon/test_lagoon_deployment_json.py`.
+
+Deviations from the plan:
+
+- The Lighter SDK is not an eth-defi extra. eth-defi keeps its existing
+  decision not to depend on the SDK; `eth_defi.lighter.sdk.import_lighter_sdk()`
+  imports it on use with a clear error.
+- `ExchangeAccountValuator` keeps its per-position balance update ids.
+  Instead, the writers that use the portfolio counter skip past the
+  position's existing ids, which removes the collision without changing the
+  valuator's interface.
+- `lagoon-redeem` reads the accounts from `LIGHTER_ACCOUNT_INDEXES` rather
+  than from state, matching how strategies are configured.
+- Sub-account indices are classified by Lighter's `account_type` (0 master,
+  1 sub-account, 2 and above pools), observed on mainnet; the index range is
+  only a fallback.
+- `check-accounts`, `correct-accounts` and `repair` accept
+  `LIGHTER_OPERATOR_RECORD_FILE` to read transfer history for an interrupted
+  funding transfer.
+- `check-accounts` also fails when the Safe owns a Lighter account that has
+  no position, because NAV would miss it.
+
+Pre-existing bugs found and fixed:
+
+- `create_execution_model()` never passed the Lighter routing configuration
+  to `LagoonExecution`, so automatic Lighter withdrawals from `start` had no
+  signer. The earlier cash-management test only exercised deposits.
+- `dex_data_translation` dropped the Lighter `other_data` keys, including
+  `lighter_deployment`, when translating pairs.
+- `lighter-move-funds` revalued every exchange-account position with the
+  moved account's equity.
+
 ## Scope and non-goals
 
 In scope:

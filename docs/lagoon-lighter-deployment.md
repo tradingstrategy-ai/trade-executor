@@ -67,6 +67,19 @@ in the paired `/secure/path/vault-record.json` operator record. Do not print,
 copy into a strategy module, pass on a command line, or add it to executor
 state. Move the mode-`0600` JSON record to the secret manager after deployment.
 
+### Sub-accounts
+
+To give external traders their own Lighter sub-accounts, add
+`LIGHTER_SUB_ACCOUNT_COUNT` (and optionally
+`LIGHTER_SUB_ACCOUNT_API_KEY_INDEX`, default 4) to the deployment. Each
+sub-account's API key is written to its own mode-0600
+`vault-record.nautilus.<index>.json` hand-over file; the executor record keeps
+only the master key. Sub-accounts start empty. See
+[README-Lighter.md](../tradeexecutor/exchange_account/README-Lighter.md#sub-accounts)
+for the custody model, strategy setup and recovery, and
+[`manual-trade-executor-lighter-subaccounts.py`](../scripts/lagoon/manual-trade-executor-lighter-subaccounts.py)
+for the live tutorial.
+
 ## Pair a compatible strategy module
 
 Pair the vault with a passive exchange-account strategy. It declares the public
