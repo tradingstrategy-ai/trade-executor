@@ -6,14 +6,17 @@ Support deploying and operating a Lagoon vault whose Safe owns one Lighter
 master account and several Lighter sub-accounts, in both
 `web3-ethereum-defi` and `trade-executor`:
 
-- `lagoon-deploy-vault` creates the master account, N sub-accounts and the
-  API keys for each, and hands the Nautilus keys over in a protected file.
-- `trade-executor` values all accounts in NAV, deposits from the Safe to the
-  master account, withdraws from any account back to the Safe, and moves
-  capital between the master account and sub-accounts from `decide_trades()`.
+- `lagoon-deploy-vault` creates the master account, N sub-accounts and one
+  Nautilus API key per sub-account, and hands each key over in a protected
+  file.
+- `trade-executor` holds one `TradingPosition` per account, values all of
+  them in NAV, deposits from the Safe to the master account, withdraws from
+  any account back to the Safe, and funds sub-accounts from the master
+  account, all from `decide_trades()`.
 - A black-box Typer CLI integration test drives one vault with two
-  sub-accounts through deposit, transfer in both directions and withdrawal,
-  with Lighter Core mocked and everything on Ethereum mocked by an Anvil fork.
+  sub-accounts through deposit, funding, withdrawal from a sub-account and
+  rebalancing, with Lighter Core faked and everything on Ethereum executed on
+  an Anvil fork.
 - A manual mainnet tutorial script repeats that lifecycle with real money and
   ends by refunding the deployer with all stablecoins and ETH.
 
@@ -34,24 +37,28 @@ In scope:
   every address and chain id behind `LighterDeployment` as the analysis
   recommends.
 - Master account as the treasury hub, sub-accounts as Nautilus trading
-  accounts. Each sub-account gets a Nautilus key (slot 4) and an executor
-  key (slot 5).
-- One new internal-transfer trade kind, routed through the existing
-  `decide_trades()` → `TradeExecution` → `GenericRouting` → `LighterRouting`
-  pipeline.
-- A pure allocator policy that turns target weights into transfer decisions.
-- CLI, operator record, deployment report and documentation updates.
+  accounts. The executor holds only the master API key it already holds today.
+- One new trade kind, master → sub-account funding, routed through the
+  existing `decide_trades()` → `TradeExecution` → `GenericRouting` →
+  `LighterRouting` pipeline. Every other movement reuses the existing
+  deposit and withdrawal trade kinds.
+- A small allocator next to the unchanged `ExchangeCashManager`; rebalancing
+  converges over cycles.
+- CLI, deployment report and documentation updates.
 - The two test deliverables above.
 
 Out of scope:
 
 - Lighter order routing inside `trade-executor`. Nautilus trades.
-- Guard Solidity changes. The analysis shows none is mandatory. The optional
-  account-index allowlist is deferred.
+- Guard Solidity changes. The analysis shows none is mandatory.
+- Executor API keys on sub-accounts and direct sub → sub transfers. A
+  sub-account is drained to the Safe with the key-free L1 `withdraw` path
+  and refilled through the master. A later version can add sub-account keys
+  if rebalancing latency becomes a problem.
 - Whitelisting `changePubKey` for the asset manager. Key registration remains
   a Safe-owner action done at deployment.
-- Creating sub-accounts after deployment. A later version can add a
-  governance command for it.
+- Creating sub-accounts after deployment; a state migration for the existing
+  `lighter-ai` deployment (see below, none is needed).
 - Lighter EVM deployment, Robinhood Chain, Lighter public pools.
 - Dynamic weight discovery from Nautilus. Weights are strategy parameters.
 
@@ -60,298 +67,238 @@ Out of scope:
 ### One TradingPosition per Lighter account
 
 Every Lighter account, the master and each sub-account, is one
-exchange-account `TradingPairIdentifier` and one open `TradingPosition` in
-the portfolio. The position quantity is that account's USDC equity, kept in
-sync by `ExchangeAccountSyncModel` exactly as today, so NAV, PnL, account
-checks and reporting work per account.
+exchange-account `TradingPairIdentifier` and one open `TradingPosition`. The
+position quantity is that account's USDC equity, kept in sync by
+`ExchangeAccountSyncModel` exactly as today, so NAV, PnL, account checks and
+reporting work per account.
 
-Pair identity rules. `TradingPairIdentifier.__eq__` and `__hash__` compare
-only `base.address`, `quote.address` and `fee`, and `get_identifier()` returns
+Pair identity. `TradingPairIdentifier.__eq__` and `__hash__` compare only
+`base.address`, `quote.address` and `fee`, and `get_identifier()` returns
 `pool_address`. Today every Lighter pair shares `LIGHTER_L1_CONTRACT` as base
-address and pool address with `internal_id = 1`, so two Lighter pairs compare
-equal and every `p.pair == pair` lookup collides. Derive encodes only
-`pool_address`, which is not enough, and no test has ever put two
-exchange-account pairs of one protocol in one portfolio. The rules are:
+and pool address with `internal_id = 1`, so two Lighter pairs compare equal
+and every `p.pair == pair` lookup collides. Derive varies only `pool_address`,
+which is not enough, and no test has ever put two exchange-account pairs of
+one protocol in one portfolio. The rules are:
 
-- **Base asset address is unique per account.** It is a synthetic 20-byte
-  address `0x4c49` ("LI") followed by the account index as 36 hex digits,
-  so it is readable in logs and cannot collide with a real token or with
-  another account. `pool_address` and `exchange_address` use the same value.
-  The old `LIGHTER_L1_CONTRACT` address moves to `other_data["lighter_l1_contract"]`.
-- **`internal_id` is unique and namespaced.** `internal_id =
-  LIGHTER_EXCHANGE_ACCOUNT_INTERNAL_ID_OFFSET + account_index` with the offset
-  at `10**15`, above every Trading Strategy dataset pair id and above the
-  `2**48` Lighter index range, so a mixed universe with GMX or Derive pairs
-  (both hard-coded to `internal_id = 1`) and dataset pairs keeps the
-  duplicate-id assertion in `create_pair_universe_from_code` satisfied.
-- **Ticker and description carry the account.** `get_ticker()` gives
-  `LIGHTER-<index>-USDC` and `get_human_description()` gives
-  `Lighter master account 748071` or `Lighter sub-account 281474976710600
-  (trend)`, so `show-positions`, `check-accounts` rows and logs are
-  distinguishable.
+- **The master pair keeps its current identity.** Base address
+  `LIGHTER_L1_CONTRACT`, `internal_id = 1`. The running `lighter-ai`
+  production state therefore needs no migration.
+- **Each sub-account pair gets a unique synthetic base address**:
+  `0x4c49` ("LI") followed by the account index as 36 hex digits, readable in
+  logs and unable to collide with a token or another account. `pool_address`
+  and `exchange_address` use the same value, so identifier lookups also
+  separate.
+- **Sub-account `internal_id` is namespaced**: `10**15 + account_index`,
+  above every Trading Strategy dataset pair id and above the `2**48` Lighter
+  index range, so a mixed universe with GMX or Derive pairs (both
+  `internal_id = 1`) keeps the duplicate-id assertion in
+  `create_pair_universe_from_code` satisfied.
+- **Ticker and description carry the account.** `LIGHTER-<index>-USDC` and
+  `Lighter sub-account 281474976710600 (trend)`, so `show-positions`,
+  `check-accounts` rows and logs are distinguishable.
 - `other_data` gains `lighter_account_role` (`master` or `sub_account`),
-  `lighter_master_account_index` and an optional `lighter_strategy_label` for
-  the Nautilus strategy name. `exchange_subaccount_id` keeps the account index
-  for `get_exchange_account_id()`.
+  `lighter_master_account_index` and an optional `lighter_strategy_label`.
+  `exchange_subaccount_id` keeps the account index for
+  `get_exchange_account_id()`.
 - Position creation is per pair: `open_exchange_account_position()` is called
-  once for every pair whose position is missing, both by strategies and by
-  `create_missing_exchange_account_positions()` in account correction. The
-  "any exchange-account position exists" guard in `lighter-ai.py` is replaced
-  by a per-pair check.
-- The existing single-account identity is migrated once with
-  `repair --migrate-lighter-pair-identity` for the current `lighter-ai`
-  production state. It rewrites every pair and asset reference carrying the
-  old identity across open, frozen and closed positions, their trades and
-  balance updates, and the blacklist structures (`asset_blacklist`,
-  `blacklisted_assets`, `blacklist_reason`) so a blacklist against the old
-  base address keeps blocking the migrated account. It runs as an idempotent
-  preview first, validates that every migrated pair exists in the updated
-  universe, and refuses an ambiguous mapping instead of dropping a
-  restriction. New deployments never produce the old identity.
-- Derive keeps its current identity in this work; a follow-up can apply the
-  same base-address rule if Derive ever needs two sub-accounts in one
-  portfolio.
+  once for every pair whose position is missing, by strategies and by
+  `create_missing_exchange_account_positions()`. The "any exchange-account
+  position exists" guard in `lighter-ai.py` becomes a per-pair check.
 
 ### Changes required for one position per account
 
-The table lists every place that assumes one exchange-account position, with
-the change this plan makes. Places that already iterate every position (NAV
-summation, `get_position_by_id`, `find_position_for_trade`, `check_if_clean`,
+Places that already iterate every position (NAV summation,
+`get_position_by_id`, `find_position_for_trade`, `check_if_clean`,
 `ExchangeAccountSyncModel`, `ExchangeAccountValuator`,
-`_build_exchange_account_checks`, freeze rules, `reconcile_verified_lighter_transfers`,
-trade ordering, `PositionManager.get_exchange_account_available_balance`) need
-no change and are not listed.
+`_build_exchange_account_checks`, freeze rules,
+`reconcile_verified_lighter_transfers`, trade ordering,
+`PositionManager.get_exchange_account_available_balance`) need no change.
 
 | Location | Problem today | Change |
 |----------|---------------|--------|
-| `identifier.py` `__eq__`/`__hash__`, `get_identifier()` | All Lighter pairs equal | Solved by the unique base address; add a regression test that two Lighter pairs are unequal, hash differently and have different identifiers. |
-| `portfolio.py` `get_position_by_trading_pair`, `get_open_position_for_pair`, `get_closed_positions_for_pair`, `get_frozen_position`, `get_equity_for_pair` | Match on `p.pair == pair` or `pool_address`, so the second account hits the first position | Solved by identity; covered by a test with two open Lighter positions. |
-| `portfolio.py` `get_all_traded_pairs`, `get_single_pair` | Set de-dupe collapses N pairs to one | Solved by identity; `get_single_pair()` must now raise for a multi-account universe, which the test strategy no longer calls. |
-| `Portfolio.create_trade` without `position=` | Attaches the second account's opening trade to the first position | `open_exchange_account_position()` passes the pair with unique identity; also assert the found position's pair identifier equals the requested one. |
-| `trading_strategy_universe.py` duplicate `internal_id` assert; `dex_data_translation.py` pair cache; `alpha_model.py` signals keyed by `internal_id` | `internal_id = 1` for every account | Namespaced `internal_id`. |
-| `lighter.py` `validate_lighter_exchange_account_pairs` | Raises on more than one pair | Keep the single-protocol rule, require exactly one `master` role, require unique account indices. Update `test_lighter_exchange_account.py`. |
-| `ethereum_protocol_adapters.py` `_auto_discover_lighter` and `lighter.py` `create_lighter_vault_valuation_func` | Lagoon NAV = Safe + `pairs[0]` only; sub-account equity would be missing from posted NAV | Valuation function takes all account indices and sums one by-L1-address snapshot; fails closed if any account is missing. This is NAV-critical and is the first assertion in the e2e test. |
-| `lighter_routing.py` `_prepare_deposit` | L1 deposit funds the master; verification waits on `trade.pair`'s account | Deposit trades are only accepted on the master pair; a sub-account funding is an internal transfer trade. |
-| `lighter_routing.py` `_prepare_withdrawal` | Uses the single operator record's account index, not `trade.pair` | Withdrawals are only accepted on the master pair; the signer is looked up from `LighterOperatorRecords` by `trade.pair.get_exchange_account_id()` and must match. |
-| `account_correction.py` `create_missing_exchange_account_positions` | Second pair is treated as existing | Solved by identity; the 1 USD reserve placeholder per auto-created position becomes N USD, reconciled by the Lagoon reserve sync and documented. |
-| `account_correction.py` `_format_account_check_row` | Every Lighter row shows the same index, address and ticker | Print the account index and role from the pair; `holding_address` `lighter:<id>` is already set. |
-| `exchange_account/valuation.py` `balance_update_id` | Per-position `max + 1` versus the portfolio-wide counter in the sync model | Use `portfolio.next_balance_update_id` in both places; `ExchangeAccountValuator._create_balance_update()` only receives the position today, so the valuator must be given the portfolio (or an id allocator callback) when constructed. |
-| `state.py` `is_good_pair` blacklist | Keyed by base asset, so one blacklist hits all accounts | Solved by the unique base address. |
-| `lighter_move_funds.py` `_get_lighter_position` | Requires exactly one position matching the operator index | `--lighter-account-index` selects the position; default is the master. |
-| `lagoon_lighter_test_trade.py` | "Expected exactly one" Lighter position | Select the master position explicitly; the test trade stays a master-account test. |
-| `lagoon_redeem.py` | Single `LIGHTER_ACCOUNT_INDEX` for the 5 USDC ignore rule | Read all account indices from state positions and apply the threshold to the sum. |
-| `check_accounts.py` | Fails through the validator | Follows the validator change. |
-| `strategies/lighter-ai.py`, `lighter_cash_management_strategy.py` | `any(is_exchange_account)` and `get_single_pair()` | Per-pair position creation; new multi-account strategy helper. |
-| `exchange_account/state.py` `create_exchange_account_transfer`, `mark_trade_success`, reserve allocation | Model only Safe ↔ account moves | New internal transfer trade kind below. |
-| `tests/exchange_account/` | No test with two exchange-account pairs in one universe | Add `test_lighter_multi_account_positions.py`: two pairs in one universe, two positions, sync updates both, NAV sums both, lookups by pair return the right position. |
+| `identifier.py` `__eq__`/`__hash__`, `get_identifier()` | All Lighter pairs equal | Solved by the sub-account base address; regression test that a master pair and a sub-account pair are unequal, hash differently and have different identifiers. |
+| `portfolio.py` pair lookups (`get_position_by_trading_pair`, `get_open_position_for_pair`, `get_closed_positions_for_pair`, `get_frozen_position`, `get_equity_for_pair`, `get_all_traded_pairs`, `get_single_pair`) | Match on `p.pair == pair` or `pool_address` | Solved by identity; covered by a test with two open Lighter positions; `get_single_pair()` raises for a multi-account universe. |
+| `Portfolio.create_trade` without `position=` | Second account's opening trade attaches to the first position | Solved by identity; `open_exchange_account_position()` asserts the found position's identifier equals the requested one. |
+| `trading_strategy_universe.py` duplicate `internal_id` assert; `dex_data_translation.py` pair cache; `alpha_model.py` signals keyed by `internal_id` | `internal_id = 1` for every account | Namespaced sub-account `internal_id`. |
+| `lighter.py` `validate_lighter_exchange_account_pairs` | Raises on more than one pair | Keep the single-protocol rule, require exactly one `master` and unique indices. Update `test_lighter_exchange_account.py`. |
+| `ethereum_protocol_adapters.py` `_auto_discover_lighter`, `lighter.py` `create_lighter_vault_valuation_func` | Lagoon NAV = Safe + `pairs[0]` only | Valuation takes all account indices and sums one by-L1-address snapshot; fails closed if any account is missing. NAV-critical, first assertion in the e2e test. |
+| `lighter_routing.py` `_prepare_deposit` | L1 deposit funds the master; verification waits on `trade.pair`'s account | Deposit trades are accepted on the master pair only. |
+| `lighter_routing.py` `_prepare_withdrawal` | Uses the single operator record's account index, not `trade.pair` | Master pair: existing SDK secure withdrawal with the master key. Sub-account pair: L1 `withdraw(subIndex)` through the guard (below). Same trade kind, different request. |
+| `account_correction.py` `create_missing_exchange_account_positions`, `_format_account_check_row` | Second pair treated as existing; identical row labels | Solved by identity; rows print index and role; the 1 USD reserve placeholder per auto-created position becomes N USD and is documented. |
+| `exchange_account/valuation.py` `balance_update_id` | Per-position `max + 1` versus the portfolio counter in the sync model | Use `portfolio.next_balance_update_id`; the valuator is given the portfolio when constructed. |
+| `lighter_move_funds.py` `_get_lighter_position` | Requires exactly one position | `--lighter-account-index` selects the position; default master. |
+| `lagoon_lighter_test_trade.py` | "Expected exactly one" Lighter position | Select the master position explicitly; stays a master-account test. |
+| `lagoon_redeem.py` | Single `LIGHTER_ACCOUNT_INDEX` for the 5 USDC rule | Read all indices from state positions and apply the threshold to the sum. |
+| `check_accounts.py` | Fails through the validator | Follows the validator change; add a check that the set of on-exchange accounts equals the set of positions. |
+| `strategies/lighter-ai.py`, `lighter_cash_management_strategy.py` | `any(is_exchange_account)`, `get_single_pair()` | Per-pair position creation; shared strategy helper. |
+| `tests/exchange_account/` | No test with two exchange-account pairs | `test_lighter_multi_account_positions.py`: two pairs in one universe, two positions, sync updates both, NAV sums both, lookups return the right position. |
 
 ### Custody flows
 
-| Movement | Mechanism | Signer |
-|----------|-----------|--------|
-| Safe → master | L1 `approve` + `deposit(safe, USDC, Perps, amount)` through the guard (existing) | Asset manager hot wallet |
-| master → sub | L2 `Transfer`, `transfer_same_master_account` | Executor master key (slot 4) |
-| sub → master, sub → sub | L2 `Transfer` | Executor sub-account key (slot 5) |
-| master → Safe | L2 secure `Withdraw` + Safe `withdrawPendingBalance` claim (existing) | Executor master key + hot wallet |
-| sub → Safe (recovery only) | L1 `withdraw(subIndex, ...)` through the guard, then claim | Hot wallet only |
+| Movement | Trade kind | Mechanism | Signer |
+|----------|-----------|-----------|--------|
+| Safe → master | Existing deposit (buy, external flag, master pair) | L1 `approve` + `deposit(safe, USDC, Perps, amount)` through the guard | Asset manager hot wallet |
+| master → Safe | Existing withdrawal (sell, external flag, master pair) | L2 secure `Withdraw` with the master key, wait, Safe `withdrawPendingBalance` claim | Master key + hot wallet |
+| sub → Safe | Existing withdrawal (sell, external flag, sub pair) | **New request**: L1 `withdraw(subIndex, USDC, Perps, amount)` through the guard, wait for the pending balance on-chain, same claim | Hot wallet only |
+| master → sub | **New**: funding (buy, internal flag, sub pair) | L2 `Transfer` with the master key, `transfer_same_master_account` | Master key |
 
-The normal withdrawal path to the Safe always goes through the master account:
-sub → master L2 transfer first, then the existing master → Safe flow. The L1
-`withdraw(subIndex)` path is implemented as a `lighter-move-funds` recovery
-option only and is verified live by the manual tutorial.
+There is no sub → master and no sub → sub movement. Rebalancing from one
+sub-account to another is sub → Safe in one cycle, then Safe → master and
+master → sub in the next. That is about 20 minutes plus one cycle, which is
+acceptable because only free collateral can move and allocation changes
+between sub-strategies are infrequent.
 
-### Internal transfer trade kind
+The sub → Safe request is one Safe module transaction and needs no API key.
+The pending balance is credited to the master's L1 address when Lighter's
+batch is verified, so the wait polls `ZkLighter.getPendingBalance(safe,
+USDC)` on-chain until the amount appears, then the existing claim runs. No
+authenticated Lighter API call is involved. Only the request site in
+`_prepare_withdrawal()` and the wait differ from the master withdrawal; the
+trade, its evidence keys (`lighter_withdrawal_request_id` becomes the L1 tx
+hash), the claim, reserve credit and reconciliation are unchanged.
 
-- `TradeFlag.internal_account_transfer` marks a transfer between two Lighter
-  accounts. It is created as a **pair** of trades sharing
-  `other_data["lighter_transfer_id"]`: a negative-quantity trade on the source
-  position and a positive-quantity trade on the destination position.
-- No reserve allocation, no Safe transaction and no receipt. The fee reported
-  by `transferFeeInfo` is recorded on the source trade as
-  `lighter_transfer_fee_usdc` and realised as a negative balance update on the
-  source position, so NAV and PnL stay honest.
-- **Off-chain execution branch.** The current pipeline cannot carry such a
-  trade: `State.start_execution()` has no branch for an exchange-account
-  trade without the external-transfer flag and raises `NotImplementedError`,
-  with the flag it moves reserve capital; `execute_trades()` asserts the
-  external flag on every exchange-account trade before doing anything
-  (`execution.py:834-837`); `_collect_signed_txs_by_chain()` and
-  `broadcast()` assert signed transactions; and settlement is driven by
-  receipts. The plan therefore adds:
-  - `execute_trades()`: relax the line-834 assertion to accept either flag.
-  - `State.start_execution()`: an `internal_account_transfer` branch that
-    moves no reserve capital and only marks the trade started.
-  - `_execute_trades_sequentially()`: a trade with the internal flag
-    bypasses `_execute_trade_batch()` entirely. It is executed by
-    `routing_model.setup_trades()` and settled immediately with
-    `routing_model.settle_trade()`; no transaction collection, broadcast or
-    receipt lookup. The loop `continue`s on any leg whose status is already
-    `success` before `check_trade_before_execution()` and
-    `start_execution()`, which is how the destination leg is skipped after
-    the source leg completed both.
-  - **Leg status model.** Source leg: `planned` → `started` → `broadcasted`
-    when the L2 transfer is accepted by Lighter (so `is_unfinished()` and
-    `check_if_clean()` already treat it as in flight) → `success` on the
-    final `transfer_history` row. Destination leg: `planned` → `success`,
-    completed by the source leg's settlement with `mark_success(force=True)`
-    because it never broadcasts. `TradeExecution.mark_success()` asserts
-    `broadcasted` unless forced (`trade.py:1677`).
-  - **Execution sort keys** in `get_execution_sort_position()`. The runner
-    re-sorts every cycle (`runner.py:1404-1412`), so the planner's list order
-    is not what executes. Within one class later trade ids run first, so the
-    keys must encode the custody order explicitly: sub → master source leg
-    `-trade_id - 70_000_000` (before the existing exchange withdrawal bump of
-    60,000,000), master → sub `trade_id + 20_000_000` and sub → sub
-    `trade_id + 30_000_000` (after the existing deposit bump of 10,000,000).
-    The destination leg takes its source leg's key plus one so the two legs
-    are adjacent.
-  - `State.mark_trade_success()`: the internal branch books no reserve
-    adjustment, updates `share_price_state` on both positions as a capital
-    flow out and in, and books the fee exactly once as a negative balance
-    update on the source position.
-  - The 1:1 check in `runner.py:1395-1399` applies to internal legs the same
-    way as to external transfers: `planned_reserve > 0` and
-    `planned_price == 1.0`, which `create_trade(quantity, reserve=None,
-    assumed_price=1.0)` satisfies.
-  - **One pending predicate per kind.** `is_internal_account_transfer_pending()`
-    is a separate predicate; `is_external_account_transfer_pending()` is
-    unchanged so `reconcile_verified_lighter_transfers()` and
-    `lighter_move_funds._get_pending_transfer()` keep feeding only external
-    transfers into `verify_lighter_transfer()`. `check_if_clean()` raises if
-    either predicate is true for any trade.
-  - Restart behaviour: a source leg with a recorded L2 tx hash but no
-    completion is never re-submitted; `correct-accounts` and `repair` decide
-    from `transfer_history` whether to complete or reject both legs.
-- `LighterRouting.setup_trades()` quotes the fee, checks
-  `amount + fee <= source free collateral`, signs and submits the transfer
-  for the source trade, stores the L2 tx hash on both trades, checkpoints,
-  and waits for `transfer_history` to show the row with final status.
-- **Verification uses `transfer_history` as the authoritative evidence:**
-  tx hash, source, destination, asset, amount, fee and final status. Equity
-  observations on both accounts are recorded for reconciliation only, because
-  Nautilus PnL, funding and trading fees can move either account while the
-  transfer settles, so an equity-delta check would reject valid transfers.
-- Execution order inside one cycle: all sub → master transfers, then master →
-  Safe withdrawal, then Safe → master deposit, then master → sub transfers,
-  then sub → sub transfers. The existing "withdrawals first" ordering is
-  extended with this rule.
-- A pending internal transfer makes the state unclean exactly like a pending
-  external transfer. `start` aborts on it; `check-accounts` shows it;
-  `correct-accounts` and `repair` reconcile it from `transfer_history` plus
-  both accounts' public equity.
+### Master → sub funding trade
+
+- `TradeFlag.internal_account_transfer` marks a buy on a sub-account position
+  funded from the master account rather than from reserves. It is one trade
+  with one ordinary lifecycle: `planned` → `started` → `broadcasted` when
+  Lighter accepts the L2 transfer → `success` on the final `transfer_history`
+  row. No forced status, no linked second trade.
+- The master's decrease, amount plus fee, is booked at settlement as a
+  `BalanceUpdate` on the master position with cause `vault_flow` and a note
+  naming the trade, the same mechanism `ExchangeAccountSyncModel` uses for
+  equity changes. The next sync then sees only PnL on the master.
+- **Pipeline changes.** `execute_trades()` asserts the external flag on every
+  exchange-account trade (`execution.py:834-837`); relax it to accept either
+  flag. `State.start_execution()` gets an internal branch that moves no
+  reserve capital. In `_execute_trades_sequentially()` an internal trade
+  bypasses `_execute_trade_batch()`: `setup_trades()` submits the transfer,
+  records the L2 tx hash and checkpoints, waits for `transfer_history`, and
+  `settle_trade()` is called directly, with no transaction collection,
+  broadcast or receipt. `mark_trade_success()` gets an internal branch that
+  adjusts no reserves and updates `share_price_state` on the sub-account
+  position as a capital inflow.
+- **Sort key.** The runner re-sorts every cycle by
+  `get_execution_sort_position()`. Withdrawals, master and sub alike, keep the
+  existing exchange withdrawal key and run first. The deposit keeps its key.
+  The funding trade gets `trade_id + 20_000_000`, after the deposit bump of
+  10,000,000, so a cycle runs withdrawals, then the Safe → master deposit,
+  then master → sub funding.
+- The 1:1 check in `runner.py:1395-1399` applies to the funding trade as to
+  external transfers.
+- `is_internal_account_transfer_pending()` is a separate predicate;
+  `check_if_clean()` raises if either predicate is true, so an interrupted
+  funding transfer blocks `start`. `correct-accounts` and `repair` reconcile
+  it from `transfer_history`: a final row completes the trade and books the
+  master decrease; a missing row after the timeout marks it
+  `transfer_rejected` with no accounting.
+- Verification uses the `transfer_history` row as the authoritative evidence
+  (tx hash, source, destination, amount, fee, final status). Equity
+  observations are recorded for reconciliation only, because Nautilus PnL can
+  move either account while the transfer settles.
 
 ### Cash policy
 
-One pure planner in `tradeexecutor/exchange_account/cash_manager.py`,
-`LighterCashPlanner.plan(snapshot) -> list[CashMovement]`, built from the
-existing `ExchangeCashManager` rules plus a sub-account allocator. It works on
-projected balances in this order:
+`ExchangeCashManager` is unchanged. It decides the Safe ↔ master movement
+from the master's free collateral as today.
 
-1. **Safe liquidity requirement first.** `required_safe = max(pending
-   redemptions - pending deposits, 0) + safe buffer`. If the Safe is short,
-   the shortfall must come out of Lighter: first from the master's free
-   collateral, then from sub-accounts in descending free-collateral order,
-   each retrieval sized as `amount` with `amount + fee <= free collateral`
-   and `amount >= minimum`. The master → Safe withdrawal is sized from the
-   master's **projected** collateral after those retrievals, so an empty
-   master with funded sub-accounts still produces the withdrawal in the same
-   cycle. If margin in use prevents retrieving enough, the planner returns
-   what it can and a `shortfall_usdc` the strategy logs; Lagoon keeps the
-   redemption deferred, as today.
-2. **Deposit idle Safe cash** above `required_safe` to the master, as today.
-3. **Allocate the remaining investable capital** (projected master free
-   collateral plus every sub-account's free collateral, minus the master
-   buffer) across sub-accounts by `target_weights`, moving only accounts
-   outside `rebalance_band`, never below `minimum_transfer_usdc`, never
-   margin in use, and always with the fee budgeted on top of the amount from
-   the source's projected balance. Sub → sub moves are preferred over
-   sub → master → sub where both legs would otherwise be needed.
+`SubAccountAllocator.decide(snapshot)` in `cash_manager.py` is a pure
+function with `SubAccountSnapshot(safe_shortfall_usdc, master_free_usdc,
+sub_accounts={index: free_collateral}, target_weights, transfer_fee_usdc,
+minimum_transfer_usdc, rebalance_band)` and returns a list of
+`SubAccountMovement(kind, account_index, amount_usdc)` where `kind` is
+`withdraw_to_safe` or `fund_from_master`:
 
-Inputs: `LighterCashSnapshot(safe_usdc, pending_deposits_usdc,
-pending_redemptions_usdc, master=(equity, free), sub_accounts={index:
-(equity, free)}, transfer_fee_usdc, usdc_decimals)`. The planner returns the
-movements in custody order for readability, but execution order is decided
-by the sort keys above, not by list order. The planner is deterministic and
-network free.
+1. If the Safe is short after the manager's own master withdrawal
+   (`safe_shortfall_usdc > 0`), return `withdraw_to_safe` movements from
+   sub-accounts in descending free collateral until the shortfall is covered.
+   Nothing else this cycle.
+2. Otherwise compute each sub-account's target as `weight × (master free +
+   sum of sub free)`. For sub-accounts above target by more than the band,
+   return `withdraw_to_safe` for the excess. For sub-accounts below target,
+   return `fund_from_master` up to the master's free collateral, each with
+   `amount + fee <= master free` and `amount >= minimum`.
 
-`decide_trades()` builds the snapshot from `PositionManager` and the Lagoon
-queue, calls the planner once and turns each movement into the matching
-trade kind.
+Every movement is one trade of an existing or the new kind. The executor's
+sequential execution runs them in sort order. Convergence takes as many
+cycles as the Safe round trip needs; the allocator is idempotent so repeated
+cycles finish the job.
+
+`decide_trades()` builds the snapshots from `PositionManager` and the Lagoon
+queue, calls the manager then the allocator, and returns the trades. The
+shared helper `decide_lighter_cash_management(input, master_pair, sub_pairs,
+parameters)` in `tradeexecutor/exchange_account/lighter_strategy.py` wraps
+this for the test strategy, the tutorial and `lighter-ai.py`.
 
 ### Credentials
 
-- `LighterOperatorRecords` in `lighter_operator.py` replaces the two duplicate
-  `LighterOperatorRecord` classes. It holds the master record plus
-  `sub_accounts: dict[int, LighterSubAccountOperatorRecord]`, each with the
-  executor key only. The Nautilus keys are never loaded by the executor.
+- `LighterOperatorRecord` and `LIGHTER_OPERATOR_RECORD_FILE` are unchanged:
+  the executor needs only the master key. The two duplicate copies of the
+  record class and the withdrawal wrappers (`lighter_operator.py` and
+  `lagoon_lighter_test_trade.py`) are consolidated into
+  `lighter_operator.py` first.
 - The deployment writes `2 + N` files below the record path: the public text
-  record, the executor operator JSON (master + executor sub keys, mode 0600),
-  and one `*.nautilus.<index>.json` per sub-account containing only that
-  sub-account's slot-4 key (mode 0600). The hand-over file is the only
-  artefact that leaves the executor host.
-- Legacy single-account operator JSON stays loadable. `start` refuses to run a
-  multi-account universe with a legacy record.
+  record, the executor operator JSON (master key, mode 0600, same shape as
+  today), and one `*.nautilus.<index>.json` per sub-account containing only
+  that sub-account's slot-4 key (mode 0600). The hand-over files are the
+  only artefacts that leave the executor host; the executor never loads them.
 
 ### Runtime configuration
 
 | Variable | Command | Meaning |
 |----------|---------|---------|
 | `LIGHTER_SUB_ACCOUNT_COUNT` | `lagoon-deploy-vault` | Number of sub-accounts to create, default 0 |
-| `LIGHTER_SUB_ACCOUNT_API_KEY_INDEX` | `lagoon-deploy-vault` | Nautilus slot, default 4 |
-| `LIGHTER_EXECUTOR_API_KEY_INDEX` | `lagoon-deploy-vault` | Executor slot on sub-accounts, default 5 |
-| `LIGHTER_ACCOUNT_INDEXES` | strategies | Comma-separated master then sub-account indices, replaces `LIGHTER_ACCOUNT_INDEX` for multi-account strategies |
-| `LIGHTER_SUB_ACCOUNT_WEIGHTS` | strategies (test and tutorial only) | Comma-separated weights matching the sub-account order |
-| `LIGHTER_TRANSFER_TIMEOUT` | `start`, `lighter-move-funds` | Seconds to wait for an L2 transfer, default 300 |
-| `LIGHTER_OPERATOR_RECORD_FILE` | `start`, diagnostics | Unchanged, new shape |
+| `LIGHTER_SUB_ACCOUNT_API_KEY_INDEX` | `lagoon-deploy-vault` | Nautilus key slot, default 4 |
+| `LIGHTER_ACCOUNT_INDEXES` | strategies | Comma-separated master then sub-account indices from the public deployment report; replaces `LIGHTER_ACCOUNT_INDEX` for multi-account strategies |
+| `LIGHTER_SUB_ACCOUNT_WEIGHTS` | strategies (test and tutorial only) | Comma-separated weights in sub-account order |
+| `LIGHTER_TRANSFER_TIMEOUT` | `start`, `lighter-move-funds` | Seconds to wait for an L2 funding transfer, default 300 |
+| `LIGHTER_WITHDRAWAL_TIMEOUT` | `start`, `lighter-move-funds` | Unchanged; also bounds the on-chain pending-balance wait for a sub-account withdrawal |
 
-Strategy parameters: `lighter_cash_management`, the existing buffer and
-minimum parameters, plus `lighter_sub_account_weights: dict[int, Decimal]`
-and `lighter_rebalance_band: Decimal`.
+Strategy parameters: `lighter_cash_management` and the existing buffers and
+minimum, plus `lighter_sub_account_weights: dict[int, Decimal]` and
+`lighter_rebalance_band: Decimal`.
 
 ## Deliverables: web3-ethereum-defi
 
 | Item | File | Notes |
 |------|------|-------|
-| Multi-account discovery | `eth_defi/lighter/api.py` | `fetch_lighter_accounts(session, l1_address) -> LighterAccounts(master_index, sub_account_indices)`, `wait_for_lighter_sub_accounts(session, l1_address, count, timeout)`. Keep `fetch_lighter_account_index()` as the master lookup. |
+| Multi-account discovery | `eth_defi/lighter/api.py` | `fetch_lighter_accounts(session, l1_address) -> LighterAccounts(master_index, sub_account_indices)`, `wait_for_lighter_sub_accounts(session, l1_address, count, timeout)`. `fetch_lighter_account_index()` stays as the master lookup. |
 | Multi-account equity | `eth_defi/lighter/valuation.py` | `fetch_lighter_accounts_equity(session, l1_address) -> dict[int, LighterEquity]` from one response. |
-| Transfer helpers | `eth_defi/lighter/transfer.py` (new) | `fetch_lighter_transfer_fee(session)`, `request_lighter_transfer(signer_client, to_account_index, amount, fee)`, `wait_for_lighter_transfer(session, account_index, tx_hash, auth_token_manager, timeout)`. SDK imported lazily. |
+| Funding transfer helper | `eth_defi/lighter/transfer.py` (new) | `fetch_lighter_transfer_fee(session)`, `request_lighter_transfer(signer_client, to_account_index, amount, fee)`, `wait_for_lighter_transfer(session, account_index, tx_hash, auth_token_manager, timeout)`. SDK imported lazily. |
 | Sub-account creation | `eth_defi/lighter/sub_account.py` (new) | `create_lighter_sub_accounts(signer_client, session, l1_address, count, timeout)` returns the new indices in creation order. |
-| L1 withdraw helper | `eth_defi/lighter/lagoon.py` | `request_usdc_withdrawal_from_lighter_account(web3, hot_wallet, vault, account_index, amount, zk_lighter)` through `performCall`. |
-| Batched key registration | `eth_defi/lighter/pubkey.py` | `build_change_pubkey_multisend(web3, entries, zk_lighter)` and `execute_change_pubkeys()` for a single-owner Safe. |
-| Deployment config | `eth_defi/erc_4626/vault_protocol/lagoon/deployment.py` | `LagoonConfig.lighter_sub_account_count`, `lighter_sub_account_api_key_index`, `lighter_executor_api_key_index`. `LighterAccountSetup` gains `sub_accounts: tuple[LighterSubAccountSetup, ...]`. Activation creates the sub-accounts after the master key is live, registers 2 keys per sub-account in one Safe transaction, waits for each key, and seeds each sub-account with 1 USDC by L2 transfer so Nautilus can trade immediately. The activation deposit becomes `1 + N × (1 + transfer fee)` USDC instead of the fixed 1 USDC, debited from the 20 USDC bootstrap subscription, so the Safe retains `19 - N × (1 + fee)`; `_validate_lighter_api_key_deployment_config` rejects an `N` that does not fit the bootstrap budget. |
-| Optional SDK extra | `pyproject.toml` | `lighter` extra pinning the same fork revision as trade-executor; every SDK import is lazy and guarded with a clear error. |
-| Scripts | `scripts/lighter/lagoon-lighter-create-subaccounts.py`, `scripts/lighter/lagoon-lighter-change-pubkey.py` | Create sub-accounts with the master key; print a MultiSend Safe transaction for a list of keys. |
+| L1 withdraw helper | `eth_defi/lighter/lagoon.py` | `request_usdc_withdrawal_from_lighter_account(web3, hot_wallet, vault, account_index, amount, zk_lighter)` through `performCall`, and `wait_for_lighter_pending_balance(web3, zk_lighter, owner, asset_index, amount, timeout)` polling `getPendingBalance`. |
+| Deployment config | `eth_defi/erc_4626/vault_protocol/lagoon/deployment.py` | `LagoonConfig.lighter_sub_account_count`, `lighter_sub_account_api_key_index`. `LighterAccountSetup` gains `sub_accounts: tuple[LighterSubAccountSetup, ...]` (index, key slot, public key, private key with `repr=False`). After the master key is live, activation creates the sub-accounts, registers one key per sub-account with sequential `execute_change_pubkey()` calls on the single-owner deployer Safe, waits for each key, and seeds each sub-account with 1 USDC by L2 transfer. The activation deposit becomes `1 + N × (1 + fee)` USDC out of the 20 USDC bootstrap subscription, so the Safe retains `19 - N × (1 + fee)`; the config validator rejects an `N` that does not fit. |
+| Optional SDK extra | `pyproject.toml` | `lighter` extra pinning the same fork revision as trade-executor; every SDK import is lazy with a clear error. |
+| Scripts | `scripts/lighter/lagoon-lighter-create-subaccounts.py` | Create sub-accounts with the master key and print their indices; the existing `lagoon-lighter-change-pubkey.py` already takes any account index. |
 | Docs | `eth_defi/lighter/README-lighter-guard.md` | New section on sub-accounts and the key-free L1 withdraw path. |
 
 ## Deliverables: trade-executor
 
 | Item | File | Notes |
 |------|------|-------|
-| Pair identity and positions | `tradeexecutor/exchange_account/lighter.py`, `tradeexecutor/state/identifier.py` | `create_lighter_exchange_account_pair(quote, account_index, role, master_account_index, strategy_label)` with the unique synthetic base address and namespaced `internal_id`; `create_lighter_exchange_account_pairs(quote, accounts)`; ticker and description per account. Validator keeps the single-protocol rule, drops the single-pair rule, requires exactly one master and unique indices. One `TradingPosition` per pair, created per pair by strategies and account correction. |
-| NAV | `lighter.py`, `ethereum_protocol_adapters.py` | `create_lighter_vault_valuation_func(web3, safe_address, reserve_asset, account_indices, session)` sums one by-L1-address snapshot; fails closed if any index is missing. `_auto_discover_lighter` passes all indices. |
-| Operator records | `tradeexecutor/exchange_account/lighter_operator.py` | `LighterOperatorRecords`, loader for the new and legacy shapes, one `SignerClient` per account, `request_lighter_transfer()` wrapper. Delete the duplicate in `lagoon_lighter_test_trade.py`. |
-| Transfer state | `tradeexecutor/exchange_account/state.py`, `tradeexecutor/state/trade.py` | `TradeFlag.internal_account_transfer`, `create_internal_account_transfer(state, source_position, destination_position, amount, fee, ...)` returning both trades, `complete_internal_account_transfer()`, `is_internal_account_transfer_pending()`. |
-| Routing | `tradeexecutor/ethereum/lighter/lighter_routing.py` | `LighterRoutingConfig.operator_records`, `transfer_timeout`. `setup_trades()` dispatches on the flag and the pair roles; refuses a Safe-facing trade on a sub-account pair; refuses a transfer without a signer for the source. |
-| Verification | `tradeexecutor/ethereum/lighter/transfer_verification.py` | `verify_lighter_internal_transfer()`, extend `reconcile_verified_lighter_transfers()`. |
-| Cash policy | `tradeexecutor/exchange_account/cash_manager.py` | `LighterCashSnapshot`, `LighterCashPlanner`, `CashMovement`; fee-aware projected balances; Safe liquidity requirement planned before allocation. |
-| Strategy helper | `tradeexecutor/exchange_account/lighter_strategy.py` (new) | `decide_lighter_cash_management(input, master_pair, sub_pairs, parameters) -> list[TradeExecution]` wrapping both policy layers; used by the test strategy, the tutorial strategy and `lighter-ai.py`. |
-| Execution pipeline | `tradeexecutor/state/state.py`, `tradeexecutor/ethereum/execution.py` | Relax the exchange-account flag assertion in `execute_trades()`; `start_execution()` internal branch with no reserve movement; sequential loop bypasses `_execute_trade_batch()` for internal legs and settles them directly, skipping legs already successful; leg status model with `mark_success(force=True)` for the destination; `mark_trade_success()` books both legs atomically, share-price capital flows and the fee once; `check_if_clean()` checks the new predicate. |
-| Runner and trade | `tradeexecutor/strategy/runner.py`, `tradeexecutor/state/trade.py` | New sort keys in `get_execution_sort_position()`; `TradeFlag.internal_account_transfer`; `is_internal_account_transfer_pending()`; internal legs skip price structure and price impact like external transfers and are subject to the same 1:1 reserve check. |
-| Startup | `tradeexecutor/cli/commands/start.py` | Abort on a pending internal transfer; assert signer coverage; new env vars. |
-| Deployment CLI | `lagoon_deploy_vault.py`, `deploy_report.py`, `preflight_report.py` | New options; reports list the master and each sub-account with indices, key slots, public keys and tx hashes; Nautilus hand-over files. |
-| Diagnostics | `lighter_move_funds.py`, `lagoon_lighter_test_trade.py`, `lagoon_redeem.py`, `check_accounts.py`, `correct_accounts.py`, `repair.py` | `--lighter-account-index`, transfer mode (`t`), L1 withdraw recovery mode, multi-account NAV in redeem, pair-identity migration in repair, internal-transfer reconciliation. |
+| Pair identity and positions | `tradeexecutor/exchange_account/lighter.py`, `tradeexecutor/state/identifier.py` | `create_lighter_exchange_account_pair(quote, account_index, role, master_account_index, strategy_label)`; `create_lighter_exchange_account_pairs(quote, master_index, sub_indices)`; ticker and description per account; validator changes. |
+| NAV | `lighter.py`, `ethereum_protocol_adapters.py` | `create_lighter_vault_valuation_func(web3, safe_address, reserve_asset, account_indices, session)`; `_auto_discover_lighter` passes all indices. |
+| Operator record | `tradeexecutor/exchange_account/lighter_operator.py` | Consolidate the duplicate class and wrappers; no shape change. |
+| Funding trade | `tradeexecutor/exchange_account/state.py`, `tradeexecutor/state/trade.py` | `TradeFlag.internal_account_transfer`, `create_exchange_account_funding(state, master_position, sub_position, amount, fee, ...)`, `complete_exchange_account_funding()` booking the master balance update, `is_internal_account_transfer_pending()`, sort key, `transfer_rejected` outcome. |
+| Execution pipeline | `tradeexecutor/state/state.py`, `tradeexecutor/ethereum/execution.py` | Relaxed flag assertion; `start_execution()` and `mark_trade_success()` internal branches; sequential loop bypass of the transaction batch for internal trades; `check_if_clean()` checks the new predicate. |
+| Routing | `tradeexecutor/ethereum/lighter/lighter_routing.py` | Deposits on the master pair only; `_prepare_withdrawal()` dispatches on the pair role (SDK request for master, L1 request plus on-chain wait for sub-accounts); `_prepare_funding()` for the new trade. |
+| Verification | `tradeexecutor/ethereum/lighter/transfer_verification.py` | `verify_lighter_funding()`, extend `reconcile_verified_lighter_transfers()` for both kinds. |
+| Cash policy | `tradeexecutor/exchange_account/cash_manager.py` | `SubAccountSnapshot`, `SubAccountAllocator`, `SubAccountMovement`; `ExchangeCashManager` untouched. |
+| Strategy helper | `tradeexecutor/exchange_account/lighter_strategy.py` (new) | `decide_lighter_cash_management()`. |
+| Startup | `tradeexecutor/cli/commands/start.py` | Abort on a pending funding transfer; `LIGHTER_TRANSFER_TIMEOUT`. |
+| Deployment CLI | `lagoon_deploy_vault.py`, `deploy_report.py`, `preflight_report.py` | New options; reports list the master and each sub-account with index, key slot, public key and tx hashes; Nautilus hand-over files. |
+| Diagnostics | `lighter_move_funds.py`, `lagoon_lighter_test_trade.py`, `lagoon_redeem.py`, `check_accounts.py`, `correct_accounts.py`, `repair.py` | `--lighter-account-index` on `lighter-move-funds` with the L1 withdraw for sub-accounts; master selection in the test trade; multi-account NAV in redeem; funding reconciliation; account-set check. |
 | Strategies | `strategies/lighter-ai.py`, `strategies/test_only/lighter_multi_subaccount_strategy.py` (new) | Multi-account universe from `LIGHTER_ACCOUNT_INDEXES`; the test strategy reads weights from `LIGHTER_SUB_ACCOUNT_WEIGHTS` so tests and the tutorial can change them between cycles. |
-| Test support | `tradeexecutor/testing/lighter_core.py` (new), `eth_defi/lighter/testing.py` | `FakeLighterCore`, see below, and `credit_lighter_pending_balance_on_anvil()`. Test helpers must live in the source tree. |
+| Test support | `tradeexecutor/testing/lighter_core.py` (new), `eth_defi/lighter/testing.py` | `FakeLighterCore` and `credit_lighter_pending_balance_on_anvil()`. Test helpers live in the source tree. |
 | Docs | `tradeexecutor/exchange_account/README-Lighter.md`, `docs/lagoon-lighter-deployment.md` | Multi-account custody model, deployment, hand-over, env vars, recovery. |
 | Changelog | `CHANGELOG.md` | One line, dated. |
 
 ## Fake Lighter Core
 
 Lighter's sequencer cannot run on an Anvil fork. The existing tests patch the
-individual eth_defi read functions imported into trade-executor modules with
-`mocker.patch` and keep every Ethereum transaction real. This plan keeps that
-seam approach but replaces ad-hoc lambdas with one stateful object so all
-seams agree with each other.
+eth_defi functions imported into trade-executor modules with `mocker.patch`
+and keep every Ethereum transaction real. This plan keeps that seam approach
+but replaces ad-hoc lambdas with one stateful object so all seams agree.
 
 `tradeexecutor/testing/lighter_core.py`:
 
@@ -371,7 +318,7 @@ class FakeLighterCore:
     transfer_fee_usdc: Decimal
     transfer_history: list[dict]
     withdraw_history: list[dict]
-    withdrawal_delay_seconds: int = 0
+    finalise_transfers: bool = True   # False leaves a funding transfer pending
 
     # read seams
     def fetch_accounts(self, l1_address) -> LighterAccounts
@@ -382,111 +329,64 @@ class FakeLighterCore:
     def withdraw_history_rows(self, account_index) -> list[dict]
     def fetch_api_key(self, account_index, slot) -> str | None
 
-    # write seams (what the SDK signer would do)
-    def create_sub_account(self, master_index) -> int      # next index counting down from 2**48 - 2
+    # write seams (what the SDK signer or the sequencer would do)
+    def create_sub_account(self, master_index) -> int      # counts down from 2**48 - 2
     def register_api_key(self, account_index, slot, pubkey)
-    def transfer(self, from_index, to_index, amount) -> str  # returns tx hash, charges fee
-    def request_withdrawal(self, account_index, amount) -> str
-    def observe_l1_deposit(self, amount)                      # credits master
-
-    # L1 mirror for a withdrawal claim on the fork
-    def credit_pending_balance_on_anvil(self, web3, safe_address, amount)
+    def transfer(self, from_index, to_index, amount) -> str  # charges fee
+    def request_secure_withdrawal(self, account_index, amount) -> str
+    def credit_master_from_deposit(self, amount)
+    def settle_l1_withdrawal(self, web3, safe_address, account_index, amount)
 ```
 
 A pytest fixture `fake_lighter_core(mocker, web3_ethereum)` in
-`tests/lagoon/conftest.py` patches every seam and returns the object. Two
-seams do fork work because a black-box `start` or `lagoon-deploy-vault` run
-cannot be interleaved by the test: the patched `wait_for_lighter_account`
-calls `register_lighter_account_on_anvil()` for the Safe address it is given
-(the Safe only exists after deployment, as `test_lagoon_lighter_deploy_e2e.py`
-does today), and the patched `wait_for_lighter_collateral` and
-`fetch_lighter_total_equity` observe a Safe → master deposit by scanning
-`ZkLighter` `Deposit` events for the Safe since the last observed block and
-crediting the master with the deposited amount. `observe_l1_deposit()` is
-the internal method those seams call, not a test-driven step. The seams are the module-level
-names each module imports, which is how every existing Lighter test mocks
-today (there is no HTTP-level fake and no fake `SignerClient` in
-trade-executor):
+`tests/lagoon/conftest.py` patches every seam and returns the object. The
+seams are the module-level names each module imports:
 
 | Module | Names patched |
 |--------|---------------|
 | `eth_defi.erc_4626.vault_protocol.lagoon.deployment` | `create_lighter_session`, `wait_for_lighter_account`, `wait_for_lighter_collateral`, `wait_for_lighter_api_key`, new `create_lighter_sub_accounts`, `wait_for_lighter_sub_accounts`, `request_lighter_transfer` |
-| `tradeexecutor.exchange_account.lighter` | `fetch_lighter_total_equity`, new `fetch_lighter_accounts_equity`, `fetch_lighter_accounts` |
-| `tradeexecutor.ethereum.lighter.lighter_routing` | `fetch_lighter_total_equity`, `request_lighter_withdrawal`, `wait_for_lighter_withdrawal_claimable`, new `request_lighter_transfer`, `wait_for_lighter_transfer`, `fetch_lighter_transfer_fee` |
+| `tradeexecutor.exchange_account.lighter` | `fetch_lighter_total_equity`, new `fetch_lighter_accounts_equity` |
+| `tradeexecutor.ethereum.lighter.lighter_routing` | `fetch_lighter_total_equity`, `request_lighter_withdrawal`, `wait_for_lighter_withdrawal_claimable`, new `request_lighter_transfer`, `wait_for_lighter_transfer`, `fetch_lighter_transfer_fee`, `wait_for_lighter_pending_balance` |
 | `tradeexecutor.ethereum.lighter.transfer_verification` | `fetch_lighter_total_equity`, `wait_for_lighter_collateral`, new `fetch_lighter_transfer_history` |
 | `tradeexecutor.cli.commands.lighter_move_funds`, `lagoon_redeem`, `correct_accounts` | The same readers and request wrappers they import |
 
-The two duplicate withdrawal wrappers (`lighter_operator.py` and
-`lagoon_lighter_test_trade.py`) are consolidated first so there is one set of
-names to patch.
+Two seams do fork work, because a black-box `start` or `lagoon-deploy-vault`
+run cannot be interleaved by the test:
 
-What stays real on the Anvil fork: Lagoon, Safe, guard and module deployment
-through `deploy_automated_lagoon_vault(..., use_forge=True)`, USDC funding
-and Lagoon subscription with `fund_lagoon_vault()`, Safe `approve` and
-`deposit` calls through the guard, every `changePubKey` Safe transaction, the
-`withdrawPendingBalance` claim calldata validated against the forked guard
-with `eth_call`, state writes, NAV events, and every Typer command.
-
-Only the master needs `register_lighter_account_on_anvil()`, because the L1
-`changePubKey` and `withdraw` calls validate `msg.sender`'s master mapping
-only; sub-account indices are checked by the sequencer, which the fake core
-stands in for.
+- The patched `wait_for_lighter_account` calls
+  `register_lighter_account_on_anvil()` for the Safe address it is given, as
+  `test_lagoon_lighter_deploy_e2e.py` does today. Only the master needs it:
+  the L1 `changePubKey` and `withdraw` calls validate `msg.sender`'s master
+  mapping only, and the sequencer's sub-account ownership check is what the
+  fake stands in for.
+- The patched `wait_for_lighter_collateral` credits the master with the
+  expected deposit, as `test_lagoon_lighter_cash_management.py` does today.
 
 **Withdrawal claim on the fork.** `start` signs and broadcasts a real
-`withdrawPendingBalance(safe, USDC, amount)` through the Safe module in
-`LighterRouting._prepare_claim()`. The existing CLI tests patch
-`claim_usdc_to_lagoon_safe_from_lighter` and transfer USDC from a whale, but
-the router never calls that helper and a whale transfer does not create
-Lighter's pending balance, so the broadcast claim would revert. The plan adds
-`credit_lighter_pending_balance_on_anvil(web3, owner, asset_index, amount)`
-to `eth_defi/lighter/testing.py` next to `register_lighter_account_on_anvil()`.
-It writes `pendingAssetBalances[assetIndex][masterAccountIndex]` with
-`anvil_setStorageAt`. The mapping is declared in `ExtendableStorage.sol`,
-the last base of `ZkLighter`, behind a `uint256[420]` gap, so the base slot
-is probed once against the forked contract and pinned as a constant the way
+`withdrawPendingBalance(safe, USDC, amount)` through the Safe module. A whale
+transfer to the Safe does not create Lighter's pending balance, so the claim
+would revert. `credit_lighter_pending_balance_on_anvil(web3, owner,
+asset_index, amount)` in `eth_defi/lighter/testing.py` writes
+`pendingAssetBalances[assetIndex][masterAccountIndex]` with
+`anvil_setStorageAt`. The mapping is declared in `ExtendableStorage.sol`, the
+last base of `ZkLighter`, behind a `uint256[420]` gap, so the base slot is
+probed once against the forked contract and pinned as a constant the way
 `LIGHTER_ADDRESS_TO_ACCOUNT_INDEX_SLOT = 19` was. The value is the packed
 `PendingBalance{uint128 balanceToWithdraw; uint8 gasReserveValue}` with
-`balanceToWithdraw` in Lighter ticks (`amount = baseAmount × tickSize`);
-`withdrawPendingBalance` does not check the gas reserve, so the tick amount
-in the low 128 bits suffices. The helper asserts
-`getPendingBalance(owner, assetIndex)` reads back the amount. `FakeLighterCore.request_withdrawal()` calls it when the withdrawal
-becomes claimable, so the real claim executes on the fork and the Safe's USDC
-rises through the protocol. If the slot derivation proves fragile, the
-fallback is a single seam on `LighterRouting._prepare_claim` that validates
-the real calldata through the guard with `eth_call` and substitutes a whale
-transfer, and the test then states explicitly that the claim execution is
-simulated.
+`balanceToWithdraw` in Lighter ticks; `withdrawPendingBalance` does not check
+the gas reserve. The helper asserts `getPendingBalance(owner, assetIndex)`
+reads back the amount. The fake calls it from `settle_l1_withdrawal()` for
+sub-account withdrawals and from the patched
+`wait_for_lighter_withdrawal_claimable` for master withdrawals, so the real
+claim executes on the fork. If the slot derivation proves fragile, the
+fallback is one seam on `LighterRouting._prepare_claim` that validates the
+real calldata through the guard with `eth_call` and substitutes a whale
+transfer, with the test stating that the claim execution is simulated.
 
 The test uses the session `anvil_fork_pool` fixture at
 `ETHEREUM_MIDNIGHT_BLOCK` with `evm_snapshot_revert`, and carries the
 `warm_rpc_test_group` and `xdist_group("fork:ethereum:midnight")` markers that
 `tests/conftest.py` enforces.
-
-Operator record shape written by the deployment and read by `start`:
-
-```json
-{
-  "deployments": {
-    "ethereum": {
-      "vault_address": "0x...",
-      "safe_address": "0x...",
-      "module_address": "0x...",
-      "lighter_account_setup": {
-        "account_index": 748071,
-        "api_key_index": 4,
-        "private_key": "...",
-        "sub_accounts": [
-          {"account_index": 281474976710600, "executor_api_key_index": 5, "executor_private_key": "...", "nautilus_api_key_index": 4},
-          {"account_index": 281474976710599, "executor_api_key_index": 5, "executor_private_key": "...", "nautilus_api_key_index": 4}
-        ]
-      }
-    }
-  }
-}
-```
-
-The Nautilus private keys are not in this file. They are only in the
-per-sub-account hand-over files.
 
 ## Tests
 
@@ -494,9 +394,10 @@ per-sub-account hand-over files.
 
 - Mocked API: `fetch_lighter_accounts` with master plus two sub-accounts,
   by-L1-address equity, transfer fee, transfer history matching.
-- Fork: batched `changePubKey` MultiSend from the Safe for one master and two
-  sub-account indices succeeds; the guard accepts `withdraw(subIndex)` and
-  the `performCall` reaches the protocol.
+- Fork: the guard accepts `withdraw(subIndex)` through `performCall` and the
+  protocol accepts it for a registered master; `wait_for_lighter_pending_balance`
+  returns once the storage fixture credits the balance; `changePubKey` from
+  the Safe for a sub-account index.
 - FakeSignerClient: `create_lighter_sub_accounts` returns indices in order;
   `request_lighter_transfer` passes the exact fee and asset id; timeouts are
   bounded and log no secrets.
@@ -506,25 +407,23 @@ per-sub-account hand-over files.
 
 ### trade-executor pure tests
 
-- `LighterCashPlanner`: equal weights from an empty sub-account set; a weight
-  change producing one sub → sub transfer; margin in use capping the amount;
-  band and minimum suppression; deterministic ordering; an empty master with
-  funded sub-accounts and a pending redemption producing sub → master
-  retrievals and the master → Safe withdrawal in one plan; a non-zero fee
-  with a fully allocated source never overspending (`amount + fee <= free`);
-  a margin shortfall reported rather than planned.
-- Transfer verification: a transfer whose `transfer_history` row is final
-  completes even when both accounts' equity moved by Nautilus PnL during
-  settlement.
-- State: internal transfer trade pair creation, completion, pending detection,
-  fee balance update, `check_if_clean` behaviour.
-- Pair identity and positions: two Lighter pairs are unequal, hash
-  differently and have distinct identifiers and `internal_id`s; two open
-  positions coexist and every `Portfolio` pair lookup returns the right one;
-  `open_exchange_account_position()` for the second pair opens a second
-  position; the sync model updates both with unique balance update ids;
-  `get_single_pair()` raises; the migration helper rewrites the legacy
-  identity.
+- `SubAccountAllocator`: equal weights from empty sub-accounts; a weight
+  change producing one `withdraw_to_safe` and, with the Safe refilled, one
+  `fund_from_master`; a Safe shortfall producing withdrawals in descending
+  free-collateral order and nothing else; margin in use capping; band and
+  minimum suppression; `amount + fee <= master free` with a fully allocated
+  master; idempotence on a converged snapshot.
+- Funding trade state: creation, the `broadcasted` transition, completion
+  with the master balance update, pending detection, `check_if_clean`,
+  `transfer_rejected`.
+- Verification: a funding transfer whose `transfer_history` row is final
+  completes even when both accounts' equity moved by Nautilus PnL.
+- Pair identity and positions: a master pair and a sub-account pair are
+  unequal, hash differently and have distinct identifiers and `internal_id`s;
+  two open positions coexist and every `Portfolio` pair lookup returns the
+  right one; `open_exchange_account_position()` for the second pair opens a
+  second position; the sync model updates both with unique balance update
+  ids; `get_single_pair()` raises.
 
 ### trade-executor Typer black-box integration test
 
@@ -532,57 +431,49 @@ per-sub-account hand-over files.
 fork, invoking the real app through `get_command(app).main(args=...)` with
 the environment injected by `mocker.patch.dict("os.environ", ..., clear=True)`
 as the existing Lighter CLI tests do. No command callback is called directly
-and no state file is edited by the test.
-
-Steps:
+and no state file is edited by the test. `LIGHTER_WITHDRAWAL_TIMEOUT` and
+`LIGHTER_TRANSFER_TIMEOUT` are set to a few seconds.
 
 1. Deploy with `lagoon-deploy-vault --generate-lighter-api-key` and
    `LIGHTER_SUB_ACCOUNT_COUNT=2`. Assert the fake core has the master and two
-   sub-accounts, two keys per sub-account, the operator JSON holds the master
-   key and the two executor keys, the two hand-over files hold only the
-   Nautilus keys, and no private key appears in stdout, logs, reports or the
-   runtime artefact.
+   sub-accounts with one key each, the operator JSON holds only the master
+   key, the two hand-over files hold only the Nautilus keys, and no private
+   key appears in stdout, logs, reports or the runtime artefact.
 2. `init`, then `correct-accounts --process-redemption`. Assert three
-   exchange-account positions, one per account, with distinct pair
-   identities, tickers and `internal_id`s, each holding its own account's
-   equity, and the bootstrap accounting (20 USDC subscribed, 1 USDC on the
-   master plus the seeded sub-account balances). Assert `check-accounts`
-   prints three distinguishable rows.
+   exchange-account positions with distinct identities, tickers and
+   `internal_id`s, each holding its own equity, the bootstrap accounting
+   (20 USDC subscribed, `1 + 2 × (1 + fee)` on Lighter, the rest in the
+   Safe), and three distinguishable `check-accounts` rows.
 3. Subscribe 200 USDC through Lagoon and settle with `lagoon-settle`.
 4. `start` with `RUN_SINGLE_CYCLE` and `LIGHTER_SUB_ACCOUNT_WEIGHTS=0.5,0.5`.
-   Assert the cycle produced one real Safe → master deposit on the fork and
-   two master → sub transfers in the fake core, the positions hold the
-   expected quantities, the fee is booked, NAV equals Safe plus the sum of
-   the three accounts, and `check-accounts` is clean.
-5. `start` with weights `0.75,0.25`. Assert exactly one sub → sub transfer of
-   the expected amount and no Safe transaction.
+   Assert one real Safe → master deposit on the fork and two funding trades
+   in the fake core, the fee booked once per funding trade on the master,
+   NAV equal to Safe plus the three accounts, and `check-accounts` clean.
+5. `start` with weights `0.75,0.25`. Assert one sub-account 2 → Safe
+   withdrawal: a real `withdraw(subIndex)` through the guard on the fork,
+   the pending balance credited by the fixture, the real claim executed, the
+   reserve credited. Run `start` again and assert the Safe → master deposit
+   and the master → sub-account 1 funding trade. Assert the split.
 6. Mark margin in use on sub-account 1 in the fake core and run `start` with
-   weights `0.25,0.75`. Assert the transfer is capped to free collateral.
+   weights `0.25,0.75`. Assert the withdrawal is capped to free collateral.
 7. Request a Lagoon redemption larger than the Safe balance while the master
-   is empty. `start` must produce sub → master transfers followed by one
-   master → Safe secure withdrawal in the same cycle; the fake core marks it
-   claimable and credits the pending balance on the fork, the real Safe claim
-   executes, and the next `lagoon-settle` settles the redemption. Assert NAV
-   and reserve. Set a non-zero transfer fee in the fake core for this step
-   and assert the fee is booked once on each source position.
-8. Negative path in three invocations, with `LIGHTER_TRANSFER_TIMEOUT=5` so
-   the wait fits the test budget. First, the fake core accepts a transfer but
-   never finalises it; `start` submits it, checkpoints and raises
-   `TimeoutError`, which the test catches with `pytest.raises` because
-   `standalone_mode=False` propagates exceptions instead of exit codes.
+   is empty. `start` must produce sub-account withdrawals in descending
+   free-collateral order and nothing else; `lagoon-settle` then settles the
+   redemption. Assert NAV and reserve.
+8. Negative path in three invocations. First, set `finalise_transfers=False`
+   and run `start` with weights that need a funding trade; it submits the
+   transfer, checkpoints and raises `TimeoutError`, caught with
+   `pytest.raises` because `standalone_mode=False` propagates exceptions.
    Second, `start` again must fail with the unclean-state error before any
    submission or accounting change, and the state file must be identical
-   apart from timestamps. Third, finalise the transfer in the fake core, run
-   `correct-accounts`, and assert both legs and the fee are applied exactly
-   once.
-9. Drain: set weights to `0,0`, request a redemption for the full vault, run
-   `start` and `lagoon-settle`. The planner retrieves everything above the
-   1 USDC transfer minimum from both sub-accounts and withdraws the master
-   to the Safe. Assert the residuals: at most 1 USDC per sub-account plus
-   fees, and the master below the 5 USDC rule.
-10. `lagoon-redeem`. Assert zero deployer shares, bounded Safe dust, and that
-    the redemption NAV ignores on-exchange equity below the existing 5 USDC
-    threshold summed across all accounts rather than per account.
+   apart from timestamps. Third, finalise in the fake core, run
+   `correct-accounts`, and assert the trade and the master balance update are
+   applied exactly once.
+9. Drain: weights `0,0`, request a redemption for the full vault, `start`
+   and `lagoon-settle`. Assert residuals of at most 1 USDC per sub-account
+   and the master below the 5 USDC rule.
+10. `lagoon-redeem`. Assert zero deployer shares, bounded Safe dust, and the
+    5 USDC rule applied to the sum of all accounts.
 
 The test is marked slow and runs under `pytest -n auto` in CI with the other
 Lagoon fork tests.
@@ -593,14 +484,15 @@ Lagoon fork tests.
 `scripts/lagoon/manual-trade-executor-lighter.py`: in-process Typer commands
 through the same `run_cli()` pattern, secrets excluded from every
 representation, public assertions at every checkpoint, mainnet only, small
-amounts.
+amounts. The vault is deployed with management and performance fee rates of
+zero, so the deployer holds the whole share supply.
 
 Differences from the existing tutorial:
 
 - A phase journal beside the run directory with `LIGHTER_RESUME_PHASE`, since
-  two secure withdrawals of about 20 minutes each make an interrupted run
-  likely. A resumed run re-verifies the completed phases from public data
-  and never repeats a Lighter request or Safe claim.
+  three secure withdrawals of about 20 minutes each make an interrupted run
+  likely. A resumed run re-verifies the completed phases from public data and
+  never repeats a Lighter request or Safe claim.
 - Capital movement is driven by real `start` single cycles with the test
   strategy and `LIGHTER_SUB_ACCOUNT_WEIGHTS`, so the live run exercises the
   same `decide_trades()` path as production. Direct eth_defi helpers are used
@@ -615,68 +507,48 @@ Phases:
 3. `init`, `correct-accounts --process-redemption`, `check-accounts`.
 4. Subscribe the configured USDC (default 40) with the
    `deposit-and-settle.py` flow and `lagoon-settle`.
-5. `start` with weights `0.5,0.5`: Safe → master deposit, master → sub
+5. `start` with weights `0.5,0.5`: Safe → master deposit and two funding
    transfers. `lagoon-settle`, `show-valuation`, assert NAV against public
    equities.
-6. `start` with weights `0.75,0.25`: one sub → sub transfer. Assert.
-7. Optional Nautilus stand-in: with `LIGHTER_TUTORIAL_TRADE=true`, open and
-   close a minimum ETH/USD position on sub-account 1 with its Nautilus key via
-   the existing eth_defi order helpers, so the sub-account shows PnL and
-   margin in use during one `start` cycle. Assert the allocator respected
-   free collateral.
-8. Set `lighter_safe_cash_buffer_usd` and
-   `lighter_free_collateral_buffer_usd` to 0 for the remaining phases, set
-   weights `0,0`, and request a Lagoon redemption for the vault value minus
-   a configured 3 USDC that stays on sub-account 2 (the planner leaves it
-   there because the redemption is sized to need everything else). One
-   `start` cycle produces two sub → master transfers and the master → Safe
-   secure withdrawal; `start` itself waits for claimability and claims, as
-   it does in production. `lagoon-settle` settles the redemption.
-9. Recovery demonstration on the retained balance: `lighter-move-funds
-   --lighter-account-index <sub2> --l1-withdraw` requests the L1
-   `withdraw(subIndex)` through the guard. Completion is checked key-free by
-   polling `ZkLighter.getPendingBalance(safe, USDC)` on-chain until the
-   amount appears, then the Safe claims it with `withdrawPendingBalance`.
-   Assert the observed request transaction, the pending balance and the Safe
-   receipt. Record the observed proof-settlement delay in the docs.
-10. `lagoon-settle`, then `lagoon-redeem`: zero deployer shares, Safe dust
-    bounded.
-11. Refund the deployer. The tutorial deploys the vault with management and
-    performance fee rates of zero, so no fee shares are minted to another
-    recipient and the deployer holds the whole share supply. Before any
-    sweep the script verifies that there are no pending or claimable deposit
-    or redemption requests, that total share supply is zero, and reads the
-    USDC balances of the Safe, the vault contract and the Silo; any
-    outstanding claim is completed first. Lagoon settles redemptions by
-    moving USDC into the vault contract and paying claims from there, so the
-    vault balance is checked, not assumed. The deployer is the sole Safe
-    owner, so the script then executes direct Safe transactions (not through
-    the guard) that send any remaining USDC and any ETH held by the Safe to
-    the deployer. This promotes `_sweep_safe_usdc_to_operator()` from
-    eth_defi's `scripts/hyperliquid/manual-test-lagoon-account-mode-roundtrip.py`
-    into a reusable `sweep_safe_to_owner(vault, owner, tokens,
-    include_eth=True)` helper in `eth_defi/erc_4626/vault_protocol/lagoon/`.
-    Rounding residue that Lagoon cannot return is reported, not swept. The
-    script prints a reconciliation table: starting USDC and ETH, ending USDC
-    and ETH, gas spent, Lighter transfer fees paid, trading PnL and fees from
-    the optional phase 7, and Lighter dust left on-exchange (below the 1 USDC
-    withdrawal minimum per account). The run passes only if every unexplained
-    difference is zero.
-12. Clear all private keys from memory and print the public artefact path.
+6. `start` with weights `0.75,0.25`: sub-account 2 → Safe through the L1
+   `withdraw` path, proving it live: assert the request transaction, the
+   on-chain pending balance, and the Safe receipt; record the observed
+   proof-settlement delay. `start` again: Safe → master deposit and
+   master → sub-account 1 funding. Assert the split.
+7. Set both buffers to 0, weights `0,0`, and request a full Lagoon
+   redemption. `start` produces the master → Safe secure withdrawal and the
+   two sub-account → Safe L1 withdrawals; `start` waits and claims each, as
+   in production. `lagoon-settle` settles the redemption.
+8. `lagoon-redeem`: zero deployer shares, Safe dust bounded.
+9. Refund the deployer. Before any sweep the script verifies there are no
+   pending or claimable deposit or redemption requests, that total share
+   supply is zero, and reads the USDC balances of the Safe, the vault
+   contract and the Silo; any outstanding claim is completed first. Lagoon
+   settles redemptions by moving USDC into the vault contract and paying
+   claims from there, so the vault balance is checked, not assumed. The
+   deployer is the sole Safe owner, so the script then executes direct Safe
+   transactions (not through the guard) that send any remaining USDC and any
+   ETH held by the Safe to the deployer, using
+   `sweep_safe_to_owner(vault, owner, tokens, include_eth=True)` promoted
+   from `_sweep_safe_usdc_to_operator()` in eth_defi's
+   `scripts/hyperliquid/manual-test-lagoon-account-mode-roundtrip.py`.
+   Rounding residue that Lagoon cannot return is reported, not swept. The
+   script prints a reconciliation table: starting USDC and ETH, ending USDC
+   and ETH, gas spent, Lighter transfer fees paid, and Lighter dust left
+   on-exchange (below the 1 USDC withdrawal minimum per account). The run
+   passes only if every unexplained difference is zero.
+10. Clear the master private key from memory and print the public artefact
+    path.
 
 Note on dust: Lighter enforces a 1 USDC minimum per secure withdrawal and per
-transfer, and charges a transfer fee. Phase 8 drains both sub-accounts to the
-master by L2 transfer and withdraws the master in one `start` cycle; phase 9
-drains the retained balance on sub-account 2 through the L1 `withdraw` path.
-That is two delayed withdrawals in total, which is what the journal resumes
-across. Up to about 1 USDC per account can remain on Lighter and is reported,
-not hidden.
+transfer, and charges a transfer fee. Up to about 1 USDC per account can
+remain on Lighter and is reported, not hidden.
 
 ### Focused verification
 
 ```shell
 source .local-test.env && PYTHONPATH="$(pwd):$PYTHONPATH" poetry run pytest tests/exchange_account/test_lighter_sub_account_allocator.py --timeout=300
-source .local-test.env && PYTHONPATH="$(pwd):$PYTHONPATH" poetry run pytest tests/exchange_account/test_lighter_internal_transfer_state.py --timeout=300
+source .local-test.env && PYTHONPATH="$(pwd):$PYTHONPATH" poetry run pytest tests/exchange_account/test_lighter_funding_trade_state.py --timeout=300
 source .local-test.env && PYTHONPATH="$(pwd):$PYTHONPATH" poetry run pytest tests/exchange_account/test_lighter_multi_account_positions.py --timeout=300
 source .local-test.env && PYTHONPATH="$(pwd):$PYTHONPATH" poetry run pytest tests/lagoon/test_lagoon_lighter_multi_subaccount_e2e.py --timeout=900
 source .local-test.env && PYTHONPATH="$(pwd):$PYTHONPATH" poetry run pytest tests/lagoon/test_lagoon_lighter_deploy_e2e.py tests/lagoon/test_lagoon_lighter_cash_management.py tests/lagoon/test_lighter_move_funds.py -n auto --timeout=900
@@ -691,35 +563,41 @@ poetry run pytest tests/guard/test_guard_lighter_lagoon.py tests/lighter/test_li
 
 ## Implementation sequence
 
-1. eth-defi read helpers, transfer and sub-account helpers, batched
-   `changePubKey`, optional extra, unit and fork tests. Release and bump the
-   pin in trade-executor.
-2. trade-executor pair identity, multi-account NAV, operator records,
-   `FakeLighterCore`, migration. At this point a multi-account vault can be
-   valued and Nautilus can trade it. Sub-accounts are created with the
-   eth_defi script from step 1 and capital is moved with its transfer helper
-   until the executor paths land in steps 4 and 5.
-3. eth-defi deployment of sub-accounts and keys, hand-over files; trade-executor
-   deployment CLI and reports; e2e test steps 1 to 3.
-4. Internal transfer trade kind, routing, verification, reconciliation,
-   allocator, strategy helper, start-up checks; e2e test steps 4 to 9.
-5. Diagnostics commands, L1 withdraw recovery mode, docs, changelog.
+1. eth-defi read helpers, transfer and sub-account helpers, L1 withdraw and
+   pending-balance helpers, storage fixture, optional extra, unit and fork
+   tests. Release and bump the pin in trade-executor.
+2. trade-executor pair identity, multi-account NAV, consolidated operator
+   record, `FakeLighterCore`. At this point a multi-account vault can be
+   valued and Nautilus can trade it; sub-accounts are created with the
+   eth_defi script from step 1 and funded with its transfer helper.
+3. eth-defi deployment of sub-accounts and keys, hand-over files;
+   trade-executor deployment CLI and reports; e2e test steps 1 to 3.
+4. Sub-account withdrawal request in routing, funding trade kind, pipeline
+   branches, verification, reconciliation, allocator, strategy helper,
+   start-up checks; e2e test steps 4 to 10.
+5. Diagnostics commands, docs, changelog.
 6. Manual tutorial script; run it once live with the designated test
    deployer; record observed delays and fees back into the docs.
 
 Each step is one pull request per repository, with the e2e test extended in
 the same pull request as the behaviour it covers.
 
+Mainnet verification needed before step 4 is finalised: one real
+`CreateSubAccount` from a Safe-owned master, one `changePubKey(subIndex)` from
+the Safe, one master → sub L2 transfer, and one L1 `withdraw(subIndex)`
+through the guard followed by the claim. The tutorial covers all four.
+
 ## Acceptance criteria
 
-- `lagoon-deploy-vault` creates N sub-accounts with two keys each in one run
-  and produces the hand-over files; no private key appears in any public
-  output.
-- A multi-account universe values NAV as Safe plus every account, verified by
-  the e2e test and the live tutorial.
-- `decide_trades()` with target weights produces deposits, transfers in both
-  directions and withdrawals through the normal pipeline, with fees booked.
-- An interrupted transfer blocks `start` and is reconciled by
+- `lagoon-deploy-vault` creates N sub-accounts with one Nautilus key each in
+  one run and produces the hand-over files; no private key appears in any
+  public output; the executor's operator record is unchanged in shape.
+- A multi-account universe holds one position per account and values NAV as
+  Safe plus every account, verified by the e2e test and the live tutorial.
+- `decide_trades()` with target weights produces deposits, funding transfers
+  and withdrawals from any account through the normal pipeline, converging
+  over cycles, with fees booked.
+- An interrupted funding transfer blocks `start` and is reconciled by
   `correct-accounts` or `repair` without repeating a Lighter request.
 - The e2e test passes in CI with every Safe, guard, Lagoon and USDC effect
   executed on the fork, Lighter Core faked, and the proof-backed pending
@@ -730,14 +608,12 @@ the same pull request as the behaviour it covers.
 
 ## Open questions
 
-1. Decided: the deployment seeds each sub-account with 1 USDC so the first
-   Nautilus start is independent of the executor's cycle. Kept here for the
-   record.
-2. Should `lighter-ai.py` take weights as static parameters or read a file
+1. Should `lighter-ai.py` take weights as static parameters or read a file
    written by the Nautilus allocator? This plan assumes static parameters.
-3. The e2e test needs the pinned `lighter-sdk` only for key generation and
-   the native signer's public-key derivation; confirm the fake core can skip
-   signature verification without importing the SDK in tests.
-4. Should Derive's pair identity be fixed the same way in this work, so that
-   the `exchange_account` kind has one identity rule for all protocols? This
-   plan leaves Derive unchanged.
+2. Is the sub → Safe → master → sub round trip, about 20 minutes plus one
+   cycle, acceptable for production rebalancing? If not, the follow-up is an
+   executor key per sub-account and a direct sub → master transfer; the
+   funding trade and allocator designs extend to it without rework.
+3. Should Derive's pair identity get the same base-address rule, so the
+   `exchange_account` kind has one identity rule for all protocols? This plan
+   leaves Derive unchanged.
