@@ -57,11 +57,10 @@ def create_trading_universe(input: CreateTradingUniverseInput) -> TradingStrateg
     """Create one synthetic Ethereum Lighter exchange-account pair.
 
     :param input:
-        Unused strategy-universe construction input.
+        Universe construction input; this static universe needs nothing from it.
     :return:
         Static universe containing the Lighter account and USDC reserve.
     """
-    del input
     usdc = AssetIdentifier(
         chain_id=ChainId.ethereum.value,
         address=USDC_NATIVE_TOKEN[ChainId.ethereum.value],
@@ -113,7 +112,6 @@ def create_indicators(
     :param execution_context:
         Current execution context.
     """
-    del parameters, indicators, strategy_universe, execution_context
 
 
 def decide_trades(input: StrategyInput) -> list[TradeExecution]:

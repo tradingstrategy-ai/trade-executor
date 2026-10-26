@@ -79,7 +79,6 @@ def create_indicators(
     :param execution_context:
         Current execution context.
     """
-    del parameters, indicators, strategy_universe, execution_context
 
 
 def decide_trades(input: StrategyInput) -> list[TradeExecution]:

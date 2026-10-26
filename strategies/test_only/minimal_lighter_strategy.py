@@ -54,7 +54,6 @@ class Parameters:
 
 def create_trading_universe(input: CreateTradingUniverseInput) -> TradingStrategyUniverse:
     """Create a single Ethereum Lighter exchange-account pair."""
-    del input
     usdc = AssetIdentifier(
         chain_id=CHAIN_ID.value,
         address=USDC_NATIVE_TOKEN[CHAIN_ID.value],
@@ -96,10 +95,6 @@ def create_indicators(
     execution_context: ExecutionContext,
 ) -> None:
     """No indicators are needed for deployment or account monitoring."""
-    del parameters, indicators, strategy_universe, execution_context
-
-
 def decide_trades(input: StrategyInput) -> list[TradeExecution]:
     """Passive strategy used only to exercise the deployment/runtime wiring."""
-    del input
     return []

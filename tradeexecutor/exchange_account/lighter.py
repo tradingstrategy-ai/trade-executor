@@ -153,12 +153,8 @@ def format_lighter_sub_account_lines(
 
 class LighterEquityInvariantError(ValueError):
     """Raised when the public Lighter API reports an invalid equity value."""
-
-
 class NegativeLighterEquityError(LighterEquityInvariantError):
     """Raised when the public Lighter API reports impossible negative equity."""
-
-
 def get_lighter_sub_account_address(account_index: int) -> str:
     """Return the synthetic address identifying one Lighter sub-account pair.
 
@@ -507,7 +503,6 @@ def create_lighter_account_value_func(
         # The public Lighter endpoint cannot be block-pinned.  Keep accepting
         # the shared block keyword so exchange-account callers do not need a
         # protocol-specific branch.
-        del block_identifier, kwargs
         if not pair.is_exchange_account():
             raise AssertionError(f"Not an exchange account pair: {pair}")
         if pair.get_exchange_account_protocol() != LIGHTER_PROTOCOL:
@@ -544,7 +539,6 @@ def create_lighter_available_balance_func(
         **kwargs: Any,
     ) -> Decimal:
         """Read validated Lighter free collateral for one account pair."""
-        del block_identifier, kwargs
         if not is_lighter_exchange_account_pair(pair):
             raise ValueError("Expected a Lighter exchange-account pair")
         account_index = pair.get_exchange_account_id()
@@ -630,7 +624,6 @@ def create_lighter_vault_valuation_func(
         return sum((validate_lighter_equity(index, snapshot[index].get_total()) for index in indices), Decimal(0))
 
     def calculate_nav(state: Any, *, block_number: int | None = None) -> float:
-        del state
         safe_usdc = Decimal(str(reserve_token.fetch_balance_of(
             safe_address,
             block_identifier=block_number if block_number is not None else "latest",

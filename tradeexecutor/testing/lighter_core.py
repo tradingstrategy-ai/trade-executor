@@ -190,7 +190,6 @@ class FakeLighterCore:
 
     def wait_for_lighter_account(self, session: Any, l1_address: str, timeout: int = 900) -> int:
         """Register the Safe's master account on the fork, as the sequencer does after the first deposit."""
-        del session, timeout
         register_lighter_account_on_anvil(self.web3, l1_address, self.master_index)
         self.owner = Web3.to_checksum_address(l1_address)
         self.accounts.setdefault(self.master_index, FakeLighterAccount(index=self.master_index, role="master"))
@@ -198,19 +197,16 @@ class FakeLighterCore:
 
     def wait_for_lighter_collateral(self, session: Any, account_index: int, expected_usdc: Decimal, timeout: int = 900) -> Decimal:
         """Credit a real L1 deposit: raise the account collateral to the expected value."""
-        del session, timeout
         account = self.get_account(account_index)
         account.collateral = max(account.collateral, Decimal(expected_usdc))
         return account.collateral
 
     def wait_for_lighter_api_key(self, session: Any, account_index: int, api_key_index: int, expected_public_key: str, timeout: int = 300) -> None:
         """Record a key registered by a real Safe ``changePubKey`` transaction."""
-        del session, timeout
         self.get_account(account_index).api_keys[api_key_index] = expected_public_key
 
     def create_lighter_sub_accounts(self, *, session: Any, l1_address: str, master_account_index: int, api_key_index: int, api_private_key: str, count: int, timeout: int = 300, api_url: str | None = None) -> list[int]:
         """Create sub-accounts signed by the master key."""
-        del session, timeout, api_url, api_private_key
         assert Web3.to_checksum_address(l1_address) == self.owner
         assert master_account_index == self.master_index
         assert api_key_index in self.get_account(self.master_index).api_keys, "Master API key is not registered"
@@ -220,19 +216,16 @@ class FakeLighterCore:
 
     def fetch_lighter_total_equity(self, session: Any, account_index: int, timeout: float = 30.0) -> LighterEquity:
         """Return one account's public equity."""
-        del session, timeout
         return self.get_account(int(account_index)).get_equity()
 
     def fetch_lighter_accounts(self, session: Any, l1_address: str, timeout: float = 30.0) -> LighterAccounts | None:
         """Return the owner's master and sub-accounts."""
-        del session, timeout
         if self.owner is None or Web3.to_checksum_address(l1_address) != self.owner:
             return None
         return LighterAccounts(master_index=self.master_index, sub_account_indices=tuple(self.get_sub_account_indices()))
 
     def fetch_lighter_accounts_equity(self, session: Any, l1_address: str, timeout: float = 30.0) -> dict[int, LighterEquity]:
         """Return every owned account's equity as one snapshot."""
-        del session, timeout
         assert Web3.to_checksum_address(l1_address) == self.owner
         return {index: account.get_equity() for index, account in self.accounts.items()}
 
@@ -247,7 +240,6 @@ class FakeLighterCore:
 
     async def wait_for_lighter_withdrawal_claimable(self, operator: Any, amount: Decimal, timeout: int, requested_at: int, request_id: str) -> Decimal:
         """Make a master secure withdrawal claimable onchain."""
-        del operator, timeout, requested_at, request_id
         self._credit_pending_balance(amount)
         return amount
 
@@ -267,7 +259,6 @@ class FakeLighterCore:
 
     async def wait_for_lighter_funding_transfer(self, operator: Any, tx_hash: str, timeout: int) -> LighterTransferRecord:
         """Return an executed transfer, or time out at once for a pending one."""
-        del operator
         transfer = self.transfers[tx_hash]
         if not transfer.executed:
             raise TimeoutError(f"Lighter transfer {tx_hash} was not visible in transfer history within {timeout} seconds")
@@ -275,7 +266,6 @@ class FakeLighterCore:
 
     async def fetch_lighter_funding_transfer(self, operator: Any, tx_hash: str) -> LighterTransferRecord | None:
         """Return the history row of an executed transfer."""
-        del operator
         transfer = self.transfers.get(tx_hash)
         return transfer.as_record() if transfer and transfer.executed else None
 
@@ -322,7 +312,6 @@ class FakeLighterCore:
 
     def fetch_lighter_account_by_index(self, session: Any, account_index: int, timeout: float = 30.0) -> dict[str, Any]:
         """Return a raw public account record."""
-        del session, timeout
         equity = self.get_account(int(account_index)).get_equity()
         return {
             "account_index": equity.account_index,
@@ -334,7 +323,6 @@ class FakeLighterCore:
 
     def fetch_lighter_withdrawal_delay(self, session: Any, timeout: float = 30.0) -> int:
         """Return a fixed secure-withdrawal delay estimate."""
-        del session, timeout
         return 60
 
     # ----- Installation -----

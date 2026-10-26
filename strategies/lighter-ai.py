@@ -130,9 +130,6 @@ def create_indicators(
     execution_context: ExecutionContext,
 ) -> None:
     """No indicators are needed for deployment or account monitoring."""
-    del parameters, indicators, strategy_universe, execution_context
-
-
 def decide_trades(input: StrategyInput) -> list[TradeExecution]:
     """Open one position per Lighter account once; sync handles subsequent equity updates."""
     portfolio = input.state.portfolio
