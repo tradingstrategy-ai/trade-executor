@@ -100,6 +100,17 @@ def _create_lighter_routing_config(
     )
 
 
+def should_save_failed_execution(error: BaseException) -> bool:
+    """Recognise known recoverable halts even when the scheduler wraps them."""
+    seen = set()
+    while error is not None and id(error) not in seen:
+        seen.add(id(error))
+        if isinstance(error, (ExecutionHaltableIssue, ConfirmationTimedOut)):
+            return True
+        error = error.__cause__
+    return False
+
+
 @app.command()
 @shared_options.with_json_rpc_options()
 def start(
@@ -798,7 +809,7 @@ def start(
         # Save state on known good exceptions we know are causing headache
         # for automated execution due to unstability of the blockchains.
         # eth_defi.confirmation.ConfirmationTimedOut
-        if isinstance(e, (ExecutionHaltableIssue, ConfirmationTimedOut)):
+        if should_save_failed_execution(e):
             logger.error("Saving state with aborted execution: %s", e)
             store.sync(state)
 

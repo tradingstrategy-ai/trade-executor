@@ -1613,6 +1613,7 @@ def preflight_state_for_account_correction(
     state: State,
     *,
     allow_at_risk_hypercore_deposit: bool = False,
+    allow_at_risk_hypercore_withdrawal: bool = False,
 ) -> None:
     """Refuse account correction before an unexecuted trade can cause a partial run.
 
@@ -1623,11 +1624,26 @@ def preflight_state_for_account_correction(
     :param state: State whose unfinished trades could make correction unsafe.
     :param allow_at_risk_hypercore_deposit: Permit only the single started
         HyperCore opening buy handled by the explicit incident correction path.
+    :param allow_at_risk_hypercore_withdrawal: Permit only one ambiguous
+        second-stage sell for the evidence-led withdrawal correction path.
     """
     at_risk_trades = [
         trade for trade in state.portfolio.get_all_trades()
         if has_unresolved_hypercore_accounting(trade)
     ]
+    if at_risk_trades and allow_at_risk_hypercore_withdrawal:
+        if len(at_risk_trades) != 1:
+            raise RuntimeError("Expected exactly one unresolved withdrawal")
+        trade = at_risk_trades[0]
+        if not (trade.is_sell() and trade.pair.is_hyperliquid_vault()
+                and trade.other_data.get("hypercore_second_stage_status") == "verification_ambiguous"):
+            raise RuntimeError("Unsupported withdrawal recovery state")
+        if any(t.trade_id != trade.trade_id and t.get_status() not in
+               (TradeStatus.success, TradeStatus.failed, TradeStatus.repaired, TradeStatus.expired)
+               for position in state.portfolio.get_open_and_frozen_positions()
+               for t in position.trades.values()):
+            raise RuntimeError("Repair other unfinished trades before withdrawal recovery")
+        return
     if at_risk_trades:
         eligible = (
             allow_at_risk_hypercore_deposit

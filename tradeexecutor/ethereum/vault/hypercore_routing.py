@@ -981,8 +981,8 @@ class HypercoreVaultRouting(RoutingModel):
         1.50 USDC).
         ``correct-accounts`` cleanup uses a fixed 0.10 USDC margin and rejects
         amounts that cannot produce verifiable movement in every later phase.
-        ``MINIMUM_VAULT_DEPOSIT`` is deliberately irrelevant because the
-        withdrawal encoder does not apply it.
+        These margins protect against NAV drift, not protocol minimums.
+        They do not establish a universally valid small-position exit.
         """
         if trade.other_data.get("hypercore_small_position_cleanup"):
             if available_raw <= HYPERCORE_SMALL_POSITION_CLEANUP_MIN_REDEMPTION_RAW:
@@ -2568,12 +2568,11 @@ class HypercoreVaultRouting(RoutingModel):
         trade: TradeExecution,
         vault_address: str,
     ) -> tuple[Decimal | None, int | None]:
-        """Read the first-stage residual and plan one protected follow-up withdrawal.
+        """Read the first-stage residual; optional follow-up withdrawals are disabled.
 
         :return:
-            The fresh post-first-stage equity and an optional raw second-stage
-            request. A missing request means the first-stage proceeds should
-            continue through the normal downstream sweep.
+            The fresh post-first-stage equity and no second-stage request.
+            First-stage proceeds continue through the normal downstream sweep.
         """
         try:
             user_equity = fetch_user_vault_equity(
@@ -2602,54 +2601,11 @@ class HypercoreVaultRouting(RoutingModel):
             trade.other_data["hypercore_second_stage_status"] = "skipped_residual_accepted"
             return residual, None
 
-        if not user_equity.is_lockup_expired:
-            trade.other_data["hypercore_second_stage_status"] = "skipped_lockup_active"
-            return residual, None
-
-        residual_margin = get_hypercore_withdrawal_safety_margin(residual)
-        try:
-            vault_info = HyperliquidVault(
-                session=self._get_session(),
-                vault_address=vault_address,
-            ).fetch_info(user=self.safe_address)
-        except Exception as e:
-            trade.other_data["hypercore_second_stage_status"] = "skipped_capacity_unavailable"
-            trade.other_data["hypercore_second_stage_error"] = str(e)
-            logger.warning(
-                "Could not read same-cycle HyperCore withdrawal capacity for trade %s: %s",
-                trade.trade_id,
-                e,
-            )
-            return residual, None
-
-        capacity = min(residual, vault_info.max_withdrawable)
-        capacity_margin = get_hypercore_withdrawal_safety_margin(capacity)
-        protected_capacity = max(Decimal(0), capacity - capacity_margin)
-        desired_request = max(Decimal(0), residual - residual_margin)
-        request = min(desired_request, protected_capacity)
-        if request <= 0:
-            trade.other_data["hypercore_second_stage_status"] = "skipped_insufficient_capacity"
-            return residual, None
-
-        request_raw = usdc_to_raw(request)
-        if request_raw <= 0:
-            trade.other_data["hypercore_second_stage_status"] = "skipped_zero_raw_amount"
-            return residual, None
-
-        rounded_expected_residual = residual - raw_to_usdc(request_raw)
-        trade.other_data["hypercore_second_stage_expected_residual_usd"] = str(
-            rounded_expected_residual
-        )
-        if rounded_expected_residual > HYPERCORE_ACCEPTED_RESIDUAL_USD:
-            trade.other_data["hypercore_second_stage_status"] = "skipped_insufficient_capacity"
-            return residual, None
-
-        trade.other_data["hypercore_second_stage_status"] = "planned"
-        trade.other_data["hypercore_second_stage_requested_raw"] = request_raw
-        trade.other_data["hypercore_second_stage_requested_usd"] = str(
-            raw_to_usdc(request_raw)
-        )
-        return residual, request_raw
+        # The optional retry failed on HyperCore despite a successful EVM
+        # receipt. Its minimum-value semantics are unverified: settle the
+        # proven first leg and retain the remaining shares instead of retrying.
+        trade.other_data["hypercore_second_stage_status"] = "skipped_pending_protocol_validation"
+        return residual, None
 
     def _execute_second_stage_withdrawal(
         self,
