@@ -26,6 +26,13 @@ import logging
 from collections.abc import Sequence
 from decimal import Decimal
 
+from eth_defi.lighter.constants import LIGHTER_L1_CONTRACT
+from eth_defi.token import USDC_NATIVE_TOKEN
+from tradingstrategy.chain import ChainId
+from tradingstrategy.exchange import Exchange, ExchangeType
+from tradingstrategy.timebucket import TimeBucket
+from tradingstrategy.universe import Universe
+
 from tradeexecutor.exchange_account.cash_manager import (
     ExchangeCashManager,
     ExchangeCashSnapshot,
@@ -34,6 +41,7 @@ from tradeexecutor.exchange_account.cash_manager import (
 )
 from tradeexecutor.exchange_account.lighter import (
     LIGHTER_PROTOCOL,
+    create_lighter_exchange_account_pairs,
     get_lighter_master_pair,
     is_lighter_sub_account_pair,
 )
@@ -42,12 +50,79 @@ from tradeexecutor.exchange_account.state import (
     create_exchange_account_transfer,
     open_exchange_account_position,
 )
-from tradeexecutor.state.identifier import TradingPairIdentifier
+from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, create_pair_universe_from_code
 
 logger = logging.getLogger(__name__)
+
+
+def create_lighter_account_universe(account_indices: Sequence[int]) -> TradingStrategyUniverse:
+    """Create a static universe with one exchange-account pair per Lighter account.
+
+    :param account_indices:
+        Master account index followed by the sub-account indices, in
+        deployment order.
+    :return:
+        Universe with the master account, the sub-accounts and the native
+        Ethereum USDC reserve.
+    """
+    if not account_indices:
+        raise ValueError("Set LIGHTER_ACCOUNT_INDEXES to the master and sub-account indices from the deployment report")
+    usdc = AssetIdentifier(
+        chain_id=ChainId.ethereum.value,
+        address=USDC_NATIVE_TOKEN[ChainId.ethereum.value],
+        token_symbol="USDC",
+        decimals=6,
+    )
+    pairs = create_lighter_exchange_account_pairs(usdc, master_account_index=account_indices[0], sub_account_indices=account_indices[1:])
+    exchange = Exchange(
+        chain_id=ChainId.ethereum,
+        chain_slug="ethereum",
+        exchange_id=1,
+        exchange_slug="lighter",
+        address=LIGHTER_L1_CONTRACT,
+        exchange_type=ExchangeType.derive,
+        pair_count=len(pairs),
+    )
+    universe = Universe(
+        time_bucket=TimeBucket.d1,
+        chains={ChainId.ethereum},
+        exchanges={exchange},
+        pairs=create_pair_universe_from_code(ChainId.ethereum, pairs),
+        candles=None,
+        liquidity=None,
+    )
+    return TradingStrategyUniverse(data_universe=universe, reserve_assets=[usdc])
+
+
+def ensure_lighter_positions(input: StrategyInput) -> bool:
+    """Open a zero-quantity position for every Lighter account pair that has none.
+
+    Position initialisation is a state operation, not a custody transfer, so
+    a cycle that opens positions must not also move capital.
+
+    :param input:
+        Strategy cycle input.
+    :return:
+        ``True`` when every position already existed and the cycle may trade.
+    """
+    state = input.state
+    universe = input.strategy_universe
+    master_pair, sub_pairs = get_lighter_account_pairs(list(universe.iterate_pairs()))
+    missing = [pair for pair in [master_pair, *sub_pairs] if state.portfolio.get_open_position_for_pair(pair) is None]
+    for pair in missing:
+        open_exchange_account_position(
+            state=state,
+            strategy_cycle_at=input.timestamp.to_pydatetime(),
+            pair=pair,
+            reserve_currency=universe.get_reserve_asset(),
+            reserve_amount=Decimal(0),
+            notes=f"Initialise Lighter account {pair.get_exchange_account_id()} position",
+        )
+    return not missing and not input.execution_context.mode.is_backtesting()
 
 
 def parse_lighter_sub_account_weights(raw: str) -> tuple[Decimal, ...]:
@@ -113,26 +188,14 @@ def decide_lighter_cash_management(input: StrategyInput) -> list[TradeExecution]
     :return:
         Trades of at most one movement kind.
     """
+    if not ensure_lighter_positions(input):
+        return []
     state = input.state
     universe = input.strategy_universe
     portfolio = state.portfolio
     reserve_asset = universe.get_reserve_asset()
     timestamp = input.timestamp.to_pydatetime()
     master_pair, sub_pairs = get_lighter_account_pairs(list(universe.iterate_pairs()))
-
-    # Position initialisation is a state operation, not a custody transfer.
-    missing = [pair for pair in [master_pair, *sub_pairs] if portfolio.get_open_position_for_pair(pair) is None]
-    for pair in missing:
-        open_exchange_account_position(
-            state=state,
-            strategy_cycle_at=timestamp,
-            pair=pair,
-            reserve_currency=reserve_asset,
-            reserve_amount=Decimal(0),
-            notes=f"Initialise Lighter account {pair.get_exchange_account_id()} position",
-        )
-    if missing or input.execution_context.mode.is_backtesting():
-        return []
 
     if any(trade.is_exchange_account_transfer_pending() for position in portfolio.get_open_and_frozen_positions() for trade in position.trades.values()):
         return []

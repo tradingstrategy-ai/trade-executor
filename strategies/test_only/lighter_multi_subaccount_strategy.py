@@ -29,19 +29,14 @@ import datetime
 import os
 from decimal import Decimal
 
-from eth_defi.lighter.constants import LIGHTER_L1_CONTRACT
-from eth_defi.token import USDC_NATIVE_TOKEN
 from tradingstrategy.chain import ChainId
-from tradingstrategy.exchange import Exchange, ExchangeType
-from tradingstrategy.timebucket import TimeBucket
-from tradingstrategy.universe import Universe
 
-from tradeexecutor.exchange_account.lighter import create_lighter_exchange_account_pairs, parse_lighter_account_indices
+from tradeexecutor.exchange_account.lighter import parse_lighter_account_indices
 from tradeexecutor.exchange_account.lighter_strategy import (
+    create_lighter_account_universe,
     decide_lighter_cash_management,
     parse_lighter_sub_account_weights,
 )
-from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.default_routing_options import TradeRouting
@@ -52,10 +47,7 @@ from tradeexecutor.strategy.pandas_trader.trading_universe_input import CreateTr
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.strategy_module import StrategyParameters
 from tradeexecutor.strategy.strategy_type import StrategyType
-from tradeexecutor.strategy.trading_strategy_universe import (
-    TradingStrategyUniverse,
-    create_pair_universe_from_code,
-)
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 
 trading_strategy_engine_version = "0.5"
 trading_strategy_type = StrategyType.managed_positions
@@ -92,34 +84,7 @@ def create_trading_universe(input: CreateTradingUniverseInput) -> TradingStrateg
         Static universe with the master account, the sub-accounts and the USDC reserve.
     """
     del input
-    indices = parse_lighter_account_indices(os.environ.get("LIGHTER_ACCOUNT_INDEXES", ""))
-    if not indices:
-        raise ValueError("Set LIGHTER_ACCOUNT_INDEXES to the master and sub-account indices from the deployment report")
-    usdc = AssetIdentifier(
-        chain_id=ChainId.ethereum.value,
-        address=USDC_NATIVE_TOKEN[ChainId.ethereum.value],
-        token_symbol="USDC",
-        decimals=6,
-    )
-    pairs = create_lighter_exchange_account_pairs(usdc, master_account_index=indices[0], sub_account_indices=indices[1:])
-    exchange = Exchange(
-        chain_id=ChainId.ethereum,
-        chain_slug="ethereum",
-        exchange_id=1,
-        exchange_slug="lighter",
-        address=LIGHTER_L1_CONTRACT,
-        exchange_type=ExchangeType.derive,
-        pair_count=len(pairs),
-    )
-    universe = Universe(
-        time_bucket=TimeBucket.d1,
-        chains={ChainId.ethereum},
-        exchanges={exchange},
-        pairs=create_pair_universe_from_code(ChainId.ethereum, pairs),
-        candles=None,
-        liquidity=None,
-    )
-    return TradingStrategyUniverse(data_universe=universe, reserve_assets=[usdc])
+    return create_lighter_account_universe(parse_lighter_account_indices(os.environ.get("LIGHTER_ACCOUNT_INDEXES", "")))
 
 
 def create_indicators(

@@ -65,6 +65,10 @@ class LighterOperatorRecord:
 def load_lighter_operator_record(path: Path) -> LighterOperatorRecord:
     """Load an owner-only operator record without logging its private key.
 
+    Accepts the executor's deployment record, which holds the master key under
+    ``lighter_account_setup``, and a sub-account hand-over file, which holds
+    one sub-account's key at its top level.
+
     :param path:
         Private JSON record created during Lighter Lagoon deployment.
     :return:
@@ -79,6 +83,9 @@ def load_lighter_operator_record(path: Path) -> LighterOperatorRecord:
     payload = json.loads(path.read_text())
     deployment = payload.get("deployments", {}).get("ethereum", payload)
     setup = deployment.get("lighter_account_setup")
+    if setup is None and "private_key" in deployment:
+        # A sub-account hand-over file carries the key at its top level.
+        setup = deployment
     if not isinstance(setup, dict):
         raise ValueError("Lighter operator record has no delegated API key")
     try:
@@ -92,6 +99,29 @@ def load_lighter_operator_record(path: Path) -> LighterOperatorRecord:
         )
     except (KeyError, TypeError, ValueError) as error:
         raise ValueError("Lighter operator record is incomplete") from error
+
+
+def load_lighter_sub_account_operator_records(paths: str | None) -> dict[int, LighterOperatorRecord]:
+    """Load the hand-over records of sub-accounts the executor may sign for.
+
+    The executor normally holds only the master key and moves capital
+    between sub-accounts through the Safe. Giving it a sub-account's hand-over
+    record lets it sign transfers from that sub-account directly.
+
+    :param paths:
+        Comma-separated hand-over file paths, or ``None``.
+    :return:
+        Records keyed by sub-account index.
+    """
+    records = {}
+    for raw in (paths or "").split(","):
+        if not raw.strip():
+            continue
+        record = load_lighter_operator_record(Path(raw.strip()))
+        if record.account_index in records:
+            raise ValueError(f"Lighter account {record.account_index} has more than one operator record")
+        records[record.account_index] = record
+    return records
 
 
 def _public_sdk_error(operation: str, error: Exception) -> RuntimeError:

@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 
 from eth_defi.abi import get_deployed_contract
@@ -75,6 +75,12 @@ class LighterRoutingConfig:
     #: Owner-only master API signer for secure withdrawals and master to sub-account transfers.
     operator_record: LighterOperatorRecord | None = None
 
+    #: Signers of sub-accounts the executor may transfer from, keyed by account index.
+    #:
+    #: Empty by default: the executor then moves capital between sub-accounts
+    #: through the Safe, and the sub-account keys stay with the external traders.
+    sub_account_operator_records: dict[int, LighterOperatorRecord] = field(default_factory=dict)
+
     #: Maximum wait for Lighter to make a secure or L1 withdrawal claimable.
     withdrawal_timeout: int = DEFAULT_LIGHTER_WITHDRAWAL_TIMEOUT_SECONDS
 
@@ -87,6 +93,18 @@ class LighterRoutingConfig:
             raise ValueError("Lighter withdrawal timeout must be a positive number of seconds")
         if type(self.transfer_timeout) is not int or self.transfer_timeout <= 0:
             raise ValueError("Lighter transfer timeout must be a positive number of seconds")
+
+    def get_operator_record(self, account_index: int) -> LighterOperatorRecord | None:
+        """Return the signer of one Lighter account, if the executor holds it.
+
+        :param account_index:
+            Master or sub-account index.
+        :return:
+            The account's operator record, or ``None``.
+        """
+        if self.operator_record is not None and self.operator_record.account_index == account_index:
+            return self.operator_record
+        return self.sub_account_operator_records.get(account_index)
 
 
 class LighterRoutingState(RoutingState):
@@ -357,7 +375,10 @@ class LighterRouting(RoutingModel):
         return operator
 
     def _execute_funding(self, state: State, trade: TradeExecution) -> None:
-        """Submit and confirm a master to sub-account transfer.
+        """Submit and confirm a transfer between two accounts of the Safe.
+
+        The source is the master or a sub-account whose signer the executor
+        holds; the destination is any other account of the same master.
 
         The transfer hash is recorded and checkpointed before the wait, with
         the trade marked broadcasted, so an interrupted run blocks start-up
@@ -371,14 +392,19 @@ class LighterRouting(RoutingModel):
         :param state:
             Strategy state owning the trade.
         :param trade:
-            Funding trade on the destination sub-account position.
+            Funding trade on the destination position.
         """
-        operator = self._require_master_operator(trade)
-        if not is_lighter_sub_account_pair(trade.pair):
-            raise RuntimeError("Lighter account transfers fund sub-accounts only")
-        if int(trade.other_data.get("funding_source_account_id", -1)) != operator.account_index:
-            raise RuntimeError("Lighter account transfer must be funded by the master account")
+        self._require_master_operator(trade)
+        source = int(trade.other_data.get("funding_source_account_id", -1))
         destination = int(trade.pair.get_exchange_account_id())
+        if source == destination:
+            raise RuntimeError("Lighter account transfer source and destination must differ")
+        operator = self.config.get_operator_record(source)
+        if operator is None:
+            raise RuntimeError(
+                f"The executor holds no signer for Lighter account {source}; pass its record with "
+                "LIGHTER_OPERATOR_RECORD_FILE for the master or LIGHTER_SUB_ACCOUNT_OPERATOR_RECORD_FILES for a sub-account"
+            )
         amount = trade.planned_quantity
         tx_hash = trade.other_data.get("lighter_transfer_tx_hash")
         if not tx_hash:

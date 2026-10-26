@@ -40,7 +40,7 @@ from ...ethereum.lighter.lighter_routing import (
 from ...ethereum.lagoon.vault import LagoonVaultSyncModel
 from ...ethereum.velvet.execution import VelvetExecution
 from ...ethereum.velvet.vault import VelvetVaultSyncModel
-from ...exchange_account.lighter_operator import load_lighter_operator_record
+from ...exchange_account.lighter_operator import load_lighter_operator_record, load_lighter_sub_account_operator_records
 from ...state.state import State
 from ...state.store import NoneStore, JSONFileStore
 from ...strategy.approval import ApprovalType
@@ -69,6 +69,7 @@ def _create_lighter_routing_config(
     asset_management_mode: AssetManagementMode,
     strategy_parameters: dict[str, object],
     operator_record_file: Path | None,
+    sub_account_operator_record_files: str | None,
     withdrawal_timeout: int,
     transfer_timeout: int,
 ) -> LighterRoutingConfig | None:
@@ -80,6 +81,8 @@ def _create_lighter_routing_config(
         Strategy module parameters that enable automatic cash management.
     :param operator_record_file:
         Owner-only operator record parsed by the CLI.
+    :param sub_account_operator_record_files:
+        Comma-separated sub-account hand-over records the executor may sign with.
     :param withdrawal_timeout:
         CLI timeout for the secure withdrawal wait.
     :param transfer_timeout:
@@ -100,6 +103,7 @@ def _create_lighter_routing_config(
 
     return LighterRoutingConfig(
         operator_record=load_lighter_operator_record(operator_record_file),
+        sub_account_operator_records=load_lighter_sub_account_operator_records(sub_account_operator_record_files),
         withdrawal_timeout=withdrawal_timeout,
         transfer_timeout=transfer_timeout,
     )
@@ -160,6 +164,7 @@ def start(
         envvar="LIGHTER_OPERATOR_RECORD_FILE",
         help="Owner-only Lighter operator record used for automatic master withdrawals and master to sub-account transfers",
     ),
+    lighter_sub_account_operator_record_files: Optional[str] = shared_options.lighter_sub_account_operator_record_files,
     lighter_withdrawal_timeout: int = typer.Option(
         DEFAULT_LIGHTER_WITHDRAWAL_TIMEOUT_SECONDS,
         envvar="LIGHTER_WITHDRAWAL_TIMEOUT",
@@ -395,6 +400,7 @@ def start(
             asset_management_mode=asset_management_mode,
             strategy_parameters=mod.parameters or {},
             operator_record_file=lighter_operator_record_file,
+            sub_account_operator_record_files=lighter_sub_account_operator_record_files,
             withdrawal_timeout=lighter_withdrawal_timeout,
             transfer_timeout=lighter_transfer_timeout,
         )

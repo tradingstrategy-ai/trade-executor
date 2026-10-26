@@ -94,7 +94,13 @@ The live tutorial
 [`manual-trade-executor-lighter-subaccounts.py`](../scripts/lagoon/manual-trade-executor-lighter-subaccounts.py)
 needs 5 USDC plus gas: the 1 USDC bootstrap and a 4 USDC subscription. It
 saves each generated key to a mode-0600 temporary file until deployment
-completes, to work around the limitation above. See
+completes, to work around the limitation above.
+[`manual-trade-executor-lighter-transfers.py`](../scripts/lagoon/manual-trade-executor-lighter-transfers.py)
+books every deposit, transfer and withdrawal as its own trade with a scripted
+strategy, including transfers signed by the sub-account keys given to
+`start` with `LIGHTER_SUB_ACCOUNT_OPERATOR_RECORD_FILES`, and verifies the
+state afterwards; with `SIMULATE=true` it runs on an Anvil fork and the fake
+Lighter sequencer. See
 [README-Lighter.md](../tradeexecutor/exchange_account/README-Lighter.md#sub-accounts)
 for the custody model, fees, strategy setup, recovery and the verified
 mainnet results.

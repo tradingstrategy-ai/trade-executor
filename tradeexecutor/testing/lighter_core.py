@@ -11,7 +11,8 @@ executor and the Lagoon deployment import, so all observations agree:
 - secure withdrawals of the master account with its API key;
 - key-free L1 ``withdraw(accountIndex, ...)`` requests, observed from the
   real Safe module transaction on the fork;
-- master to sub-account transfers and their transfer history.
+- same-owner transfers between any two accounts, signed by the sender's key,
+  and their transfer history.
 
 Withdrawal proceeds are made claimable with
 :py:func:`eth_defi.lighter.testing.credit_lighter_pending_balance_on_anvil`,
@@ -251,13 +252,14 @@ class FakeLighterCore:
         return amount
 
     async def request_lighter_funding_transfer(self, operator: Any, to_account_index: int, amount: Decimal) -> LighterFundingRequest:
-        """Accept a master to sub-account transfer."""
-        assert operator.account_index == self.master_index
-        assert self.get_account(to_account_index).role == "sub_account"
-        free = self.get_account(self.master_index).get_equity().available_balance
+        """Accept a same-owner transfer signed by the sending account's key."""
+        from_index = int(operator.account_index)
+        assert from_index != to_account_index, "Transfer source and destination must differ"
+        assert self.get_account(to_account_index) is not None
+        free = self.get_account(from_index).get_equity().available_balance
         if amount + self.transfer_fee > free:
             raise LighterTransferError("Lighter transfer was rejected")
-        transfer = FakeLighterTransfer(self._new_hash("tr"), self.master_index, to_account_index, amount, self.transfer_fee)
+        transfer = FakeLighterTransfer(self._new_hash("tr"), from_index, to_account_index, amount, self.transfer_fee)
         self.transfers[transfer.tx_hash] = transfer
         if self.execute_transfers:
             self.execute_pending_transfers()

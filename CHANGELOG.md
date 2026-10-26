@@ -2,6 +2,7 @@
 
 ## 0.2
 
+- Lighter transfer-accounting tutorial: `manual-trade-executor-lighter-transfers.py` runs a scripted strategy that books every Safe deposit, transfer between accounts and withdrawal as its own trade, winds the vault up and verifies the state, in a simulated Anvil mode or live. `start`, `check-accounts`, `correct-accounts` and `repair` accept `LIGHTER_SUB_ACCOUNT_OPERATOR_RECORD_FILES` so the executor can sign transfers from a sub-account (2026-10-26)
 - Lower the Lighter-enabled `lagoon-deploy-vault` bootstrap subscription from 20 USDC to the 1 USDC Lighter deposit minimum. All of it moves to Lighter, so a fresh vault starts with an empty Safe and `deposit-and-settle.py` adds the first operating capital (2026-10-26)
 - Lighter sub-accounts: deploy a Lagoon vault whose Safe owns a Lighter master account and keyed sub-accounts for external traders, track each account as its own position, value all of them in NAV, and fund, drain and rebalance them from `decide_trades()`. The `manual-trade-executor-lighter-subaccounts.py` mainnet tutorial needs 5 USDC plus gas (2026-10-26)
 - Fix vault metadata loading on machines without a findable native libcairo: eth_defi imports CairoSVG only for table sparkline rendering, and trading-strategy no longer silently drops every vault when an environment error occurs while parsing vault metadata (2026-10-14)

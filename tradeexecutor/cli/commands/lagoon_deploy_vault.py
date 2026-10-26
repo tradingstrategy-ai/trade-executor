@@ -408,14 +408,15 @@ def _write_lighter_handover_records(
     *,
     safe_address: str,
     vault_address: str | None,
+    module_address: str | None,
     logger: logging.Logger,
 ) -> list[Path]:
     """Write one owner-only hand-over record per Lighter sub-account.
 
     Each file holds a single sub-account's API key for the external trader,
     such as a Nautilus strategy. Files are created exclusively with mode
-    ``0600`` next to the executor's private record and are never read by the
-    executor.
+    ``0600`` next to the executor's private record. The executor reads one
+    only when an operator passes it in ``LIGHTER_SUB_ACCOUNT_OPERATOR_RECORD_FILES``.
 
     :param vault_record_file:
         ``VAULT_RECORD_FILE`` path chosen by the operator.
@@ -425,6 +426,8 @@ def _write_lighter_handover_records(
         Safe owning the Lighter accounts.
     :param vault_address:
         Lagoon vault address.
+    :param module_address:
+        Safe trading module address, so the file also loads as an operator record.
     :param logger:
         Command logger.
     :return:
@@ -437,7 +440,7 @@ def _write_lighter_handover_records(
         path = json_path.with_name(f"{json_path.stem}.nautilus.{sub.account_index}.json")
         _write_private_json_file(
             path,
-            sub.as_handover_dict(safe_address=safe_address, vault_address=vault_address),
+            {**sub.as_handover_dict(safe_address=safe_address, vault_address=vault_address), "module_address": module_address},
             indent=2,
             exclusive=True,
         )
@@ -1643,6 +1646,7 @@ def lagoon_deploy_vault(
             lighter_setup,
             safe_address=deploy_info.safe_address,
             vault_address=deploy_info.vault.address,
+            module_address=deploy_info.trading_strategy_module.address,
             logger=logger,
         )
 
@@ -2134,6 +2138,7 @@ def _deploy_multichain(
             lighter_setup,
             safe_address=result.deployments[source_chain_slug].safe_address,
             vault_address=result.deployments[source_chain_slug].vault.address,
+            module_address=result.deployments[source_chain_slug].trading_strategy_module.address,
             logger=logger,
         )
 

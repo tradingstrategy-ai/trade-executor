@@ -55,9 +55,9 @@ Safe native-USDC balance
 + pending Lagoon settlement value
 ```
 
-The master account is the treasury hub. The executor holds only the master
-API key; each sub-account key goes to that sub-account's trader. Capital
-moves as follows:
+The master account is the treasury hub. By default the executor holds only
+the master API key; each sub-account key goes to that sub-account's trader.
+Capital moves as follows:
 
 | Movement | Mechanism | Signer |
 |----------|-----------|--------|
@@ -128,6 +128,20 @@ new key through a Safe `changePubKey`. The sub-account tutorial works around
 this by saving each key to a mode-0600 temporary file as it is generated and
 deleting the files after a successful deployment.
 
+### Optional: let the executor sign for sub-accounts
+
+An operator may also give the executor a sub-account's hand-over file with
+`LIGHTER_SUB_ACCOUNT_OPERATOR_RECORD_FILES`, a comma-separated list of
+paths. The executor can then send a transfer from that sub-account directly,
+to the master or to another sub-account, instead of taking the Safe round
+trip. The strategy creates such a transfer with
+`create_exchange_account_funding()` using the sub-account position as the
+source; it is booked exactly like a master to sub-account funding, with the
+amount and fee as balance updates on the source position. Pass the same
+variable to `check-accounts`, `correct-accounts` and `repair`, which need the
+sending account's record to read its transfer history. Each hand-over file
+also carries the Safe module address, so it loads as an operator record.
+
 ### Strategy setup for sub-accounts
 
 List the master and sub-account indices from the deployment report and use
@@ -191,13 +205,37 @@ Inspect it with `check-accounts`, then:
 `lighter-move-funds --lighter-account-index <index>` withdraws from a
 sub-account with the key-free L1 path. Deposits always go to the master.
 
-### Mainnet tutorial
+### Tutorials
+
+Both tutorials share
+[`tradeexecutor/testing/lighter_tutorial.py`](../testing/lighter_tutorial.py):
+deployment with key backups, state initialisation, subscription,
+redemption, the final sweep and a reconciliation table of the deployer's
+balances. Both resume from `progress.json` in their run directory.
+
+[`scripts/lagoon/manual-trade-executor-lighter-transfers.py`](../../scripts/lagoon/manual-trade-executor-lighter-transfers.py)
+is the executable specification of the transfer accounting. Its strategy,
+[`strategies/test_only/lighter_scripted_transfers_strategy.py`](../../strategies/test_only/lighter_scripted_transfers_strategy.py),
+emits one fixed step per `start` cycle: deposit the Safe cash to the master,
+fund both sub-accounts, move capital from sub-account 1 to sub-account 2 and
+from sub-account 2 to the master with the sub-account keys, then withdraw
+everything. After winding the vault up it verifies the state with
+`verify_lighter_scripted_transfers()`: every movement is one successful
+trade between the right positions, fixed amounts match, each funding's fee
+and principal are balance updates on the source position, no position holds
+USDC, and inflows, revaluations, outflows and fees add up. With
+`SIMULATE=true` it runs on an Anvil fork with the fake sequencer in about two
+minutes and with a transfer fee, so the fee accounting is checked;
+`tests/lagoon/test_lagoon_lighter_scripted_transfers_e2e.py` runs it that way
+in CI. Without it, it runs live for 5 USDC plus gas; the live run has not
+been done yet.
 
 [`scripts/lagoon/manual-trade-executor-lighter-subaccounts.py`](../../scripts/lagoon/manual-trade-executor-lighter-subaccounts.py)
-deploys a vault with two sub-accounts, funds, rebalances and drains them
-with real `start` cycles, redeems and sweeps everything back to the
-deployer. It needs 5 USDC plus gas: the 1 USDC bootstrap and a 4 USDC
-subscription. It resumes from `progress.json` in its run directory.
+is live only. It deploys a vault with two sub-accounts, funds, rebalances
+and drains them with the production cash policy, acts as the trader for one
+sub-account to sub-account transfer, redeems and sweeps everything back to
+the deployer. It needs 5 USDC plus gas: the 1 USDC bootstrap and a 4 USDC
+subscription.
 
 The 2026-10-26 run verified sub-account creation with the master key,
 sub-account `changePubKey` through the Safe, master to sub-account transfer,
@@ -807,7 +845,7 @@ poll is retried or repeated. The generated API key stays in the protected
 operator record and memory, and the tutorial verifies it is absent from public
 artefacts.
 
-For sub-accounts, see the [sub-account mainnet tutorial](#mainnet-tutorial).
+For sub-accounts, see the [sub-account tutorials](#tutorials).
 
 ## Troubleshooting
 

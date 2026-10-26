@@ -197,6 +197,7 @@ def reconcile_verified_lighter_transfers(
     *,
     mutate: bool,
     operator_record: LighterOperatorRecord | None = None,
+    sub_account_operator_records: dict[int, LighterOperatorRecord] | None = None,
 ) -> list[TradeExecution]:
     """Inspect or apply verified unfinished Lighter transfers.
 
@@ -213,9 +214,15 @@ def reconcile_verified_lighter_transfers(
         Apply verified results when ``True``; otherwise only return them.
     :param operator_record:
         Optional master signer for transfer-history reads.
+    :param sub_account_operator_records:
+        Optional sub-account signers, keyed by account index, for transfers
+        sent from a sub-account.
     :return:
         Transfers whose evidence is complete.
     """
+    signers = dict(sub_account_operator_records or {})
+    if operator_record is not None:
+        signers[operator_record.account_index] = operator_record
     pending_transfers = [
         (position, trade)
         for position in state.portfolio.get_open_and_frozen_positions()
@@ -254,13 +261,14 @@ def reconcile_verified_lighter_transfers(
                     trade.trade_id,
                 )
                 continue
-            if operator_record is None:
+            sender = signers.get(int(trade.other_data.get("funding_source_account_id", -1)))
+            if sender is None:
                 logger.warning(
-                    "Lighter funding trade #%d needs LIGHTER_OPERATOR_RECORD_FILE to read transfer history",
+                    "Lighter funding trade #%d needs the sending account's record (LIGHTER_OPERATOR_RECORD_FILE or LIGHTER_SUB_ACCOUNT_OPERATOR_RECORD_FILES) to read transfer history",
                     trade.trade_id,
                 )
                 continue
-            record = asyncio.run(fetch_lighter_funding_transfer(operator_record, str(tx_hash)))
+            record = asyncio.run(fetch_lighter_funding_transfer(sender, str(tx_hash)))
             if record is None:
                 continue
         verification = verify_lighter_funding(trade, record)
