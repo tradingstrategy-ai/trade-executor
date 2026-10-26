@@ -27,9 +27,10 @@ orders are submitted by a separate execution tool, not by trade-executor.
 
 ## Value and custody model
 
-The strategy universe contains one synthetic Lighter exchange-account pair.
-Its value is Lighter's public `total_asset_value`, including collateral and
-unrealised profit or loss. The Lagoon NAV is:
+The strategy universe contains one synthetic Lighter exchange-account pair
+per Lighter account, see [Sub-accounts](#sub-accounts). Its value is
+Lighter's public `total_asset_value`, including collateral and unrealised
+profit or loss. For a single account the Lagoon NAV is:
 
 ```text
 Safe native-USDC balance
@@ -44,9 +45,9 @@ Lighter API key registered in a numbered key slot.
 ## Sub-accounts
 
 A vault can split its Lighter capital between the Safe-owned master account
-and any number of sub-accounts, each traded by its own external process such
-as a Nautilus strategy. Each account is a separate executor position, and the
-Lagoon NAV values all of them from one public snapshot:
+and sub-accounts, each traded by its own external process such as a Nautilus
+strategy. Each account is a separate executor position, and the Lagoon NAV
+values all of them from one public snapshot:
 
 ```text
 Safe native-USDC balance
@@ -55,7 +56,8 @@ Safe native-USDC balance
 ```
 
 The master account is the treasury hub. The executor holds only the master
-API key. Capital moves as follows:
+API key; each sub-account key goes to that sub-account's trader. Capital
+moves as follows:
 
 | Movement | Mechanism | Signer |
 |----------|-----------|--------|
@@ -63,11 +65,28 @@ API key. Capital moves as follows:
 | Master to Safe | Secure withdrawal, then the Safe claim | Master API key, asset manager |
 | Master to sub-account | L2 same-owner transfer | Master API key |
 | Sub-account to Safe | L1 `withdraw(subAccountIndex)` through the guard, then the Safe claim | Asset manager only |
+| Sub-account to sub-account | L2 same-owner transfer | The sending sub-account's key, so only its trader |
 
-There is no direct sub-account to sub-account transfer. Rebalancing between
-sub-accounts withdraws to the Safe in one cycle and funds the other
-sub-account from the master in a later cycle. A secure withdrawal takes
-about 20 minutes.
+The executor cannot move capital directly between sub-accounts. It
+rebalances by withdrawing an overweight sub-account to the Safe in one
+cycle, depositing it to the master in the next and then funding the
+underweight sub-account. A trader may transfer between sub-accounts with its
+own key; the next `start` cycle revalues both positions from Lighter.
+
+Mainnet observations from 2026-10-26:
+
+- A master secure withdrawal takes about 20 minutes. A sub-account L1
+  withdrawal became claimable after about 29 minutes. The
+  `LIGHTER_WITHDRAWAL_TIMEOUT` default of `start` is therefore one hour.
+- Lighter charged no fee for same-owner transfers. The authenticated
+  `transferFeeInfo` quotes 0 USDC between accounts of the same owner (master
+  to sub-account and sub-account to sub-account) and 1 USDC to a different
+  owner; the public, unauthenticated endpoint quotes 1 USDC regardless. The
+  funding trade reads the authenticated quote when it submits.
+- Minimums: 1 USDC for a transfer, a secure withdrawal and a direct deposit;
+  4 USDC for a fast withdrawal, which a Safe owner cannot use anyway.
+- Lighter documents that a transfer to a different owner also needs an L1
+  wallet signature, which a Safe cannot give. This was not tested.
 
 ### Deploy with sub-accounts
 
@@ -84,11 +103,12 @@ trade-executor lagoon-deploy-vault
 
 After the master key is registered, deployment creates the sub-accounts with
 the master key and registers one API key on each with a Safe `changePubKey`
-transaction. Sub-accounts start empty; the first `start` cycles fund them.
-The number of sub-accounts depends on the Lighter account tier: Standard
-allows 4, Plus 16 and Premium 64.
+transaction. Sub-accounts start empty; `start` funds them once the vault has
+operating capital. The number of sub-accounts depends on the Lighter account
+tier: Standard allows 4, Plus 16 and Premium 64.
 
-Deployment writes `2 + N` files next to `VAULT_RECORD_FILE`:
+Deployment writes these records next to `VAULT_RECORD_FILE`, beside the
+Markdown report:
 
 | File | Contents | Audience |
 |------|----------|----------|
@@ -98,6 +118,15 @@ Deployment writes `2 + N` files next to `VAULT_RECORD_FILE`:
 
 The executor never reads the hand-over files, and no sub-account key appears
 in any report.
+
+### Known limitation: keys are saved only after deployment
+
+`lagoon-deploy-vault` writes the master and sub-account private keys only
+after the whole deployment returns. If it fails after a key has been
+registered on Lighter, that key exists nowhere else and the account needs a
+new key through a Safe `changePubKey`. The sub-account tutorial works around
+this by saving each key to a mode-0600 temporary file as it is generated and
+deleting the files after a successful deployment.
 
 ### Strategy setup for sub-accounts
 
@@ -118,6 +147,7 @@ class Parameters:
     lighter_min_transfer_usd = Decimal(1)
     lighter_sub_account_weights = (Decimal("0.5"), Decimal("0.5"))
     lighter_rebalance_band_usd = Decimal(0)
+    lighter_transfer_fee_usd = Decimal(0)
 
 def decide_trades(input):
     return decide_lighter_cash_management(input)
@@ -127,7 +157,10 @@ Each cycle moves one kind of capital, sized from observed balances: first
 Safe liquidity for pending redemptions (master first, then the sub-accounts
 with the most free collateral), then idle Safe cash to the master, then
 overweight sub-accounts to the Safe, then underweight sub-accounts from the
-master. Only free collateral moves; margin in use stays. See
+master. Only free collateral moves; margin in use stays.
+`lighter_transfer_fee_usd` is the fee the planner reserves on the master for
+each funding transfer; the fee actually charged is booked from Lighter's
+transfer history. See
 [`lighter_multi_subaccount_strategy.py`](../../strategies/test_only/lighter_multi_subaccount_strategy.py).
 
 Set `LIGHTER_TRANSFER_TIMEOUT` for `start` to bound the wait for a
@@ -145,6 +178,22 @@ its Safe claim.
 
 `lighter-move-funds --lighter-account-index <index>` withdraws from a
 sub-account with the key-free L1 path. Deposits always go to the master.
+
+### Mainnet tutorial
+
+[`scripts/lagoon/manual-trade-executor-lighter-subaccounts.py`](../../scripts/lagoon/manual-trade-executor-lighter-subaccounts.py)
+deploys a vault with two sub-accounts, funds, rebalances and drains them
+with real `start` cycles, redeems and sweeps everything back to the
+deployer. It needs 5 USDC plus gas: the 1 USDC bootstrap and a 4 USDC
+subscription. It resumes from `progress.json` in its run directory.
+
+The 2026-10-26 run verified sub-account creation with the master key,
+sub-account `changePubKey` through the Safe, master to sub-account transfer,
+the key-free L1 `withdraw(subIndex)`, master secure withdrawal, full drain
+and redemption. The deployer got every USDC back with no Lighter fees, for
+about 0.011 ETH of gas. Its trader step, a sub-account to sub-account
+transfer signed with the sub-account's own key, was added afterwards and has
+not yet run live.
 
 ## Deploy a Safe-owned Lighter account
 
@@ -207,6 +256,8 @@ with mode `0600`. Move it to a secret manager immediately. Do not put it in
 strategy configuration, command-line arguments, logs, support tickets or chat.
 Public outputs use an explicit metadata allowlist, so unknown SDK fields are
 not copied to them.
+A failed deployment can lose a key it already registered; see
+[Known limitation: keys are saved only after deployment](#known-limitation-keys-are-saved-only-after-deployment).
 
 ## Example: deploy and test a Lighter vault
 
@@ -271,7 +322,7 @@ has pending redemptions and the Safe is short, it withdraws available Lighter
 collateral. Pending Lagoon deposits offset matching redemptions, so the Safe
 target is `max(pending redemptions - pending deposits, 0) + buffer`. A
 withdrawal normally waits about 20 minutes, and the executor
-intentionally blocks for it with a 30-minute safety timeout. No later trades or
+intentionally blocks for it with a one-hour safety timeout. No later trades or
 NAV/account checks run while the transfer is in flight. If the process stops,
 the next `start` aborts before any new trade. Reconcile verified evidence with
 `correct-accounts` or `repair`; it never repeats a Lighter request or Safe
@@ -669,8 +720,11 @@ The integration fails closed:
 
 The main integration points are deliberately small:
 
-- `cash_manager.py` contains the pure Safe/exchange cash-allocation policy.
-- `lighter.py` creates the synthetic pair, validates public equity and provides
+- `cash_manager.py` contains the pure Safe/exchange cash-allocation policy and
+  the sub-account rebalance planner.
+- `lighter_strategy.py` contains `decide_lighter_cash_management()`, the
+  phased cash policy for a master and its sub-accounts.
+- `lighter.py` creates the synthetic pairs, validates public equity and provides
   account, free-collateral and Lagoon NAV readers.
 - `lighter_routing.py` prepares Safe-owned deposits and withdrawal claims in
   the normal execution pipeline.
@@ -741,11 +795,14 @@ poll is retried or repeated. The generated API key stays in the protected
 operator record and memory, and the tutorial verifies it is absent from public
 artefacts.
 
+For sub-accounts, see the [sub-account mainnet tutorial](#mainnet-tutorial).
+
 ## Troubleshooting
 
 ### `check-accounts` reports a Lighter mismatch
 
-Confirm that `LIGHTER_ACCOUNT_INDEX` points to the Safe-owned account and that
+Confirm that `LIGHTER_ACCOUNT_INDEX` points to the Safe-owned account, or that
+`LIGHTER_ACCOUNT_INDEXES` lists the master and every sub-account, and that
 no deposit, withdrawal or order settlement is still in flight. If Lighter
 equity differs, run `correct-accounts` only after the public account view is
 stable. If the Safe reserve differs by a completed deposit or withdrawal

@@ -68,18 +68,36 @@ in the paired `/secure/path/vault-record.json` operator record. Do not print,
 copy into a strategy module, pass on a command line, or add it to executor
 state. Move the mode-`0600` JSON record to the secret manager after deployment.
 
+Deployment writes the private records only after the whole command returns.
+If it fails after a key has been registered on Lighter, that key is lost and
+the account needs a new key through a Safe `changePubKey`.
+
 ### Sub-accounts
 
 To give external traders their own Lighter sub-accounts, add
 `LIGHTER_SUB_ACCOUNT_COUNT` (and optionally
-`LIGHTER_SUB_ACCOUNT_API_KEY_INDEX`, default 4) to the deployment. Each
-sub-account's API key is written to its own mode-0600
+`LIGHTER_SUB_ACCOUNT_API_KEY_INDEX`, default 4) to the deployment. Deployment
+creates the sub-accounts with the master key and registers one key on each
+through the Safe. Each sub-account's API key is written to its own mode-0600
 `vault-record.nautilus.<index>.json` hand-over file; the executor record keeps
-only the master key. Sub-accounts start empty. See
-[README-Lighter.md](../tradeexecutor/exchange_account/README-Lighter.md#sub-accounts)
-for the custody model, strategy setup and recovery, and
+only the master key. Sub-accounts start empty.
+
+The executor funds sub-accounts from the master with same-owner L2
+transfers, which Lighter did not charge for on 2026-10-26, and withdraws
+them to the Safe with the key-free L1 `withdraw(subIndex)`, which took about
+29 minutes on mainnet. A trader may transfer between sub-accounts with its
+own key; the executor only revalues the positions. Multi-account strategies,
+including `strategies/lighter-ai.py`, read the master and sub-account
+indices from `LIGHTER_ACCOUNT_INDEXES`.
+
+The live tutorial
 [`manual-trade-executor-lighter-subaccounts.py`](../scripts/lagoon/manual-trade-executor-lighter-subaccounts.py)
-for the live tutorial.
+needs 5 USDC plus gas: the 1 USDC bootstrap and a 4 USDC subscription. It
+saves each generated key to a mode-0600 temporary file until deployment
+completes, to work around the limitation above. See
+[README-Lighter.md](../tradeexecutor/exchange_account/README-Lighter.md#sub-accounts)
+for the custody model, fees, strategy setup, recovery and the verified
+mainnet results.
 
 ## Pair a compatible strategy module
 
@@ -119,7 +137,7 @@ Use the small
 [`lighter_cash_management_strategy.py`](../strategies/test_only/lighter_cash_management_strategy.py)
 as a reference. Its policy retains a 20 USDC Safe buffer, keeps the configured
 free Lighter collateral buffer, ignores transfers below 1 USDC and uses a
-30-minute withdrawal timeout configured at the `start` CLI boundary:
+one-hour withdrawal timeout configured at the `start` CLI boundary:
 
 ```python
 LIGHTER_ACCOUNT_INDEX = 123  # Public infrastructure identity
@@ -147,7 +165,7 @@ creates a Lighter withdrawal. The Safe target is
 `max(pending redemptions - pending deposits, 0) + buffer`. Secure
 withdrawals normally take about 20 minutes, so the live executor waits
 synchronously and starts no later trades while the request is pending. The
-30-minute timeout is a safety limit, not the expected delay. A restart
+one-hour timeout is a safety limit, not the expected delay. A restart
 aborts safely on an unfinished transfer; reconcile verified evidence through
 `correct-accounts` or `repair` before restarting. Set
 `LIGHTER_OPERATOR_RECORD_FILE` to the mode-`0600` deployment JSON so the

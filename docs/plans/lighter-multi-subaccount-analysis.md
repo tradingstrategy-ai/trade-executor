@@ -11,9 +11,31 @@ Let one Lagoon vault custody capital across several Lighter accounts:
   deposit into and withdraw from any of the accounts, and rebalance trade
   capital between sub-accounts from `decide_trades()`.
 
-This document records what the protocol allows, what each component does
-today, what has to change, and how hard each change is. It is an analysis,
-not an implementation plan. Nothing in this document has been built yet.
+This document records what the protocol allows, what each component did
+before the work started, what had to change, and how hard each change is.
+It is the pre-implementation analysis; "status now" columns describe
+`master` before the branch.
+
+## Outcome
+
+The design was built on branch `lighter-multi-subaccount` on 2026-10-26; see
+[`lighter-multi-subaccount-implementation.md`](./lighter-multi-subaccount-implementation.md#implementation-status).
+Where it departs from this analysis:
+
+- The executor holds only the master API key. Sub-accounts get one key each,
+  for their trader, and no executor slot 5 key. The executor funds
+  sub-accounts with master-signed L2 transfers and drains them with the
+  key-free L1 `withdraw(subIndex)`; it never transfers between sub-accounts.
+- `lighter-sdk` did not become an eth-defi extra; it is imported lazily.
+- The Lighter-enabled bootstrap subscription is now 1 USDC, not 20 USDC.
+- The guard needed no change, as concluded below.
+
+A tutorial run on Ethereum mainnet on 2026-10-26 answered the first two open
+questions and the mainnet verification list below: `CreateSubAccount` with
+the master key, sub-account `changePubKey` through the Safe, a master →
+sub-account transfer and the L1 `withdraw(subIndex)` (claimable after about
+29 minutes) all work for a Safe-owned master. Lighter charged no fee for the
+same-owner transfers.
 
 The analysis covers:
 
@@ -38,14 +60,17 @@ project virtualenv, and the current `master` of both repositories.
 | Every account, master or sub-account, has its own API key slots 0-254. Slots 0-3 are reserved for the UI. Registering a key **replaces** whatever key was at that slot. | API keys doc | Nautilus and the executor must never share one slot. Each account needs one slot per signer. |
 | A smart-contract owner registers a key with the L1 call `changePubKey(accountIndex, apiKeyIndex, pubKey)`. The contract validates only that `msg.sender` is a registered master and forwards `(accountIndex, masterAccountIndex)` as a priority request; the sequencer checks that `accountIndex` is the master or one of its sub-accounts. | `AdditionalZkLighter.changePubKey()` at lines 164-205 of the verified source; docs query endpoint answer "Yes" | The Safe can register keys on its sub-accounts with the same Safe-owner transaction it uses today. Nothing new on L1 is needed for key registration. |
 | An L1 `deposit(_to, assetIndex, routeType, amount)` credits the **master** account of `_to`. There is no account-index parameter. | `AdditionalZkLighter.deposit()`; L1-and-Core token transfer doc: "This deposit path targets L1-controlled masters, not subaccounts" | Funding a sub-account is two steps: L1 deposit to master, then an L2 transfer master to sub-account. |
-| An L2 `Transfer` (`tx_type = 12`) between accounts of the **same** owner needs only the source account's API key. No L1 signature. A fee from `transferFeeInfo` is charged on top of the amount and must match exactly. Minimum 1 USDC. | Deposits, transfers and withdrawals doc; SDK `transfer_same_master_account(...)` | Master to sub-account moves need the master key. Sub-account to master or sub-account to sub-account moves need the **source sub-account's** key. |
+| An L2 `Transfer` (`tx_type = 12`) between accounts of the **same** owner needs only the source account's API key. No L1 signature. A fee from `transferFeeInfo` is charged on top of the amount and must match exactly. Minimum 1 USDC. On 2026-10-26 the authenticated quote was 0 for same-owner transfers and 1 USDC to a different owner, the public endpoint quoted 1 USDC regardless, and no fee was charged. | Deposits, transfers and withdrawals doc; SDK `transfer_same_master_account(...)` | Master to sub-account moves need the master key. Sub-account to master or sub-account to sub-account moves need the **source sub-account's** key. |
 | A secure withdrawal (`tx_type = 13`) from any account goes only to the owner's L1 address and needs only that account's API key. Lighter normally claims it on L1, otherwise the Safe claims it with `withdrawPendingBalance(owner, ...)`. Delay is dynamic, about 20 minutes observed. | Deposits, transfers and withdrawals doc; current executor flow | A sub-account withdrawal to the Safe needs the sub-account key, or the alternative below. |
-| The L1 call `withdraw(accountIndex, assetIndex, routeType, amount)` takes any account index and binds `masterAccountIndex` to `msg.sender`. The pending balance is credited to the master's L1 address when the batch is verified. | `AdditionalZkLighter.withdraw()` lines 502-525; `ZkLighter.sol` line 573 credits `_tx.masterAccountIndex` | The Safe can pull USDC out of any of its sub-accounts **without any API key**, through the guard's already whitelisted `withdraw` selector. This path has only been exercised on an Anvil fork, never end to end on mainnet. |
-| Fast withdrawals and transfers to another owner need an ECDSA `personal_sign` from the owner. A Safe cannot produce one. | Multi-signature wallets doc | Unchanged from today: secure withdrawal only. |
+| The L1 call `withdraw(accountIndex, assetIndex, routeType, amount)` takes any account index and binds `masterAccountIndex` to `msg.sender`. The pending balance is credited to the master's L1 address when the batch is verified. | `AdditionalZkLighter.withdraw()` lines 502-525; `ZkLighter.sol` line 573 credits `_tx.masterAccountIndex` | The Safe can pull USDC out of any of its sub-accounts **without any API key**, through the guard's already whitelisted `withdraw` selector. Verified on mainnet on 2026-10-26: claimable after about 29 minutes. |
+| Fast withdrawals and transfers to another owner need an ECDSA `personal_sign` from the owner. A Safe cannot produce one. Not tested. | Multi-signature wallets doc | Unchanged from today: secure withdrawal only. |
 | Nonces are tracked per API key. Two signers sharing one key would race on nonces. | Core concepts doc | A second reason the executor must have its own slot on any sub-account it signs for. |
 | The `SignerClient` in the pinned SDK fork is bound to one `account_index` and can hold several keys for that account. | `lighter/signer_client.py` line 339 | The executor needs one client per account it signs for. |
 
 ### Recommended custody model
+
+The implementation adopted this model without the executor keys on
+sub-accounts; see [Outcome](#outcome).
 
 ```text
 Lagoon Safe (Ethereum L1)
@@ -102,7 +127,7 @@ Files: `eth_defi/lighter/*.py`,
 | Account discovery (`api.py`) | `fetch_lighter_account_index()` returns `min(index)` from `accountsByL1Address` and ignores the rest. `wait_for_lighter_account()` builds on it. | Add `fetch_lighter_accounts(session, l1_address)` returning the master and all sub-account indices with their equity fields in one response, keep the old helper as "master only". Add `wait_for_lighter_sub_account(session, master_index, expected_count)` for post-creation polling. | Low |
 | Valuation (`valuation.py`) | `fetch_lighter_total_equity(session, account_index)` reads one account. | Add `fetch_lighter_accounts_equity(session, l1_address)` that returns `dict[int, LighterEquity]` from one `account` by-L1-address response, so NAV across accounts is a single consistent snapshot and an in-flight L2 transfer is not double counted. | Low |
 | Deployment config (`LagoonConfig`, `LighterAccountSetup`) | `generate_lighter_api_key: bool`, `lighter_api_key_index: int = 4`. `LighterAccountSetup` is one frozen dataclass with one `private_key`. `LagoonAutomatedDeployment.lighter_account_setup` is singular and is serialised to the operator record JSON. | Add `lighter_sub_account_count: int`, `lighter_sub_account_api_key_index: int = 4` (Nautilus), `lighter_executor_api_key_index: int | None = 5`. Replace the singular setup with `LighterAccountSetup` for the master plus `list[LighterSubAccountSetup]`, each with its index, the Nautilus key and the optional executor key. Keep the JSON shape backwards compatible for existing single-account deployments. | Medium |
-| Activation flow (`_activate_lighter_account`) | Subscribes 20 USDC, deposits 1 USDC, waits for the master index, generates one key, `execute_change_pubkey` on the single-owner Safe, waits for the key. | After the master key is live: sign `CreateSubAccount` N times with the master key, poll `accountsByL1Address` until N sub-accounts appear, generate 1 or 2 keys per sub-account, send one `changePubKey` per key through the Safe (ideally batched with MultiSend), wait for each key. Each sub-account also needs a minimum balance before Nautilus can trade; decide whether activation seeds 1 USDC each by L2 transfer. | Medium |
+| Activation flow (`_activate_lighter_account`) | Subscribed 20 USDC (now 1 USDC), deposits 1 USDC, waits for the master index, generates one key, `execute_change_pubkey` on the single-owner Safe, waits for the key. | After the master key is live: sign `CreateSubAccount` N times with the master key, poll `accountsByL1Address` until N sub-accounts appear, generate 1 or 2 keys per sub-account, send one `changePubKey` per key through the Safe (ideally batched with MultiSend), wait for each key. Each sub-account also needs a minimum balance before Nautilus can trade; decide whether activation seeds 1 USDC each by L2 transfer. | Medium |
 | L2 signing dependency | `lighter-sdk` is deliberately **not** an eth_defi dependency (`docs/superpowers/plans/2026-09-10-lagoon-lighter-api-key-deployment.md` line 184). Only key generation is native. | Sub-account creation and L2 transfers need the signer. Either add `lighter-sdk` as an optional extra (`lighter` extra, pinned fork), or keep eth_defi SDK-free and let trade-executor orchestrate sub-account creation after deployment. The second option splits the deployment into two commands. Recommendation: optional extra with a lazy import, matching the existing lazy import in `lagoon-lighter-trade-example.py`. | Medium |
 | L2 transfer helper | None. | Add `transfer_usdc_between_lighter_accounts(signer_client, to_account_index, amount, fee)` wrapping `transfer_same_master_account(...)`, plus `fetch_lighter_transfer_fee(session)` for `transferFeeInfo` and `wait_for_lighter_transfer(session, account_index, tx_hash)` polling `transfer_history`. | Low |
 | L1 withdraw helper | No Python helper for `ZkLighter.withdraw()` even though the guard allows it. | Add `request_usdc_withdrawal_from_lighter_account(web3, hot_wallet, vault, account_index, amount)` through `TradingStrategyModuleV0.performCall`. This is the key-free path to pull capital from a sub-account. Needs a mainnet verification that the sequencer accepts a sub-account index with the Safe as master. | Low to write, needs real-money test |
@@ -173,7 +198,8 @@ Five places currently enforce exactly one Lighter account per executor:
 Mainnet verification needed before step 4 is finalised: one real
 `CreateSubAccount` from a Safe-owned master, one `changePubKey(subIndex)` from
 the Safe, one L2 transfer in each direction, and one L1 `withdraw(subIndex)`
-through the guard.
+through the guard. Done on 2026-10-26 except the sub-account → master
+transfer, which the implementation does not use.
 
 ## Lighter EVM deployment
 
@@ -252,17 +278,19 @@ the Ethereum work on it.
 ## Open questions
 
 1. Does the Lighter sequencer accept `CreateSubAccount` and sub-account
-   `changePubKey` for a Safe-owned master in practice? The docs say yes, the
-   contract forwards both; only a mainnet test proves it.
+   `changePubKey` for a Safe-owned master in practice? Answered: yes, on
+   mainnet on 2026-10-26.
 2. Does the L1 `withdraw(subIndex)` priority request succeed for a sub-account
    with open positions when only free collateral is requested, and what is the
-   observed delay compared with the API secure withdrawal?
+   observed delay compared with the API secure withdrawal? Partly answered:
+   it succeeded for a sub-account without positions and became claimable
+   after about 29 minutes, against about 20 minutes for a master secure
+   withdrawal. The open-position case is untested.
 3. Should the executor hold a key on each sub-account (fast sub ↔ sub moves,
    more secrets to protect) or rely on L1 `withdraw` (no extra secrets, slow)?
-   The recommendation above is both: register slot 5 at deployment, use the
-   L2 path by default, keep L1 `withdraw` as the recovery path.
-4. How does Nautilus learn its sub-account index and key? The deployment
-   should write one hand-over file per sub-account.
+   Decided: L1 `withdraw` only; the executor holds only the master key.
+4. How does Nautilus learn its sub-account index and key? Decided: the
+   deployment writes one mode-0600 hand-over file per sub-account.
 5. Which account tier does production need? Standard allows 4 sub-accounts;
    Plus allows 16 with a 0.005% fee.
 6. Which state migration strategy is used for the existing `lighter-ai`

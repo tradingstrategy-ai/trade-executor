@@ -7,52 +7,50 @@ lifecycle with real money:
    sub-accounts, each sub-account with its own API key for an external trader
 2. Initialise executor state with one position per Lighter account
 3. Subscribe to the vault and let ``start`` deposit the idle Safe cash to the master
-4. Fund both sub-accounts from the master with ``start``
-5. Rebalance: withdraw sub-account 2 to the Safe with the key-free L1
-   ``withdraw`` path, redeposit, and fund sub-account 1
-6. Act as the external trader: transfer USDC directly from sub-account 1 to
+4. Fund both sub-accounts from the master
+5. Withdraw sub-account 2 to the Safe with the key-free L1 ``withdraw``
+6. Redeposit the withdrawal to the master
+7. Fund sub-account 1 from the master
+8. Act as the external trader: transfer USDC from sub-account 1 to
    sub-account 2 with sub-account 1's own API key, and check that the next
-   ``start`` cycle revalues both positions with the NAV unchanged
-7. Request a full redemption, let ``start`` drain every account to the Safe,
-   and settle it
-8. Redeem all shares with ``lagoon-redeem``
-9. Sweep the remaining Safe USDC and ETH back to the deployer and print a
-   reconciliation table
+   ``start`` cycle revalues both positions
+9. Request a full redemption, let ``start`` drain every account to the Safe,
+   and redeem all shares with ``lagoon-redeem``
+10. Sweep the remaining Safe USDC and ETH back to the deployer and print a
+    reconciliation table
 
 Every executor custody movement runs through the real ``start`` command and
-the ``decide_trades()`` helper used in production, with
+the production ``decide_trades()`` helper, with
 ``strategies/test_only/lighter_multi_subaccount_strategy.py``. No orders are
-placed. The only trader action is one direct sub-account to sub-account
-transfer, which Lighter does not charge for between accounts of the same
-owner. The executor holds only the master key, so it cannot make such a
-transfer itself; it books the trader's transfer as a balance change on each
-sub-account position.
+placed. The executor holds only the master key, so it cannot make the
+trader's sub-account to sub-account transfer; it only revalues the positions.
 
-Lighter's sequencer and withdrawal proofs cannot be simulated by Anvil, so
-this script supports Ethereum mainnet only. Each secure withdrawal takes
-about 20 minutes. Use a funded test account and small values.
+The tutorial ran end to end on 2026-10-26 before step 8 was added; step 8
+has not yet run live. Lighter's sequencer and withdrawal proofs cannot be
+simulated by Anvil, so this script supports Ethereum mainnet only. A master
+secure withdrawal takes about 20 minutes and a sub-account L1 withdrawal took
+about 29 minutes.
 
-Funding: the defaults are Lighter's minimums. The deployer needs 5 USDC plus
-mainnet gas ETH: deployment subscribes 1 USDC and moves it to the master
-account, and the tutorial subscribes 4 USDC more. Lighter's transfer, secure
-withdrawal and direct deposit minimums are 1 USDC. The strategy budgets a
-1 USDC fee on top of each master to sub-account transfer, the fee Lighter's
-public endpoint quotes, and sizes every movement so it still reaches the
-minimum. Lighter charged no fee for transfers between accounts of the same
-owner in the 2026-10-26 run, so all 5 USDC returned to the deployer. The
-strategy keeps no Safe cash buffer, so all capital moves to Lighter.
+Funding: the deployer needs 5 USDC plus mainnet gas ETH (about 0.011 ETH in
+the 2026-10-26 run). Deployment subscribes 1 USDC and moves it to the master
+account; the tutorial subscribes 4 USDC more. Lighter's transfer, secure
+withdrawal and direct deposit minimums are 1 USDC. The strategy budgets the
+1 USDC fee that Lighter's public endpoint quotes on top of each master to
+sub-account transfer, so every movement still reaches the minimum if it is
+charged. Lighter charged nothing for same-owner transfers in the 2026-10-26
+run and all 5 USDC returned to the deployer.
 
-Secrets: the master API key stays in the mode-0600 operator record written
-by deployment. The sub-account keys stay in their mode-0600 hand-over files.
-Deployment writes those records only after it completes, so the deploy phase
-also saves each generated key to its own mode-0600 temporary file the moment
-it is created, before Lighter registers it. A failed deployment keeps these
-files so the operator can recover the registered keys; their paths are
-logged, never their contents. A successful deployment deletes them, because
-the records then hold the keys. This script never prints or logs a key.
+Secrets: the master API key stays in the mode-0600 operator record written by
+deployment, and each sub-account key in its mode-0600 hand-over file.
+Deployment writes these records only after it completes, so a failure after
+key registration would lose the keys. The deploy step therefore also saves
+each key to its own mode-0600 temporary file as soon as it is generated. A
+failed deployment keeps these files so the operator can recover the
+registered keys; a successful one deletes them. Paths are logged, never the
+keys.
 
 Resuming: the run directory holds ``progress.json`` with the public
-deployment details and the last completed phase. Rerun with the same
+deployment details and the last completed step. Rerun with the same
 ``LIGHTER_RUN_DIR`` to continue. If a ``start`` cycle was interrupted during a
 transfer, the next ``start`` refuses to run; recover it with
 ``trade-executor check-accounts`` and ``trade-executor correct-accounts``
@@ -81,7 +79,8 @@ Optional environment variables
     Private working directory. Defaults below ``~/.tradingstrategy/examples``.
 
 ``LIGHTER_WITHDRAW_TIMEOUT`` / ``LIGHTER_TRANSFER_TIMEOUT``
-    Maximum seconds to wait for a secure withdrawal and a sub-account transfer.
+    Maximum seconds to wait for a withdrawal and a sub-account transfer.
+    Default 3600 and 300.
 """
 
 import asyncio
@@ -97,6 +96,7 @@ from typing import Any
 from unittest import mock
 
 import eth_defi.erc_4626.vault_protocol.lagoon.deployment as lagoon_deployment
+from eth_defi.compat import native_datetime_utc_now
 from eth_defi.erc_4626.vault_protocol.lagoon.deployment import LIGHTER_BOOTSTRAP_SUBSCRIPTION
 from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
 from eth_defi.hotwallet import HotWallet
@@ -125,22 +125,25 @@ from tradeexecutor.state.trade import TradeFlag
 
 logger = logging.getLogger(__name__)
 
+#: Test strategies used by the deployment and by every later command.
+STRATEGY_DIR = Path(__file__).resolve().parents[2] / "strategies" / "test_only"
 #: Number of sub-accounts the tutorial creates.
 SUB_ACCOUNT_COUNT = 2
-#: USDC the strategy keeps in the Safe; none, so every movement uses the minimum capital.
+#: USDC the strategy keeps in the Safe; none, so all capital moves to Lighter.
 SAFE_BUFFER_USDC = Decimal(0)
-#: Fee budgeted on top of each master to sub-account transfer. Lighter's public
-#: ``transferFeeInfo`` endpoint quoted 1 USDC on 2026-10-26, although the
-#: authenticated quote and the charged fee between same-owner accounts were 0.
+#: Fee budgeted on top of each master to sub-account transfer: the public
+#: ``transferFeeInfo`` quote. The authenticated quote, and the fee charged
+#: between same-owner accounts, was 0 on 2026-10-26.
 TRANSFER_FEE_USDC = Decimal(1)
 #: Smallest subscription for which every movement reaches Lighter's 1 USDC
-#: minimum. With the 1 USDC bootstrap, the master holds 5 USDC: two 1 USDC
-#: fundings and their fees leave 1 USDC, the redeposited 1 USDC withdrawal
-#: makes 2 USDC, and the last funding moves 1 USDC plus its 1 USDC fee.
+#: minimum even when the budgeted fee is charged. With the 1 USDC bootstrap
+#: the master holds 5 USDC: two 1 USDC fundings and their fees leave 1 USDC,
+#: the redeposited 1 USDC withdrawal makes 2 USDC, and the last funding moves
+#: 1 USDC plus its fee.
 MIN_SUBSCRIPTION_USDC = Decimal(4)
-#: Funding step weights: a fifth of the capital, 1 USDC at the minimum, per sub-account.
+#: Funding weights: a fifth of the capital, 1 USDC at the minimum, per sub-account.
 FUNDING_WEIGHTS = "0.2,0.2"
-#: Rebalance step weights: drain sub-account 2 and move its capital to sub-account 1.
+#: Rebalance weights: drain sub-account 2 and move its capital to sub-account 1.
 REBALANCE_WEIGHTS = "1,0"
 #: USDC the trader moves from sub-account 1 to sub-account 2, Lighter's transfer minimum.
 TRADER_TRANSFER_USDC = Decimal(1)
@@ -166,7 +169,7 @@ class TutorialConfig:
     subscription_usdc: Decimal
     #: API-key slot for the master and sub-account keys.
     api_key_index: int
-    #: Maximum wait for a secure withdrawal to become claimable.
+    #: Maximum wait for a withdrawal to become claimable.
     withdraw_timeout: int
     #: Maximum wait for a sub-account transfer to appear in history.
     transfer_timeout: int
@@ -199,16 +202,20 @@ class Tutorial:
 
     @property
     def record_file(self) -> Path:
-        """Return the public vault record path; its JSON sibling is private."""
+        """Return the public vault record path."""
         return self.config.run_dir / "vault-record.txt"
 
-    def save_progress(self, phase: int) -> None:
-        """Record a completed phase."""
-        self.progress["phase"] = phase
-        self.write_progress()
+    @property
+    def operator_record_file(self) -> Path:
+        """Return the mode-0600 operator record holding the master key."""
+        return self.record_file.with_suffix(".json")
+
+    def get_handover_file(self, account_index: int) -> Path:
+        """Return the mode-0600 hand-over file holding one sub-account's key."""
+        return self.record_file.with_name(f"{self.record_file.stem}.nautilus.{account_index}.json")
 
     def write_progress(self) -> None:
-        """Persist progress, including state saved within a phase."""
+        """Persist progress, including values saved within a phase."""
         self.progress_file.write_text(json.dumps(self.progress, indent=2))
 
     def is_done(self, phase: int) -> bool:
@@ -224,13 +231,6 @@ def configure_logging() -> None:
         logging.getLogger(namespace).setLevel(logging.WARNING)
 
 
-def log_step(number: int, title: str) -> None:
-    """Print one visible tutorial phase heading."""
-    logger.info("%s", "=" * 72)
-    logger.info("Step %d: %s", number, title)
-    logger.info("%s", "=" * 72)
-
-
 def require_env(name: str, *fallback_names: str) -> str:
     """Read required configuration without echoing its value."""
     for key in (name, *fallback_names):
@@ -244,7 +244,7 @@ def load_config() -> TutorialConfig:
     if os.environ.get("SIMULATE", "").lower() in {"1", "true", "yes"}:
         raise RuntimeError("This tutorial is live Ethereum/Lighter only; SIMULATE is unsupported")
     run_dir = Path(os.environ.get("LIGHTER_RUN_DIR", str(Path("~/.tradingstrategy/examples").expanduser() / f"lighter-subaccounts-{int(time.time())}")))
-    return TutorialConfig(
+    config = TutorialConfig(
         rpc_url=require_env("JSON_RPC_ETHEREUM"),
         deployer_private_key=require_env("LIGHTER_TEST_PRIVATE_KEY", "PRIVATE_KEY"),
         run_dir=run_dir,
@@ -253,32 +253,34 @@ def load_config() -> TutorialConfig:
         withdraw_timeout=int(os.environ.get("LIGHTER_WITHDRAW_TIMEOUT", "3600")),
         transfer_timeout=int(os.environ.get("LIGHTER_TRANSFER_TIMEOUT", "300")),
     )
+    if config.subscription_usdc < MIN_SUBSCRIPTION_USDC:
+        raise RuntimeError(f"LIGHTER_SUBSCRIPTION_USDC must be at least {MIN_SUBSCRIPTION_USDC} for every movement to reach Lighter's 1 USDC minimum")
+    return config
 
 
 def prepare_tutorial(config: TutorialConfig) -> Tutorial:
-    """Connect to Ethereum, check deployer funds and load any earlier progress."""
+    """Connect to Ethereum, load earlier progress or check the deployer's funds."""
     web3 = create_multi_provider_web3(config.rpc_url, default_http_timeout=(3.0, 180.0))
     assert web3.eth.chain_id == LIGHTER_ETHEREUM_DEPLOYMENT_CHAIN_ID, "Ethereum mainnet RPC required"
     deployer = HotWallet.from_private_key(config.deployer_private_key)
     usdc = fetch_erc20_details(web3, LIGHTER_USDC_ETHEREUM)
     config.run_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
-    progress_file = config.run_dir / "progress.json"
-    progress = json.loads(progress_file.read_text()) if progress_file.exists() else {}
-    if config.subscription_usdc < MIN_SUBSCRIPTION_USDC:
-        raise RuntimeError(f"LIGHTER_SUBSCRIPTION_USDC must be at least {MIN_SUBSCRIPTION_USDC} for every movement to reach Lighter's 1 USDC minimum")
-    if not progress:
+    tutorial = Tutorial(config=config, web3=web3, deployer=deployer, usdc=usdc, progress={})
+    if tutorial.progress_file.exists():
+        tutorial.progress = json.loads(tutorial.progress_file.read_text())
+    else:
         start_usdc = usdc.fetch_balance_of(deployer.address)
         required_usdc = LIGHTER_BOOTSTRAP_SUBSCRIPTION + config.subscription_usdc
         if start_usdc < required_usdc:
             raise RuntimeError(f"Deployer {deployer.address} has {start_usdc} USDC but the tutorial needs {required_usdc} USDC")
-        progress = {
+        tutorial.progress = {
             "start_usdc": str(start_usdc),
             "start_eth_wei": web3.eth.get_balance(deployer.address),
         }
     logger.info("Deployer: %s", deployer.address)
     logger.info("Run artefacts: %s", config.run_dir)
-    logger.info("Resuming after phase %d", progress.get("phase", 0))
-    return Tutorial(config=config, web3=web3, deployer=deployer, usdc=usdc, progress=progress)
+    logger.info("Resuming after step %d", tutorial.progress.get("phase", 0))
+    return tutorial
 
 
 def run_cli(args: list[str], environment: dict[str, str]) -> None:
@@ -322,11 +324,10 @@ def get_vault(tutorial: Tutorial) -> LagoonVault:
 
 def get_cli_environment(tutorial: Tutorial, **overrides: str) -> dict[str, str]:
     """Return the executor environment used for every post-deployment command."""
-    strategy_file = Path(__file__).resolve().parents[2] / "strategies/test_only/lighter_multi_subaccount_strategy.py"
     environment = {
         "ID": "lighter-subaccounts",
         "NAME": "Lighter sub-accounts tutorial",
-        "STRATEGY_FILE": str(strategy_file),
+        "STRATEGY_FILE": str(STRATEGY_DIR / "lighter_multi_subaccount_strategy.py"),
         "STATE_FILE": str(tutorial.state_file),
         "PRIVATE_KEY": tutorial.config.deployer_private_key,
         "JSON_RPC_ETHEREUM": tutorial.config.rpc_url,
@@ -334,7 +335,7 @@ def get_cli_environment(tutorial: Tutorial, **overrides: str) -> dict[str, str]:
         "VAULT_ADDRESS": tutorial.progress["vault_address"],
         "VAULT_ADAPTER_ADDRESS": tutorial.progress["module_address"],
         "LIGHTER_ACCOUNT_INDEXES": ",".join(str(index) for index in tutorial.progress["account_indices"]),
-        "LIGHTER_OPERATOR_RECORD_FILE": str(tutorial.record_file.with_suffix(".json")),
+        "LIGHTER_OPERATOR_RECORD_FILE": str(tutorial.operator_record_file),
         "LIGHTER_WITHDRAWAL_TIMEOUT": str(tutorial.config.withdraw_timeout),
         "LIGHTER_TRANSFER_TIMEOUT": str(tutorial.config.transfer_timeout),
         "LIGHTER_SUB_ACCOUNT_WEIGHTS": "",
@@ -365,15 +366,9 @@ def fetch_lighter_balances(tutorial: Tutorial) -> dict[int, Decimal]:
 def run_start(tutorial: Tutorial, **overrides: str) -> None:
     """Run one ``start`` cycle and log the resulting Safe and Lighter balances."""
     run_cli(["start"], get_cli_environment(tutorial, **overrides))
-    balances = fetch_lighter_balances(tutorial)
     logger.info("Safe USDC: %s", tutorial.usdc.fetch_balance_of(tutorial.progress["safe_address"]))
-    for index, value in balances.items():
+    for index, value in fetch_lighter_balances(tutorial).items():
         logger.info("Lighter account %d equity: %s", index, value)
-
-
-# ---------------------------------------------------------------------------
-# Tutorial phases
-# ---------------------------------------------------------------------------
 
 
 def save_generated_key(key: LighterApiKey, number: int, deployer: str) -> Path:
@@ -387,17 +382,15 @@ def save_generated_key(key: LighterApiKey, number: int, deployer: str) -> Path:
     :param deployer:
         Deployer address, to identify the deployment the key belongs to.
     :return:
-        Path of the mode-0600 file.
+        Path of the file, created with mode 0600 by :py:func:`tempfile.mkstemp`.
     """
-    # mkstemp creates the file with mode 0600, so the key is never readable by others.
     descriptor, name = tempfile.mkstemp(prefix=f"lighter-api-key-{number}-", suffix=".json")
-    role = "master" if number == 1 else f"sub-account {number - 1}"
     with os.fdopen(descriptor, "w") as out:
         json.dump(
             {
-                "role": role,
+                "role": "master" if number == 1 else f"sub-account {number - 1}",
                 "deployer": deployer,
-                "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "created_at": native_datetime_utc_now().isoformat(),
                 "api_key_index": key.api_key_index,
                 "public_key": key.public_key,
                 "private_key": key.private_key,
@@ -408,21 +401,45 @@ def save_generated_key(key: LighterApiKey, number: int, deployer: str) -> Path:
     return Path(name)
 
 
+# ---------------------------------------------------------------------------
+# Tutorial phases
+# ---------------------------------------------------------------------------
+
+
 def deploy(tutorial: Tutorial) -> None:
-    """Deploy the vault with two keyed sub-accounts and record public details."""
-    minimal_strategy = Path(__file__).resolve().parents[2] / "strategies/test_only/minimal_lighter_strategy.py"
+    """Deploy the vault with keyed sub-accounts, backing up each key as it is generated."""
     generate_key = lagoon_deployment.generate_lighter_api_key_pair
     saved_keys: list[Path] = []
 
     def generate_and_save_key(api_key_index: int) -> LighterApiKey:
         key = generate_key(api_key_index)
-        path = save_generated_key(key, len(saved_keys) + 1, tutorial.deployer.address)
-        saved_keys.append(path)
-        logger.warning("Saved generated Lighter API key %d to %s until deployment completes", len(saved_keys), path)
+        saved_keys.append(save_generated_key(key, len(saved_keys) + 1, tutorial.deployer.address))
+        logger.warning("Saved generated Lighter API key %d to %s until deployment completes", len(saved_keys), saved_keys[-1])
         return key
 
+    environment = {
+        "EXECUTOR_ID": "lighter-subaccounts",
+        "STRATEGY_FILE": str(STRATEGY_DIR / "minimal_lighter_strategy.py"),
+        "LIGHTER_ACCOUNT_INDEX": "0",
+        "STATE_FILE": str(tutorial.state_file),
+        "PRIVATE_KEY": tutorial.config.deployer_private_key,
+        "JSON_RPC_ETHEREUM": tutorial.config.rpc_url,
+        "VAULT_RECORD_FILE": str(tutorial.record_file),
+        "FUND_NAME": "Lighter sub-accounts test",
+        "FUND_SYMBOL": "LSA",
+        "MULTISIG_OWNERS": tutorial.deployer.address,
+        "ANY_ASSET": "true",
+        "PERFORMANCE_FEE": "0",
+        "MANAGEMENT_FEE": "0",
+        "UNIT_TESTING": "true",
+        "GENERATE_LIGHTER_API_KEY": "true",
+        "LIGHTER_API_KEY_INDEX": str(tutorial.config.api_key_index),
+        "LIGHTER_SUB_ACCOUNT_COUNT": str(SUB_ACCOUNT_COUNT),
+        "LIGHTER_SUB_ACCOUNT_API_KEY_INDEX": str(tutorial.config.api_key_index),
+        "LOG_LEVEL": "warning",
+    }
     with mock.patch.object(lagoon_deployment, "generate_lighter_api_key_pair", generate_and_save_key):
-        run_lagoon_deploy(tutorial, minimal_strategy)
+        run_cli(["lagoon-deploy-vault"], environment)
 
     # The operator record and hand-over files now hold every key.
     for path in saved_keys:
@@ -431,36 +448,8 @@ def deploy(tutorial: Tutorial) -> None:
     record_deployment(tutorial)
 
 
-def run_lagoon_deploy(tutorial: Tutorial, minimal_strategy: Path) -> None:
-    """Run ``lagoon-deploy-vault`` with a master account and keyed sub-accounts."""
-    run_cli(
-        ["lagoon-deploy-vault"],
-        {
-            "EXECUTOR_ID": "lighter-subaccounts",
-            "STRATEGY_FILE": str(minimal_strategy),
-            "LIGHTER_ACCOUNT_INDEX": "0",
-            "STATE_FILE": str(tutorial.state_file),
-            "PRIVATE_KEY": tutorial.config.deployer_private_key,
-            "JSON_RPC_ETHEREUM": tutorial.config.rpc_url,
-            "VAULT_RECORD_FILE": str(tutorial.record_file),
-            "FUND_NAME": "Lighter sub-accounts test",
-            "FUND_SYMBOL": "LSA",
-            "MULTISIG_OWNERS": tutorial.deployer.address,
-            "ANY_ASSET": "true",
-            "PERFORMANCE_FEE": "0",
-            "MANAGEMENT_FEE": "0",
-            "UNIT_TESTING": "true",
-            "GENERATE_LIGHTER_API_KEY": "true",
-            "LIGHTER_API_KEY_INDEX": str(tutorial.config.api_key_index),
-            "LIGHTER_SUB_ACCOUNT_COUNT": str(SUB_ACCOUNT_COUNT),
-            "LIGHTER_SUB_ACCOUNT_API_KEY_INDEX": str(tutorial.config.api_key_index),
-            "LOG_LEVEL": "warning",
-        },
-    )
-
-
 def record_deployment(tutorial: Tutorial) -> None:
-    """Check the deployed accounts and record their public details."""
+    """Check the deployed accounts against Lighter and record their public details."""
     # Read only public fields; the private record is passed to commands by path.
     public = json.loads(tutorial.state_file.with_name("lighter-subaccounts.deployment.json").read_text())["deployments"]["ethereum"]
     setup = public["lighter_account_setup"]
@@ -476,7 +465,7 @@ def record_deployment(tutorial: Tutorial) -> None:
     assert accounts is not None and accounts.master_index == int(setup["account_index"])
     assert set(sub_indices) <= set(accounts.sub_account_indices), "Lighter does not list the created sub-accounts"
     for index in sub_indices:
-        handover = tutorial.record_file.with_suffix(".json").with_name(f"{tutorial.record_file.stem}.nautilus.{index}.json")
+        handover = tutorial.get_handover_file(index)
         assert handover.exists() and handover.stat().st_mode & 0o077 == 0, f"Missing or unsafe hand-over file {handover}"
     tutorial.progress.update({
         "safe_address": safe_address,
@@ -511,9 +500,9 @@ def subscribe(tutorial: Tutorial) -> None:
 async def submit_trader_transfer(tutorial: Tutorial, handover: dict[str, Any], to_account_index: int) -> None:
     """Sign a sub-account to sub-account transfer with the sending sub-account's own key.
 
-    The transfer hash is saved to ``progress.json`` before waiting, because a
-    submission is not idempotent: a resumed run confirms the saved hash
-    instead of sending the transfer again.
+    A submission is not idempotent, so its hash is saved to ``progress.json``
+    before waiting; a resumed run confirms the saved hash instead of sending
+    the transfer again.
     """
     from_account_index = int(handover["account_index"])
     api_key_index = int(handover["api_key_index"])
@@ -538,29 +527,27 @@ async def submit_trader_transfer(tutorial: Tutorial, handover: dict[str, Any], t
 def transfer_between_sub_accounts(tutorial: Tutorial) -> None:
     """Move USDC from sub-account 1 to sub-account 2 as the external trader would.
 
-    The executor did not make this transfer, so its positions are stale until
-    the next ``start`` cycle revalues each account from Lighter. The cycle runs
-    without target weights, so it only revalues and moves no capital.
+    The executor's positions are stale until the next ``start`` cycle
+    revalues each account from Lighter. That cycle has no target weights, so
+    it moves no capital.
     """
     _master_index, sub_1, sub_2 = tutorial.progress["account_indices"]
-    handover_file = tutorial.record_file.with_name(f"{tutorial.record_file.stem}.nautilus.{sub_1}.json")
     # The key is read into memory only and never logged.
-    handover = json.loads(handover_file.read_text())
-    assert int(handover["account_index"]) == sub_1, f"{handover_file} is not sub-account {sub_1}'s hand-over file"
+    handover = json.loads(tutorial.get_handover_file(sub_1).read_text())
+    assert int(handover["account_index"]) == sub_1, f"Hand-over file is not for sub-account {sub_1}"
 
     # Save the balances before submitting, so a resumed run compares against them.
     if "trader_transfer_before" not in tutorial.progress:
         tutorial.progress["trader_transfer_before"] = {str(index): str(value) for index, value in fetch_lighter_balances(tutorial).items()}
         tutorial.write_progress()
     before = {int(index): Decimal(value) for index, value in tutorial.progress["trader_transfer_before"].items()}
-    total_before = sum(before.values(), Decimal(0))
     asyncio.run(submit_trader_transfer(tutorial, handover, sub_2))
 
     run_start(tutorial)
     after = fetch_lighter_balances(tutorial)
     fee = Decimal(tutorial.progress["trader_transfer_fee_usdc"])
     assert after[sub_2] == before[sub_2] + TRADER_TRANSFER_USDC, f"Sub-account {sub_2} did not receive the transfer"
-    assert sum(after.values(), Decimal(0)) == total_before - fee, "The transfer changed total Lighter equity by more than its fee"
+    assert sum(after.values(), Decimal(0)) == sum(before.values(), Decimal(0)) - fee, "The transfer changed total Lighter equity by more than its fee"
 
     # The executor must now track each account at its Lighter equity.
     state = State.read_json_file(tutorial.state_file)
@@ -588,15 +575,13 @@ def redeem_everything(tutorial: Tutorial) -> None:
 def refund(tutorial: Tutorial) -> None:
     """Check nothing backs investor claims, sweep the Safe and reconcile balances."""
     vault = get_vault(tutorial)
-    safe_address = tutorial.progress["safe_address"]
     assert vault.share_token.fetch_raw_balance_of(tutorial.deployer.address) == 0
     assert vault.vault_contract.functions.totalSupply().call() == 0, "Vault shares are outstanding; do not sweep"
     assert vault.vault_contract.functions.maxRedeem(tutorial.deployer.address).call() == 0, "Claimable redemption left"
     assert vault.vault_contract.functions.maxDeposit(tutorial.deployer.address).call() == 0, "Claimable deposit left"
     for label, address in (("vault", vault.address), ("silo", vault.silo_address)):
         logger.info("%s USDC balance: %s", label, tutorial.usdc.fetch_balance_of(address))
-    swept = sweep_safe_to_owner(tutorial.web3, safe_address, tutorial.deployer, [tutorial.usdc])
-    for transfer in swept:
+    for transfer in sweep_safe_to_owner(tutorial.web3, tutorial.progress["safe_address"], tutorial.deployer, [tutorial.usdc]):
         logger.info("Swept %s %s to the deployer: %s", transfer.amount, transfer.symbol, transfer.tx_hash)
 
     state = State.read_json_file(tutorial.state_file)
@@ -605,8 +590,7 @@ def refund(tutorial: Tutorial) -> None:
     lighter_dust = sum(fetch_lighter_balances(tutorial).values(), Decimal(0))
     start_usdc = Decimal(tutorial.progress["start_usdc"])
     end_usdc = tutorial.usdc.fetch_balance_of(tutorial.deployer.address)
-    end_eth_wei = tutorial.web3.eth.get_balance(tutorial.deployer.address)
-    gas_eth = Decimal(tutorial.progress["start_eth_wei"] - end_eth_wei) / Decimal(10**18)
+    gas_eth = Decimal(tutorial.progress["start_eth_wei"] - tutorial.web3.eth.get_balance(tutorial.deployer.address)) / Decimal(10**18)
     unexplained = start_usdc - end_usdc - fees - lighter_dust
     rows = [
         ("Deployer USDC at start", start_usdc),
@@ -640,9 +624,12 @@ def main() -> None:
         if tutorial.is_done(number):
             logger.info("Step %d already completed: %s", number, title)
             continue
-        log_step(number, title)
+        logger.info("%s", "=" * 72)
+        logger.info("Step %d: %s", number, title)
+        logger.info("%s", "=" * 72)
         phase(tutorial)
-        tutorial.save_progress(number)
+        tutorial.progress["phase"] = number
+        tutorial.write_progress()
     logger.info("Tutorial complete. Public artefacts and protected records are in %s", tutorial.config.run_dir)
 
 
