@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 from eth_defi.compat import native_datetime_utc_now
+from eth_defi.lighter.api import LighterAccounts
 from pytest_mock import MockerFixture
 from web3 import Web3
 
@@ -362,6 +363,10 @@ def test_lighter_vault_valuation_adds_safe_balance_and_external_equity(
         "tradeexecutor.exchange_account.lighter.fetch_lighter_total_equity",
         return_value=SimpleNamespace(get_total=lambda: Decimal("8.75")),
     )
+    mocker.patch(
+        "tradeexecutor.exchange_account.lighter.fetch_lighter_accounts",
+        return_value=LighterAccounts(master_index=EXAMPLE_LIGHTER_ACCOUNT_INDEX, sub_account_indices=()),
+    )
     web3 = object()
 
     # 2. Evaluate the custom Lagoon valuation function at a fixed block.
@@ -386,11 +391,16 @@ def test_negative_lighter_vault_valuation_aborts_before_nav(
     usdc: AssetIdentifier,
     mocker: MockerFixture,
 ) -> None:
-    """Reject negative external equity before a Lagoon NAV can be posted.
+    """Reject negative equity and unlisted accounts before a Lagoon NAV can be posted.
+
+    An owned Lighter account without a position would be left out of the NAV
+    and understate the share price, so it must abort the NAV like an invalid
+    equity value.
 
     1. Mock a valid Safe balance and negative public Lighter equity.
     2. Evaluate the custom NAV function.
     3. Verify the invariant aborts before returning a value to Lagoon.
+    4. Verify a Safe-owned sub-account outside the universe also aborts the NAV.
     """
     # 1. Mock a valid Safe balance and negative public Lighter equity.
     # These reads are mocked because the unit test targets the fail-closed NAV
@@ -400,6 +410,10 @@ def test_negative_lighter_vault_valuation_aborts_before_nav(
     mocker.patch(
         "tradeexecutor.exchange_account.lighter.fetch_lighter_total_equity",
         return_value=SimpleNamespace(get_total=lambda: Decimal("-0.01")),
+    )
+    accounts = mocker.patch(
+        "tradeexecutor.exchange_account.lighter.fetch_lighter_accounts",
+        return_value=LighterAccounts(master_index=124, sub_account_indices=()),
     )
 
     # 2. Evaluate the custom NAV function.
@@ -413,6 +427,11 @@ def test_negative_lighter_vault_valuation_aborts_before_nav(
 
     # 3. Verify the invariant aborts before returning a value to Lagoon.
     with pytest.raises(NegativeLighterEquityError):
+        valuation(None, block_number=7)
+
+    # 4. Verify a Safe-owned sub-account outside the universe also aborts the NAV.
+    accounts.return_value = LighterAccounts(master_index=124, sub_account_indices=(2**47,))
+    with pytest.raises(ValueError, match="not in the strategy universe"):
         valuation(None, block_number=7)
 
 
