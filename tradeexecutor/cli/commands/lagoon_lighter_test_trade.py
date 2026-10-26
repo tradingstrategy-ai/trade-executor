@@ -66,6 +66,7 @@ from tradeexecutor.exchange_account.lighter import (
     LIGHTER_PROTOCOL,
     create_lighter_exchange_account_pair,
     create_lighter_vault_valuation_func,
+    is_lighter_sub_account_pair,
 )
 from tradeexecutor.exchange_account.pricing import ExchangeAccountPricingModel
 from tradeexecutor.exchange_account.state import open_exchange_account_position
@@ -552,16 +553,25 @@ async def wait_for_lighter_withdrawal_claimable(
             await api_client.close()
 
 
-def _get_lighter_position(state: State) -> TradingPosition:
-    """Return the single configured Lighter exchange-account position."""
-    positions = [
+def _get_lighter_positions(state: State) -> list[TradingPosition]:
+    """Return every Lighter exchange-account position, master and sub-accounts."""
+    return [
         position
         for position in state.portfolio.get_open_and_frozen_positions()
         if position.is_exchange_account()
         and position.pair.get_exchange_account_protocol() == LIGHTER_PROTOCOL
     ]
+
+
+def _get_lighter_position(state: State) -> TradingPosition:
+    """Return the Lighter master account position the test trade uses.
+
+    The test trade signs with the master API key, so it trades the master
+    account. Sub-account positions are valued in NAV but left untouched.
+    """
+    positions = [position for position in _get_lighter_positions(state) if not is_lighter_sub_account_pair(position.pair)]
     if len(positions) != 1:
-        raise LighterTestTradeError(f"Expected exactly one Lighter position, got {len(positions)}")
+        raise LighterTestTradeError(f"Expected exactly one Lighter master position, got {len(positions)}")
     return positions[0]
 
 
@@ -862,12 +872,17 @@ def lagoon_lighter_test_trade(
                 sync_model.sync_initial(state, reserve_asset=reserve_asset, reserve_token_price=1.0)
             else:
                 state = store.load()
-            lighter_positions = [
-                position
-                for position in state.portfolio.get_open_and_frozen_positions()
-                if position.is_exchange_account()
-                and position.pair.get_exchange_account_protocol() == LIGHTER_PROTOCOL
-            ]
+            lighter_positions = [position for position in _get_lighter_positions(state) if not is_lighter_sub_account_pair(position.pair)]
+            sub_account_indices = [int(position.pair.get_exchange_account_id()) for position in _get_lighter_positions(state) if is_lighter_sub_account_pair(position.pair)]
+            if sub_account_indices:
+                # Post NAV over every Lighter account the vault owns, not only the traded master.
+                sync_model.calculate_valuation_func = create_lighter_vault_valuation_func(
+                    web3,
+                    vault.safe_address,
+                    reserve_asset,
+                    [operator.account_index, *sub_account_indices],
+                    session,
+                )
             if len(lighter_positions) == 0:
                 pair = create_lighter_exchange_account_pair(
                     quote=reserve_asset,

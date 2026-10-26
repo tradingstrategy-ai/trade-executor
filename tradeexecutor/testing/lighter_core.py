@@ -28,6 +28,7 @@ from typing import Any, Callable
 
 from eth_defi.abi import get_deployed_contract
 from eth_defi.lighter.constants import LIGHTER_L1_CONTRACT
+from eth_defi.lighter.lagoon import request_usdc_withdrawal_from_lighter_account
 from eth_defi.lighter.testing import credit_lighter_pending_balance_on_anvil, register_lighter_account_on_anvil
 from eth_defi.lighter.transfer import LighterTransferError, LighterTransferRecord
 from eth_defi.lighter.valuation import LighterEquity
@@ -268,24 +269,24 @@ class FakeLighterCore:
         transfer = self.transfers.get(tx_hash)
         return transfer.as_record() if transfer and transfer.executed else None
 
-    def wait_for_transaction_receipt_robust(self, web3: Web3, tx_hash: Any, **kwargs: Any) -> Any:
-        """Wait for a real receipt and process a Safe L1 ``withdraw`` like the sequencer.
+    def observe_l1_withdraw(self, web3: Web3, tx_hash: Any) -> None:
+        """Process a mined Safe L1 ``withdraw`` like the sequencer.
 
-        The executor broadcasts ``ZkLighter.withdraw(accountIndex, ...)``
-        through the Safe module before waiting for claimability. The real
-        contract only queues a priority request; the fake debits the account
-        and makes the proceeds claimable, as Lighter does once the batch is
-        proven.
+        The real contract only queues a priority request; the fake debits the
+        account and makes the proceeds claimable, as Lighter does once the
+        batch is proven.
+
+        :param web3:
+            Fork connection.
+        :param tx_hash:
+            Mined Safe module ``performCall`` transaction.
         """
-        receipt = wait_for_transaction_receipt_robust(web3, tx_hash, **kwargs)
-        if receipt["status"] != 1:
-            return receipt
         tx = web3.eth.get_transaction(tx_hash)
         module = get_deployed_contract(web3, "safe-integration/TradingStrategyModuleV0.json", tx["to"])
         function, arguments = module.decode_function_input(tx["input"])
         target = Web3.to_checksum_address(next(value for value in arguments.values() if isinstance(value, str)))
         if function.fn_name != "performCall" or target != Web3.to_checksum_address(LIGHTER_L1_CONTRACT):
-            return receipt
+            return
         call_data = next(value for value in arguments.values() if isinstance(value, (bytes, bytearray)))
         zk = get_deployed_contract(web3, "lighter/ZkLighter.json", target)
         zk_function, zk_arguments = zk.decode_function_input(call_data)
@@ -295,7 +296,36 @@ class FakeLighterCore:
             self._debit(account_index, amount)
             self.withdrawals.append(("l1_withdraw", account_index, amount))
             self._credit_pending_balance(amount)
+
+    def wait_for_transaction_receipt_robust(self, web3: Web3, tx_hash: Any, **kwargs: Any) -> Any:
+        """Wait for a real receipt, then process a Safe L1 ``withdraw`` it carries."""
+        receipt = wait_for_transaction_receipt_robust(web3, tx_hash, **kwargs)
+        if receipt["status"] == 1:
+            self.observe_l1_withdraw(web3, tx_hash)
         return receipt
+
+    def request_usdc_withdrawal_from_lighter_account(self, web3: Web3, hot_wallet: Any, **kwargs: Any) -> str:
+        """Send the real L1 ``withdraw`` request, then process it like the sequencer."""
+        tx_hash = request_usdc_withdrawal_from_lighter_account(web3, hot_wallet, **kwargs)
+        self.observe_l1_withdraw(web3, tx_hash)
+        return tx_hash
+
+    def fetch_lighter_account_by_index(self, session: Any, account_index: int, timeout: float = 30.0) -> dict[str, Any]:
+        """Return a raw public account record."""
+        del session, timeout
+        equity = self.get_account(int(account_index)).get_equity()
+        return {
+            "account_index": equity.account_index,
+            "collateral": str(equity.collateral),
+            "total_asset_value": str(equity.total_asset_value),
+            "available_balance": str(equity.available_balance),
+            "positions": [],
+        }
+
+    def fetch_lighter_withdrawal_delay(self, session: Any, timeout: float = 30.0) -> int:
+        """Return a fixed secure-withdrawal delay estimate."""
+        del session, timeout
+        return 60
 
     # ----- Installation -----
 
@@ -326,4 +356,8 @@ class FakeLighterCore:
             (f"{verification}.wait_for_lighter_collateral", self.wait_for_lighter_collateral),
             (f"{verification}.fetch_lighter_funding_transfer", self.fetch_lighter_funding_transfer),
             ("tradeexecutor.cli.commands.lagoon_redeem.fetch_lighter_total_equity", self.fetch_lighter_total_equity),
+            ("tradeexecutor.cli.commands.lighter_move_funds.fetch_lighter_total_equity", self.fetch_lighter_total_equity),
+            ("tradeexecutor.cli.commands.lighter_move_funds.fetch_lighter_account_by_index", self.fetch_lighter_account_by_index),
+            ("tradeexecutor.cli.commands.lighter_move_funds.fetch_lighter_withdrawal_delay", self.fetch_lighter_withdrawal_delay),
+            ("tradeexecutor.cli.commands.lighter_move_funds.request_usdc_withdrawal_from_lighter_account", self.request_usdc_withdrawal_from_lighter_account),
         ]

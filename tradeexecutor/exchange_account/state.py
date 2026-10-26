@@ -204,6 +204,26 @@ def create_exchange_account_funding(
     return trade
 
 
+def allocate_exchange_account_balance_update_id(state: State, position: TradingPosition) -> int:
+    """Allocate a balance update id that is unique in the portfolio and the position.
+
+    :py:class:`~tradeexecutor.exchange_account.valuation.ExchangeAccountValuator`
+    numbers updates per position, without the portfolio counter. Writers that
+    use the portfolio counter on the same position must skip past those ids,
+    or a later update would overwrite an earlier one.
+
+    :param state:
+        Strategy state owning the portfolio counter.
+    :param position:
+        Exchange-account position receiving the update.
+    :return:
+        New balance update id.
+    """
+    event_id = max(state.portfolio.next_balance_update_id, max(position.balance_updates.keys(), default=0) + 1)
+    state.portfolio.next_balance_update_id = event_id + 1
+    return event_id
+
+
 def _book_exchange_account_balance_update(
     *,
     state: State,
@@ -227,8 +247,7 @@ def _book_exchange_account_balance_update(
     :return:
         The stored balance update.
     """
-    event_id = state.portfolio.next_balance_update_id
-    state.portfolio.next_balance_update_id += 1
+    event_id = allocate_exchange_account_balance_update_id(state, position)
     event = BalanceUpdate(
         balance_update_id=event_id,
         position_type=BalanceUpdatePositionType.open_position,

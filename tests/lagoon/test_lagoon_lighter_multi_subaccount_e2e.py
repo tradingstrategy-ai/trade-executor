@@ -22,7 +22,9 @@ from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
 from eth_defi.lighter.api import LIGHTER_MIN_MAINNET_USDC
 from eth_defi.lighter.pubkey import MIN_API_KEY_INDEX
 from eth_defi.provider.anvil import AnvilLaunch
+from eth_defi.hotwallet import HotWallet
 from eth_defi.provider.multi_provider import create_multi_provider_web3
+from eth_defi.safe.sweep import sweep_safe_to_owner
 from eth_defi.testing.anvil_fork_pool import AnvilForkPool
 from eth_defi.testing.evm_snapshot_fixture import evm_snapshot_revert
 from eth_defi.testing.fork_blocks import ETHEREUM_MIDNIGHT_BLOCK
@@ -159,9 +161,10 @@ def test_cli_lagoon_lighter_multi_subaccount_lifecycle(
     4. Run ``start`` with 50/50 weights and a transfer fee: the master funds both sub-accounts.
     5. Run ``start`` with 75/25 weights: sub-account 2 is withdrawn to the Safe with the key-free L1 path, then redeposited.
     6. Interrupt the next funding transfer, check ``start`` refuses to continue, and reconcile it with ``correct-accounts``.
-    7. Lock margin on sub-account 1 and check a withdrawal is capped to its free collateral.
+    7. Lock margin on sub-account 1 and check a withdrawal is capped to its free collateral; withdraw from sub-account 2 with ``lighter-move-funds``.
     8. Request a redemption larger than the Safe while the master is empty and check it is funded from a sub-account.
     9. Drain every account for a full redemption, including a master API withdrawal, and redeem with ``lagoon-redeem``.
+    10. Sweep stray USDC and ETH from the emptied Safe back to the deployer, as the mainnet tutorial does.
     """
     deployer = Account.from_key(DEPLOYER_PRIVATE_KEY)
     web3_ethereum.provider.make_request("anvil_setBalance", [deployer.address, hex(100 * 10**18)])
@@ -332,6 +335,14 @@ def test_cli_lagoon_lighter_multi_subaccount_lifecycle(
     _run(cli, "start")
     assert fake_lighter_core.withdrawals[-1] == ("l1_withdraw", sub_1, free_collateral)
     fake_lighter_core.get_account(sub_1).margin_in_use = Decimal(0)
+    manual_amount = Decimal(2)
+    safe_before_manual = usdc.fetch_balance_of(safe_address)
+    mocker.patch("tradeexecutor.cli.commands.lighter_move_funds.typer.prompt", side_effect=["w", str(manual_amount)])
+    mocker.patch("tradeexecutor.cli.commands.lighter_move_funds.typer.confirm", return_value=True)
+    _run(cli, "lighter-move-funds", "--lighter-account-index", str(sub_2))
+    assert fake_lighter_core.withdrawals[-1] == ("l1_withdraw", sub_2, manual_amount)
+    assert usdc.fetch_balance_of(safe_address) == safe_before_manual + manual_amount
+    _run(cli, "check-accounts")
 
     # 8. Request a redemption larger than the Safe while the master is empty and check it is funded from a sub-account.
     os.environ["LIGHTER_SUB_ACCOUNT_WEIGHTS"] = ""
@@ -371,3 +382,15 @@ def test_cli_lagoon_lighter_multi_subaccount_lifecycle(
     assert usdc.fetch_raw_balance_of(safe_address) <= 2
     state = State.read_json_file(state_file)
     assert not any(trade.is_exchange_account_transfer_pending() for trade in state.portfolio.get_all_trades())
+
+    # 10. Sweep stray USDC and ETH from the emptied Safe back to the deployer, as the mainnet tutorial does.
+    stray_tx = usdc.contract.functions.transfer(safe_address, usdc.convert_to_raw(Decimal(3))).transact({"from": USDC_WHALE[1]})
+    assert_transaction_success_with_explanation(web3_ethereum, stray_tx)
+    web3_ethereum.provider.make_request("anvil_setBalance", [safe_address, hex(10**16)])
+    owner = HotWallet(deployer)
+    usdc_before_sweep = usdc.fetch_raw_balance_of(deployer.address)
+    swept = sweep_safe_to_owner(web3_ethereum, safe_address, owner, [usdc])
+    assert [transfer.symbol for transfer in swept] == ["USDC", "ETH"]
+    assert usdc.fetch_raw_balance_of(safe_address) == 0
+    assert web3_ethereum.eth.get_balance(safe_address) == 0
+    assert usdc.fetch_raw_balance_of(deployer.address) - usdc_before_sweep >= usdc.convert_to_raw(Decimal(3))
