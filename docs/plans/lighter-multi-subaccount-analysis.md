@@ -183,7 +183,40 @@ with Lighter Core. Status on 2026-10-26: **devnet only**, opened on
 mocked ZK proofs, escape hatch not functional. Chain id `19529`
 (`0x4C49`), gas paid in ETH. No mainnet date is published.
 
-What the interop design means for this work, from the Lighter EVM docs:
+### Working assumption (pending verification)
+
+**Assume the future Lighter EVM mainnet deployment is the same as the current
+Ethereum mainnet deployment.** That is: a Lagoon vault and its Safe are
+deployed on Lighter EVM, the Safe owns one Lighter master account plus
+sub-accounts, the custody contract exposes the same `deposit`, `withdraw`,
+`withdrawPendingBalance` and `changePubKey` interface as `ZkLighter` on
+Ethereum, Nautilus trades the sub-accounts with API keys against the same
+Core, and the executor moves capital with the same L2 transfer and secure
+withdrawal flows. Under this assumption the whole Ethereum design in this
+document carries over unchanged, and Lighter EVM is only a second
+`LighterDeployment` with different addresses and a different chain id.
+
+Pending items that must be confirmed once Lighter EVM mainnet is live:
+
+| Pending item | Why it matters |
+|--------------|----------------|
+| The custody contract on Lighter EVM has the same selectors and calldata layout as `ZkLighter` (`0x8a857083`, `0xd20191bd`, `0x2f25807e`, `0x17010c68`). | `LighterLib` validates by selector and decodes calldata by position. Same layout means no guard change; a different layout, or the predeploy interface (`sendToCore`, `sendToEvm`), means a new `LighterEvmLib`. |
+| Deposits from a Lighter EVM Safe credit the Safe's master account and `withdrawPendingBalance` returns funds to the Safe address. | The guard's receiver checks assume the Safe is both deposit target and claim owner. |
+| An L1 style `withdraw(subAccountIndex)` from the Lighter EVM Safe is accepted for the Safe's sub-accounts. | This is the key-free egress path recommended above. |
+| `changePubKey(subAccountIndex, ...)` from the Lighter EVM Safe registers sub-account keys. | Deployment-time key registration via Safe MultiSend depends on it. |
+| The Lighter EVM-controlled master account is a distinct account from the Ethereum-controlled one for the same address. | Documented in the devnet interop docs. The vault's universe must list the Lighter EVM account indices, not the Ethereum ones, and NAV must not mix the two. |
+| Lagoon, Safe singleton and `TradingStrategyModuleV0` are deployable on chain 19529 and investors can hold USDC there. | External dependency on Lagoon and the bridge. |
+| Secure withdrawal delay and transfer fee on Lighter EVM match Ethereum, or new values are known. | `LighterRoutingConfig.withdrawal_timeout` and the cash policy's minimum transfer size depend on them. |
+
+If the assumption fails on any row, fall back to the predeploy-based design in
+the next two tables.
+
+### Interop design as documented for the devnet
+
+What the interop design means for this work, from the Lighter EVM docs. These
+rows describe the **devnet predeploy interface**, which differs from the
+Ethereum `ZkLighter` interface; they only apply if the working assumption
+above does not hold.
 
 | Capability | Lighter EVM mechanism | Effect on the multi-subaccount design |
 |------------|----------------------|----------------------------------------|
@@ -196,21 +229,25 @@ What the interop design means for this work, from the Lighter EVM docs:
 | Reading Core state | `READ_CORE` precompile at `0x66…00` for accounts, balances, positions and request status. | On-chain NAV becomes possible, which would let the Lagoon valuation be computed without the off-chain API. |
 | Failure modes | A reverted delivery is not retried; for `sendToCore` the unaccepted amount "is lost"; for Core → EVM the debit is not restored. | Transfer verification must check `acceptedAmount` and request status, not only the EVM receipt. |
 
-Gap table for a Lagoon vault on Lighter EVM:
+Gap table for a Lagoon vault on Lighter EVM. Complexity is given for both
+cases: the working assumption holding (same deployment as Ethereum) and the
+devnet predeploy interface being what ships.
 
-| Area | Status now | Updates needed | Complexity |
-|------|------------|----------------|------------|
-| Chain availability | Devnet, gated, mocked proofs. | Wait for public testnet and mainnet. Nothing production-grade can be built yet. | Blocked |
-| Lagoon and Safe contracts | Lagoon factory and Safe singleton exist on Ethereum, Base, Arbitrum and the other chains eth_defi supports. Nothing on chain 19529. | Lagoon team must deploy the protocol; Safe contracts must be deployed; eth_defi `LAGOON_FACTORY`-style constants, chain config, USDC address and RPC middleware for chain 19529 added. | High, external dependency |
-| Guard | `LighterLib` validates the Ethereum `ZkLighter` selectors only. | New `LighterEvmLib` (mirroring `HypercoreVaultLib`, the HyperEVM analogue) covering `sendToCore` (`to` must be the Safe, asset allowlist), `sendToEvm` (`evmRecipient` must be the Safe), and optionally `changePubKey` with a sub-account-only policy. Library linking, ABI refresh, fork tests against the devnet predeploys. | High |
-| eth_defi helpers | Ethereum-only session, contract addresses and whitelisting. | `LighterDeployment.create_lighter_evm()`, interop manager ABIs, `accountsByEvmAddress` discovery, request-status reads via `READ_CORE`, deposit and withdraw helpers through the module. | Medium |
-| trade-executor routing | `LighterRouting` hard-codes the `ZkLighter` flow and the SDK secure withdrawal. | A second routing implementation keyed by deployment, selected from the pair's `exchange_deployment` metadata. Sub-account egress becomes a single Safe transaction. | Medium |
-| Investor side | Lagoon investors deposit USDC on Ethereum today. | Investors would need USDC on Lighter EVM (L1-native USDC appears as a wrapper token minted by the gateway). Front-end and bridge UX are outside this repository. | High, external |
+| Area | Status now | Updates needed | Complexity (assumption holds) | Complexity (predeploy interface) |
+|------|------------|----------------|-------------------------------|----------------------------------|
+| Chain availability | Devnet, gated, mocked proofs. | Wait for public testnet and mainnet. Nothing production-grade can be built yet. | Blocked | Blocked |
+| Lagoon and Safe contracts | Lagoon factory and Safe singleton exist on Ethereum, Base, Arbitrum and the other chains eth_defi supports. Nothing on chain 19529. | Lagoon team must deploy the protocol; Safe contracts must be deployed; eth_defi `LAGOON_FACTORY`-style constants, chain config, USDC address and RPC middleware for chain 19529 added. | High, external dependency | High, external dependency |
+| Guard | `LighterLib` validates the Ethereum `ZkLighter` selectors only; the custody contract address is an allow-set entry, not hard-coded. | Assumption holds: call `whitelistLighter()` with the Lighter EVM custody contract and USDC; no Solidity change. Otherwise: new `LighterEvmLib` (mirroring `HypercoreVaultLib`, the HyperEVM analogue) covering `sendToCore` (`to` must be the Safe, asset allowlist), `sendToEvm` (`evmRecipient` must be the Safe), and optionally `changePubKey` with a sub-account-only policy; library linking, ABI refresh, fork tests against the predeploys. | None | High |
+| eth_defi helpers | `LighterDeployment` is Ethereum-only (`create_ethereum()`), with chain and address validation in `_validate_lighter_api_key_deployment_config`. | Assumption holds: add `LighterDeployment.create_lighter_evm()` with the chain id, custody contract, USDC and API URL, relax the Ethereum-only validation, add a `LighterSession` for the Lighter EVM Core API. Otherwise also: interop manager ABIs, `accountsByEvmAddress` discovery, request-status reads via `READ_CORE`, deposit and withdraw helpers through the module. | Low | Medium |
+| trade-executor routing | `LighterRouting` hard-codes the `ZkLighter` flow and the SDK secure withdrawal. `_auto_discover_lighter` enforces chain 1 and native USDC. | Assumption holds: parameterise routing and discovery by `LighterDeployment` and the pair's `exchange_deployment` metadata, drop the chain-1 check. Otherwise: a second routing implementation where sub-account egress is a single Safe transaction via `sendToEvm`. | Low | Medium |
+| Investor side | Lagoon investors deposit USDC on Ethereum today. | Investors would need USDC on Lighter EVM (L1-native USDC appears as a wrapper token minted by the gateway). Front-end and bridge UX are outside this repository. | High, external | High, external |
 
-Recommendation: design the Ethereum multi-subaccount work so that the custody
-layer (deposit, withdraw, transfer) is behind a per-deployment routing
-interface, and treat Lighter EVM as a second deployment of the same abstract
-model once it reaches mainnet. Do not block the Ethereum work on it.
+Recommendation: build the Ethereum multi-subaccount work under the working
+assumption, keeping every Lighter address, chain id and session behind
+`LighterDeployment` so that Lighter EVM becomes a second deployment of the
+same model. Keep the predeploy-based fallback design in this document, but do
+not build it until mainnet confirms or refutes the assumption. Do not block
+the Ethereum work on it.
 
 ## Open questions
 
@@ -230,6 +267,9 @@ model once it reaches mainnet. Do not block the Ethereum work on it.
    Plus allows 16 with a 0.005% fee.
 6. Which state migration strategy is used for the existing `lighter-ai`
    production state when the master pair's identity changes?
+7. Pending: does the Lighter EVM mainnet deployment match the Ethereum
+   deployment as assumed above? Check the pending-items table in the Lighter
+   EVM section as soon as mainnet contract addresses and ABIs are published.
 
 ## References
 
