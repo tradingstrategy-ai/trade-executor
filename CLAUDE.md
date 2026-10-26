@@ -175,6 +175,8 @@ source .local-test.env && PYTHONPATH="$(pwd):$PYTHONPATH" poetry run pytest test
 
 - Always use global, level imports, unless facing circular import exception. NEVER USE FUNCTION LOCAL IMPORTS UNLESS TOLD SO OR ABSOLUTE NECESSARAY TO AVOID CIRCULAR IMPORTS.
 - Using `assert` is ok, we never run with `python -O` 
+- Never write `del argument` or similar statements to mark an argument as unused. They only silence linters and read as if the value mattered. If a function takes an argument it does not use because an interface requires it, say so in the docstring and leave the body alone.
+- Strategy modules follow `docs/strategy-parameters.md`: one module-level variable, `trading_strategy_engine_version`, and everything else in `Parameters`. No deployment output, protocol constants, test knobs or `os.environ` reads in `Parameters`.
 
 ### CLI configuration
 
