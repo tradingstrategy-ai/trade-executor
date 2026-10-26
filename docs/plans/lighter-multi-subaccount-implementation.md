@@ -57,20 +57,88 @@ Out of scope:
 
 ## Design decisions
 
-### Account roles and pair identity
+### One TradingPosition per Lighter account
 
-- Every Lighter account becomes one exchange-account pair. The account index
-  is encoded into `pool_address` and `exchange_address` as
-  `0x` + 40 hex digits derived from the index, and `internal_id` is the
-  account index, the same approach `derive.py` uses for sub-account ids.
+Every Lighter account, the master and each sub-account, is one
+exchange-account `TradingPairIdentifier` and one open `TradingPosition` in
+the portfolio. The position quantity is that account's USDC equity, kept in
+sync by `ExchangeAccountSyncModel` exactly as today, so NAV, PnL, account
+checks and reporting work per account.
+
+Pair identity rules. `TradingPairIdentifier.__eq__` and `__hash__` compare
+only `base.address`, `quote.address` and `fee`, and `get_identifier()` returns
+`pool_address`. Today every Lighter pair shares `LIGHTER_L1_CONTRACT` as base
+address and pool address with `internal_id = 1`, so two Lighter pairs compare
+equal and every `p.pair == pair` lookup collides. Derive encodes only
+`pool_address`, which is not enough, and no test has ever put two
+exchange-account pairs of one protocol in one portfolio. The rules are:
+
+- **Base asset address is unique per account.** It is a synthetic 20-byte
+  address `0x4c49` ("LI") followed by the account index as 36 hex digits,
+  so it is readable in logs and cannot collide with a real token or with
+  another account. `pool_address` and `exchange_address` use the same value.
+  The old `LIGHTER_L1_CONTRACT` address moves to `other_data["lighter_l1_contract"]`.
+- **`internal_id` is unique and namespaced.** `internal_id =
+  LIGHTER_EXCHANGE_ACCOUNT_INTERNAL_ID_OFFSET + account_index` with the offset
+  at `10**15`, above every Trading Strategy dataset pair id and above the
+  `2**48` Lighter index range, so a mixed universe with GMX or Derive pairs
+  (both hard-coded to `internal_id = 1`) and dataset pairs keeps the
+  duplicate-id assertion in `create_pair_universe_from_code` satisfied.
+- **Ticker and description carry the account.** `get_ticker()` gives
+  `LIGHTER-<index>-USDC` and `get_human_description()` gives
+  `Lighter master account 748071` or `Lighter sub-account 281474976710600
+  (trend)`, so `show-positions`, `check-accounts` rows and logs are
+  distinguishable.
 - `other_data` gains `lighter_account_role` (`master` or `sub_account`),
   `lighter_master_account_index` and an optional `lighter_strategy_label` for
   the Nautilus strategy name. `exchange_subaccount_id` keeps the account index
-  for compatibility with `get_exchange_account_id()`.
-- The existing single-account identity (`LIGHTER_L1_CONTRACT` as pool address,
-  `internal_id = 1`) is retained only through a one-off state migration in
+  for `get_exchange_account_id()`.
+- Position creation is per pair: `open_exchange_account_position()` is called
+  once for every pair whose position is missing, both by strategies and by
+  `create_missing_exchange_account_positions()` in account correction. The
+  "any exchange-account position exists" guard in `lighter-ai.py` is replaced
+  by a per-pair check.
+- The existing single-account identity is migrated once with
   `repair --migrate-lighter-pair-identity` for the current `lighter-ai`
-  deployment. New deployments never produce it.
+  production state: it rewrites the open position's pair, its trades and
+  balance updates, and the universe-side pair must match after the strategy
+  module is updated. New deployments never produce the old identity.
+- Derive keeps its current identity in this work; a follow-up can apply the
+  same base-address rule if Derive ever needs two sub-accounts in one
+  portfolio.
+
+### Changes required for one position per account
+
+The table lists every place that assumes one exchange-account position, with
+the change this plan makes. Places that already iterate every position (NAV
+summation, `get_position_by_id`, `find_position_for_trade`, `check_if_clean`,
+`ExchangeAccountSyncModel`, `ExchangeAccountValuator`,
+`_build_exchange_account_checks`, freeze rules, `reconcile_verified_lighter_transfers`,
+trade ordering, `PositionManager.get_exchange_account_available_balance`) need
+no change and are not listed.
+
+| Location | Problem today | Change |
+|----------|---------------|--------|
+| `identifier.py` `__eq__`/`__hash__`, `get_identifier()` | All Lighter pairs equal | Solved by the unique base address; add a regression test that two Lighter pairs are unequal, hash differently and have different identifiers. |
+| `portfolio.py` `get_position_by_trading_pair`, `get_open_position_for_pair`, `get_closed_positions_for_pair`, `get_frozen_position`, `get_equity_for_pair` | Match on `p.pair == pair` or `pool_address`, so the second account hits the first position | Solved by identity; covered by a test with two open Lighter positions. |
+| `portfolio.py` `get_all_traded_pairs`, `get_single_pair` | Set de-dupe collapses N pairs to one | Solved by identity; `get_single_pair()` must now raise for a multi-account universe, which the test strategy no longer calls. |
+| `Portfolio.create_trade` without `position=` | Attaches the second account's opening trade to the first position | `open_exchange_account_position()` passes the pair with unique identity; also assert the found position's pair identifier equals the requested one. |
+| `trading_strategy_universe.py` duplicate `internal_id` assert; `dex_data_translation.py` pair cache; `alpha_model.py` signals keyed by `internal_id` | `internal_id = 1` for every account | Namespaced `internal_id`. |
+| `lighter.py` `validate_lighter_exchange_account_pairs` | Raises on more than one pair | Keep the single-protocol rule, require exactly one `master` role, require unique account indices. Update `test_lighter_exchange_account.py`. |
+| `ethereum_protocol_adapters.py` `_auto_discover_lighter` and `lighter.py` `create_lighter_vault_valuation_func` | Lagoon NAV = Safe + `pairs[0]` only; sub-account equity would be missing from posted NAV | Valuation function takes all account indices and sums one by-L1-address snapshot; fails closed if any account is missing. This is NAV-critical and is the first assertion in the e2e test. |
+| `lighter_routing.py` `_prepare_deposit` | L1 deposit funds the master; verification waits on `trade.pair`'s account | Deposit trades are only accepted on the master pair; a sub-account funding is an internal transfer trade. |
+| `lighter_routing.py` `_prepare_withdrawal` | Uses the single operator record's account index, not `trade.pair` | Withdrawals are only accepted on the master pair; the signer is looked up from `LighterOperatorRecords` by `trade.pair.get_exchange_account_id()` and must match. |
+| `account_correction.py` `create_missing_exchange_account_positions` | Second pair is treated as existing | Solved by identity; the 1 USD reserve placeholder per auto-created position becomes N USD, reconciled by the Lagoon reserve sync and documented. |
+| `account_correction.py` `_format_account_check_row` | Every Lighter row shows the same index, address and ticker | Print the account index and role from the pair; `holding_address` `lighter:<id>` is already set. |
+| `exchange_account/valuation.py` `balance_update_id` | Per-position `max + 1` versus the portfolio-wide counter in the sync model | Use `portfolio.next_balance_update_id` in both places. |
+| `state.py` `is_good_pair` blacklist | Keyed by base asset, so one blacklist hits all accounts | Solved by the unique base address. |
+| `lighter_move_funds.py` `_get_lighter_position` | Requires exactly one position matching the operator index | `--lighter-account-index` selects the position; default is the master. |
+| `lagoon_lighter_test_trade.py` | "Expected exactly one" Lighter position | Select the master position explicitly; the test trade stays a master-account test. |
+| `lagoon_redeem.py` | Single `LIGHTER_ACCOUNT_INDEX` for the 5 USDC ignore rule | Read all account indices from state positions and apply the threshold to the sum. |
+| `check_accounts.py` | Fails through the validator | Follows the validator change. |
+| `strategies/lighter-ai.py`, `lighter_cash_management_strategy.py` | `any(is_exchange_account)` and `get_single_pair()` | Per-pair position creation; new multi-account strategy helper. |
+| `exchange_account/state.py` `create_exchange_account_transfer`, `mark_trade_success`, reserve allocation | Model only Safe ↔ account moves | New internal transfer trade kind below. |
+| `tests/exchange_account/` | No test with two exchange-account pairs in one universe | Add `test_lighter_multi_account_positions.py`: two pairs in one universe, two positions, sync updates both, NAV sums both, lookups by pair return the right position. |
 
 ### Custody flows
 
@@ -177,7 +245,7 @@ and `lighter_rebalance_band: Decimal`.
 
 | Item | File | Notes |
 |------|------|-------|
-| Pair identity | `tradeexecutor/exchange_account/lighter.py` | `create_lighter_exchange_account_pair(quote, account_index, role, master_account_index, strategy_label)`, `create_lighter_exchange_account_pairs(quote, accounts)`. Validator keeps the single-protocol rule, drops the single-pair rule, and requires exactly one master. |
+| Pair identity and positions | `tradeexecutor/exchange_account/lighter.py`, `tradeexecutor/state/identifier.py` | `create_lighter_exchange_account_pair(quote, account_index, role, master_account_index, strategy_label)` with the unique synthetic base address and namespaced `internal_id`; `create_lighter_exchange_account_pairs(quote, accounts)`; ticker and description per account. Validator keeps the single-protocol rule, drops the single-pair rule, requires exactly one master and unique indices. One `TradingPosition` per pair, created per pair by strategies and account correction. |
 | NAV | `lighter.py`, `ethereum_protocol_adapters.py` | `create_lighter_vault_valuation_func(web3, safe_address, reserve_asset, account_indices, session)` sums one by-L1-address snapshot; fails closed if any index is missing. `_auto_discover_lighter` passes all indices. |
 | Operator records | `tradeexecutor/exchange_account/lighter_operator.py` | `LighterOperatorRecords`, loader for the new and legacy shapes, one `SignerClient` per account, `request_lighter_transfer()` wrapper. Delete the duplicate in `lagoon_lighter_test_trade.py`. |
 | Transfer state | `tradeexecutor/exchange_account/state.py`, `tradeexecutor/state/trade.py` | `TradeFlag.internal_account_transfer`, `create_internal_account_transfer(state, source_position, destination_position, amount, fee, ...)` returning both trades, `complete_internal_account_transfer()`, `is_internal_account_transfer_pending()`. |
@@ -327,7 +395,13 @@ per-sub-account hand-over files.
   band and minimum suppression; deterministic ordering.
 - State: internal transfer trade pair creation, completion, pending detection,
   fee balance update, `check_if_clean` behaviour.
-- Pair identity: distinct identities per account index, migration helper.
+- Pair identity and positions: two Lighter pairs are unequal, hash
+  differently and have distinct identifiers and `internal_id`s; two open
+  positions coexist and every `Portfolio` pair lookup returns the right one;
+  `open_exchange_account_position()` for the second pair opens a second
+  position; the sync model updates both with unique balance update ids;
+  `get_single_pair()` raises; the migration helper rewrites the legacy
+  identity.
 
 ### trade-executor Typer black-box integration test
 
@@ -346,9 +420,11 @@ Steps:
    Nautilus keys, and no private key appears in stdout, logs, reports or the
    runtime artefact.
 2. `init`, then `correct-accounts --process-redemption`. Assert three
-   exchange-account positions with distinct pair identities and the
-   bootstrap accounting (20 USDC subscribed, 1 USDC on the master plus the
-   seeded sub-account balances).
+   exchange-account positions, one per account, with distinct pair
+   identities, tickers and `internal_id`s, each holding its own account's
+   equity, and the bootstrap accounting (20 USDC subscribed, 1 USDC on the
+   master plus the seeded sub-account balances). Assert `check-accounts`
+   prints three distinguishable rows.
 3. Subscribe 200 USDC through Lagoon and settle with `lagoon-settle`.
 4. `start` with `RUN_SINGLE_CYCLE` and `LIGHTER_SUB_ACCOUNT_WEIGHTS=0.5,0.5`.
    Assert the cycle produced one real Safe → master deposit on the fork and
@@ -503,3 +579,6 @@ the same pull request as the behaviour it covers.
 3. The e2e test needs the pinned `lighter-sdk` only for key generation and
    the native signer's public-key derivation; confirm the fake core can skip
    signature verification without importing the SDK in tests.
+4. Should Derive's pair identity be fixed the same way in this work, so that
+   the `exchange_account` kind has one identity rule for all protocols? This
+   plan leaves Derive unchanged.
