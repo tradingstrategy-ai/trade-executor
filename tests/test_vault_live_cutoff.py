@@ -72,6 +72,9 @@ def test_verified_snapshot_with_sparse_four_hour_data(
     monkeypatch.setattr(trading_strategy_universe, "load_multiple_vaults", lambda *args, **kwargs: (
         [], pd.DataFrame([{"chain_id": 9999, "address": address, "pair_id": 1}]),
     ))
+    # Capture diagnostics context without requiring unrelated vault metadata.
+    stale_history_logger = Mock()
+    monkeypatch.setattr(vault_checks, "log_stale_vault_candle_data", stale_history_logger)
     dataset = load_partial_data(
         client=client,
         execution_context=ExecutionContext(ExecutionMode.unit_testing_trading),
@@ -81,6 +84,8 @@ def test_verified_snapshot_with_sparse_four_hour_data(
             history_period=datetime.timedelta(days=30),
             end_at=slot - datetime.timedelta(microseconds=1),
             vault_price_snapshot=snapshot,
+            vault_history_min_tvl=7500,
+            vault_history_held_addresses=frozenset({address}),
         ),
         liquidity=True,
         vaults=object(),
@@ -99,6 +104,8 @@ def test_verified_snapshot_with_sparse_four_hour_data(
     assert not prices.forward_filled.any()
     assert not prices.close.isna().any()
     data_client.session.get.assert_called_once()
+    assert stale_history_logger.call_args.kwargs["min_tvl"] == 7500
+    assert stale_history_logger.call_args.kwargs["held_vault_addresses"] == frozenset({address})
 
 
 def test_resolve_live_end_timestamps_daily_rounding(

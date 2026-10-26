@@ -319,7 +319,7 @@ class PandasTraderRunner(StrategyRunner):
                 self.update_strategy_thinking_image_data(small_figure_combined, large_figure_combined)
 
             else:
-                logger.warning("Charts not yet available for this strategy type. Pair count: %d", pair_count)
+                logger.info("Skipping legacy technical images for %d pairs; this renderer supports at most 5 pairs", pair_count)
 
 
         except Exception as e:

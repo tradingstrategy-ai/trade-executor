@@ -3192,6 +3192,8 @@ def load_partial_data(
                     vault_candle_df=vault_candle_df,
                     vault_pairs_df=vault_pairs_df,
                     source_vault_price_df=filtered_website_vault_prices_df,
+                    min_tvl=universe_options.vault_history_min_tvl,
+                    held_vault_addresses=universe_options.vault_history_held_addresses,
                 )
 
         if vault_permission_history_path is not None:

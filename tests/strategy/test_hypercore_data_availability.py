@@ -119,13 +119,17 @@ def test_hypercore_startup_builds_universe_before_future_slot(tmp_path: Path, mo
         client=object(),
         store=SimpleNamespace(sync=lambda state: None),
         universe_options=UniverseOptions(),
+        parameters={"min_tvl_usd": 7500},
         tick_offset=datetime.timedelta(0),
     )
+    loop._get_live_universe_options = lambda state: ExecutionLoop._get_live_universe_options(loop, state)
 
     def warm_up() -> None:
         """Stop after the universe build entry point proves start-up reached it."""
         assert loop.universe_options.vault_price_snapshot == tmp_path / "vault-prices.parquet"
         assert loop.universe_options.end_at <= loop_module.native_datetime_utc_now()
+        assert loop.universe_options.vault_history_min_tvl == 7500
+        assert loop.universe_options.vault_history_held_addresses == frozenset()
         raise RuntimeError("universe build reached before slot readiness")
 
     loop.warm_up_live_trading = warm_up
