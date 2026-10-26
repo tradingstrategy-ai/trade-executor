@@ -3,6 +3,7 @@
 - Handle input parameters in single-run and grid search cases
 """
 import datetime
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Tuple, Iterable, TypedDict
 
@@ -15,6 +16,21 @@ from web3.datastructures import MutableAttributeDict
 from tradeexecutor.state.types import USDollarAmount, Percent
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.default_routing_options import TradeRouting
+
+
+def get_slippage_tolerance(parameters: Mapping | None) -> Percent | None:
+    """Read the configured tolerance for CLI execution and position managers.
+
+    Both parameter names express a fraction: ``0.006`` means 0.6%. Prefer
+    ``slippage_tolerance`` when both names are set. Callers retain their own
+    validation and defaults when no value is configured.
+    """
+    if parameters is None:
+        return None
+    tolerance = parameters.get("slippage_tolerance")
+    if tolerance is None:
+        tolerance = parameters.get("slippage_tolerance_pct")
+    return tolerance
 
 
 class StrategyParametersMissing(Exception):
