@@ -58,20 +58,12 @@ jobs:
         run: |
           poetry install -E execution -E web-server -E qstrader -E demeter
 
-      # pnpm needed to compile Enzyme
-      # We need version 7 to be exact.
-      - name: Install pnpm
-        run: |
-          curl -fsSL https://get.pnpm.io/install.sh | env PNPM_VERSION=7.27.1 sh -
-          PNPM_HOME="/home/runner/.local/share/pnpm"
-          # https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#adding-a-system-path
-          echo $PNPM_HOME >> $GITHUB_PATH
-
       # Prepare .sol files for deploy_contract_with_forge() tests.
-      # As .sol building is needed when we test contracts with deploy with Etherscan verification
+      # Legacy in-house ABIs are already shipped by eth-defi. Its in-house
+      # target depends on the removed Enzyme build; only rebuild guard sources.
       - name: Prepare .sol source files
         run: |
-            (cd deps/web3-ethereum-defi && make guard in-house)
+            (cd deps/web3-ethereum-defi && make guard)
 
       # Speed up testing by not downloading integration test data from the production server
       # https://github.com/actions/cache
