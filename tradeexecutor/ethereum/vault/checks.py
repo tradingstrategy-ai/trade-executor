@@ -497,15 +497,26 @@ def log_stale_vault_candle_data(
     source_vault_price_df: pd.DataFrame | None = None,
     now: datetime.datetime | None = None,
     stale_tolerance: datetime.timedelta = datetime.timedelta(hours=24),
+    min_tvl: USDollarAmount | None = None,
+    held_vault_addresses: frozenset[str] | None = None,
 ) -> None:
-    """Log stale vault candle data as a single warning for live startup diagnostics."""
+    """Warn about stale history that can affect the live strategy.
+
+    The live loop supplies its TVL floor and current custody addresses through
+    UniverseOptions. Unheld vaults whose metadata and latest historical TVL are
+    both below that floor remain in the universe and are summarised at INFO.
+    Held vaults and unknown eligibility or holdings retain warnings.
+    """
     if vault_candle_df is None or len(vault_candle_df) == 0:
         return
 
     reference_now = pd.Timestamp(now or native_datetime_utc_now())
     stale_entries = []
+    archival_entries = []
+    held_addresses = {address.lower() for address in held_vault_addresses} if held_vault_addresses is not None else None
     checked_vault_count = 0
     source_max_timestamp_by_pair_id: dict[int, pd.Timestamp] = {}
+    source_last_tvl_by_pair_id: dict[int, float] = {}
 
     if (
         source_vault_price_df is not None
@@ -517,8 +528,8 @@ def log_stale_vault_candle_data(
     ):
         # Copy only the identity and clock columns this check reads. Copying the
         # whole 1.5M+ row history with all its state columns cost about a second.
-        source_columns = [c for c in ("chain", "address", "timestamp", "pair_id") if c in source_vault_price_df.columns]
-        source_with_pairs = source_vault_price_df[source_columns].copy()
+        source_columns = [c for c in ("chain", "address", "timestamp", "pair_id", "total_assets") if c in source_vault_price_df.columns]
+        source_with_pairs = source_vault_price_df[source_columns].copy().reset_index(drop=True)
         source_with_pairs["address"] = source_with_pairs["address"].astype(str).str.lower()
         source_with_pairs["timestamp"] = pd.to_datetime(source_with_pairs["timestamp"])
 
@@ -552,6 +563,9 @@ def log_stale_vault_candle_data(
             source_max_timestamp_by_pair_id = (
                 source_with_pairs.groupby(pair_id_column)["timestamp"].max().to_dict()
             )
+            if min_tvl is not None and "total_assets" in source_with_pairs.columns:
+                latest_rows = source_with_pairs.loc[source_with_pairs.groupby(pair_id_column)["timestamp"].idxmax()]
+                source_last_tvl_by_pair_id = latest_rows.set_index(pair_id_column)["total_assets"].to_dict()
 
     # One grouped pass instead of a boolean mask over the whole candle frame per vault,
     # which scanned 190k candle rows 500+ times. Iterates vaults in first appearance
@@ -574,20 +588,46 @@ def log_stale_vault_candle_data(
             if metadata is not None:
                 vault_tvl = metadata.tvl
 
-        stale_entries.append(
-            {
-                "vault": vault_name,
-                "address": vault_address,
-                "tvl": vault_tvl,
-                "pair_id": pair_id,
-                "last_candle": last_ts,
-                "last_source": last_source_ts,
-                "age": age,
-            }
+        entry = {
+            "vault": vault_name,
+            "address": vault_address,
+            "tvl": vault_tvl,
+            "pair_id": pair_id,
+            "last_candle": last_ts,
+            "last_source": last_source_ts,
+            "age": age,
+        }
+        # Selection may forward-fill the last historical TVL. Current metadata
+        # alone cannot prove an unheld vault is below the strategy's floor.
+        last_source_tvl = source_last_tvl_by_pair_id.get(pair_id)
+        if (
+            min_tvl is not None
+            and held_addresses is not None
+            and isinstance(vault_address, str)
+            and bool(vault_address.strip())
+            and vault_address != "unknown"
+            and str(vault_address).lower() not in held_addresses
+            and vault_tvl is not None
+            and pd.notna(vault_tvl)
+            and 0 <= vault_tvl < min_tvl
+            and last_source_tvl is not None
+            and pd.notna(last_source_tvl)
+            and 0 <= last_source_tvl < min_tvl
+        ):
+            archival_entries.append(entry)
+        else:
+            stale_entries.append(entry)
+
+    if archival_entries:
+        logger.info(
+            "Stale history retained for %d unheld vault(s) below the strategy TVL floor of %.2f USD",
+            len(archival_entries),
+            min_tvl,
         )
+        logger.debug("Archival stale vault histories: %s", archival_entries)
 
     if stale_entries:
-        up_to_date_vault_count = checked_vault_count - len(stale_entries)
+        up_to_date_vault_count = checked_vault_count - len(stale_entries) - len(archival_entries)
         stale_entries_df = pd.DataFrame(stale_entries)
         stale_entries_table = tabulate(
             stale_entries_df,

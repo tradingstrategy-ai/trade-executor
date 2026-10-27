@@ -35,6 +35,7 @@ from statistics import median
 
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.portfolio import Portfolio
+from tradeexecutor.state.trade import TradeStatus, has_unresolved_hypercore_accounting
 from tradeexecutor.state.types import USDollarPrice, Percent
 from tradeexecutor.utils.format import calculate_percentage
 from tradeexecutor.utils.timestamp import json_encode_timedelta, json_decode_timedelta
@@ -930,10 +931,23 @@ class TradeAnalysis:
 
             realised_profit_usd = position.get_realised_profit_usd()
 
-            # Marked down or dust-closed positions may have never received
-            # any profits (closed to zero without any sells)
+            # Dust placeholders and reconciled failed openings can be closed without
+            # ever acquiring assets. Missing realised PnL is expected for those
+            # administrative records; funded or unresolved positions still need attention.
             if realised_profit_usd is None:
-                if not position.is_marked_down():
+                has_accounting_activity = (
+                    position.loan is not None
+                    or any(update.quantity for update in position.balance_updates.values())
+                    or any(
+                        trade.executed_quantity
+                        or trade.executed_reserve
+                        or trade.reserve_currency_allocated
+                        or trade.get_status() in (TradeStatus.started, TradeStatus.broadcasted)
+                        or has_unresolved_hypercore_accounting(trade)
+                        for trade in position.trades.values()
+                    )
+                )
+                if not position.is_marked_down() and has_accounting_activity:
                     logger.warning("Realised profit calculation returned None for: %s", position)
                 realised_profit_usd = 0
 

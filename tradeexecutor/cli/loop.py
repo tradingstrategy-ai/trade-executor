@@ -578,7 +578,7 @@ class ExecutionLoop:
                 universe = self.universe_model.construct_universe(
                     ts=ts,
                     mode=self.execution_context.mode,
-                    options=self.universe_options,
+                    options=self._get_live_universe_options(state) if live else self.universe_options,
                     execution_model=self.execution_model,
                     strategy_parameters=self.parameters,
                     state=state,
@@ -953,6 +953,28 @@ class ExecutionLoop:
         logger.info("Warming up backesting, universe options are %s", self.universe_options)
         return self.universe_model.preload_universe(self.universe_options, self.execution_context)
 
+    def _get_live_universe_options(self, state: State) -> UniverseOptions:
+        """Attach current custody and eligibility to vault freshness diagnostics.
+
+        Startup and every live rebuild must use fresh holdings so an old low-TVL
+        history can be quiet only while the strategy has no capital tied to it.
+        """
+        positions = (
+            *state.portfolio.open_positions.values(),
+            *state.portfolio.frozen_positions.values(),
+            *state.portfolio.pending_positions.values(),
+        )
+        min_tvl = self.parameters.get("min_tvl_usd") if self.parameters is not None else None
+        return replace(
+            self.universe_options,
+            vault_history_min_tvl=float(min_tvl) if min_tvl is not None else None,
+            vault_history_held_addresses=frozenset(
+                position.pair.pool_address.lower()
+                for position in positions
+                if position.pair.is_vault()
+            ),
+        )
+
     def warm_up_live_trading(self, state: State | None = None) -> TradingStrategyUniverse:
         """Load live trading universe.
 
@@ -1016,6 +1038,7 @@ class ExecutionLoop:
                 "the live loop loads a verified start-up snapshot instead"
             )
 
+        self.universe_options = self._get_live_universe_options(state)
         universe = self.warm_up_live_trading(state)
         self.preloaded_live_universe = universe
 
@@ -1454,6 +1477,7 @@ class ExecutionLoop:
 
         assert execution_context, "ExecutionContext missing"
 
+        self.universe_options = self._get_live_universe_options(state)
         universe = self.warm_up_live_trading(state)
         if (
             self.strategy_cycle_trigger == StrategyCycleTrigger.hypercore_data_available
