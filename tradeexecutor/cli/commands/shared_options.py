@@ -14,6 +14,7 @@ from typer import Option
 from typer.models import OptionInfo
 
 from eth_defi.gas import GasPriceMethod
+from tradeexecutor.ethereum.lighter.lighter_routing import DEFAULT_LIGHTER_TRANSFER_TIMEOUT_SECONDS, DEFAULT_LIGHTER_WITHDRAWAL_TIMEOUT_SECONDS
 from tradeexecutor.ethereum.web3config import collect_rpc_kwargs
 
 
@@ -70,6 +71,21 @@ private_key = Option(None, envvar="PRIVATE_KEY", help="Ethereum private key to b
 
 vault_address = Option(None, envvar="VAULT_ADDRESS", help="Deployed strategy vault address")
 
+lighter_operator_record_file = Option(
+    None,
+    envvar="LIGHTER_OPERATOR_RECORD_FILE",
+    help="Owner-only Lighter operator record used for Lighter custody trades: master secure withdrawals and transfers sent from the master",
+)
+lighter_withdrawal_timeout = Option(
+    DEFAULT_LIGHTER_WITHDRAWAL_TIMEOUT_SECONDS,
+    envvar="LIGHTER_WITHDRAWAL_TIMEOUT",
+    help="Maximum seconds to wait for a Lighter master secure withdrawal or sub-account L1 withdrawal to become claimable. Default 3600; a live sub-account withdrawal took about 29 minutes.",
+)
+lighter_transfer_timeout = Option(
+    DEFAULT_LIGHTER_TRANSFER_TIMEOUT_SECONDS,
+    envvar="LIGHTER_TRANSFER_TIMEOUT",
+    help="Maximum seconds to wait for a Lighter transfer between accounts to appear in transfer history",
+)
 lighter_operator_record_file_for_accounting = Option(
     None,
     envvar="LIGHTER_OPERATOR_RECORD_FILE",

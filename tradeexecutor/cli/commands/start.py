@@ -32,11 +32,7 @@ from ..slippage import configure_max_slippage_tolerance
 from ..version_info import VersionInfo
 from ..watchdog import stop_watchdog
 from ...ethereum.enzyme.vault import EnzymeVaultSyncModel
-from ...ethereum.lighter.lighter_routing import (
-    DEFAULT_LIGHTER_TRANSFER_TIMEOUT_SECONDS,
-    DEFAULT_LIGHTER_WITHDRAWAL_TIMEOUT_SECONDS,
-    LighterRoutingConfig,
-)
+from ...ethereum.lighter.lighter_routing import LighterRoutingConfig
 from ...ethereum.lagoon.vault import LagoonVaultSyncModel
 from ...ethereum.velvet.execution import VelvetExecution
 from ...ethereum.velvet.vault import VelvetVaultSyncModel
@@ -159,22 +155,10 @@ def start(
     derive_session_private_key: Optional[str] = typer.Option(None, envvar="DERIVE_SESSION_PRIVATE_KEY", help="Derive session key private key"),
     derive_wallet_address: Optional[str] = typer.Option(None, envvar="DERIVE_WALLET_ADDRESS", help="Derive wallet address (auto-derived from owner key if not provided). For Lagoon vault deployments, set this to the Safe multisig address."),
     derive_network: DeriveNetwork = typer.Option(DeriveNetwork.mainnet, envvar="DERIVE_NETWORK", help="Derive network: mainnet or testnet"),
-    lighter_operator_record_file: Optional[Path] = typer.Option(
-        None,
-        envvar="LIGHTER_OPERATOR_RECORD_FILE",
-        help="Owner-only Lighter operator record used for automatic master withdrawals and master to sub-account transfers",
-    ),
+    lighter_operator_record_file: Path | None = shared_options.lighter_operator_record_file,
     lighter_sub_account_operator_record_files: str | None = shared_options.lighter_sub_account_operator_record_files,
-    lighter_withdrawal_timeout: int = typer.Option(
-        DEFAULT_LIGHTER_WITHDRAWAL_TIMEOUT_SECONDS,
-        envvar="LIGHTER_WITHDRAWAL_TIMEOUT",
-        help="Maximum seconds to wait for a Lighter master secure withdrawal or sub-account L1 withdrawal to become claimable. Default 3600; a live sub-account withdrawal took about 29 minutes.",
-    ),
-    lighter_transfer_timeout: int = typer.Option(
-        DEFAULT_LIGHTER_TRANSFER_TIMEOUT_SECONDS,
-        envvar="LIGHTER_TRANSFER_TIMEOUT",
-        help="Maximum seconds to wait for a Lighter master to sub-account transfer",
-    ),
+    lighter_withdrawal_timeout: int = shared_options.lighter_withdrawal_timeout,
+    lighter_transfer_timeout: int = shared_options.lighter_transfer_timeout,
 
     gas_price_method: Optional[GasPriceMethod] = shared_options.gas_price_method,
     confirmation_block_count: int = shared_options.confirmation_block_count,

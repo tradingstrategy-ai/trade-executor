@@ -374,3 +374,37 @@ funded one; `state.check_if_clean()` passes afterwards.
 
 Documentation corrections listed in the compatibility document are made
 with the change that resolves each claim.
+
+## Implementation notes
+
+Implemented on 2026-10-27. Deviations from the plan above:
+
+- **The posted NAV applies the same dust rule.** The live NAV reader in
+  `create_lighter_vault_valuation_func()` raised for any Safe-owned account
+  outside the universe. Once a strategy stops declaring a drained
+  sub-account, which `correct-accounts` change 3 is for, the account still
+  exists on Lighter, so `start` could never post a NAV again. It now
+  raises only for an outside account holding `LIGHTER_DUST_USDC` or more;
+  dust is omitted, consistent with the write-off.
+- **`close_undeclared_lighter_positions(state, universe, executed_at)`
+  takes no equity argument and returns only the closed positions.** It runs
+  after the exchange-account sync, so a position's quantity already is the
+  account's equity. A funded or frozen undeclared position is left open,
+  and `check_lighter_account_set()` reports it as tracked but undeclared,
+  which gives `correct-accounts` its exit code.
+- **`check_lighter_account_set()` takes index sets** (`tracked`,
+  `declared`) instead of pairs, and an undeclared, untracked account at or
+  above the dust threshold is reported as outside the vault's accounting
+  rather than with a `lighter-move-funds` command, because that command
+  needs a position.
+- **Test step 4b is dropped.** `perform-test-trade` has no `--close-only`
+  flag; `make_test_trade()` honours its `close_only` argument in the Lighter
+  branch, but no CLI option was added for it.
+- `tests/lagoon/test_lagoon_lighter_cash_management.py`,
+  `test_lighter_move_funds.py` and `test_lagoon_lighter_deploy_e2e.py` now
+  mock the Safe's Lighter account list: they previously passed
+  `check-accounts` and `correct-accounts` only because an empty account list
+  counted as clean. `test_lagoon_lighter_multi_subaccount_e2e.py` funds its
+  untracked sub-account before expecting a failure, as an empty one is now
+  Lighter dust, and `test_home_chain_async_settlement.py` marks its
+  `MagicMock` pair as not an exchange account.

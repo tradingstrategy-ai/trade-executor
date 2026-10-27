@@ -469,6 +469,8 @@ def test_make_test_trade_close_pending_on_mainnet_does_not_crash(monkeypatch) ->
 
     pair = MagicMock(spec=TradingPairIdentifier)
     pair.base.token_symbol = "oLP"
+    # An on-chain vault pair, not an exchange account with its own custody test trade.
+    pair.is_exchange_account.return_value = False
 
     state = MagicMock()
     state.portfolio.get_position_by_trading_pair.return_value = position

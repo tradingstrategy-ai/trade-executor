@@ -21,6 +21,7 @@ from eth_defi.erc_4626.vault_protocol.lagoon.deployment import (
 )
 from eth_defi.erc_4626.vault_protocol.lagoon.funding import fund_lagoon_vault
 from eth_defi.hotwallet import HotWallet
+from eth_defi.lighter.api import LighterAccounts
 from eth_defi.lighter.deployment import LighterDeployment
 from eth_defi.lighter.testing import register_lighter_account_on_anvil
 from eth_defi.lighter.valuation import LighterEquity
@@ -245,6 +246,15 @@ def test_cli_lagoon_lighter_cash_management_uses_normal_pipeline(
     mocker.patch(
         "tradeexecutor.ethereum.lighter.transfer_verification.wait_for_lighter_collateral",
         side_effect=wait_for_collateral,
+    )
+    # The Safe owns only the master account; the account-set check and the NAV read these.
+    mocker.patch(
+        "tradeexecutor.exchange_account.lighter.fetch_lighter_accounts",
+        return_value=LighterAccounts(master_index=LIGHTER_ACCOUNT_INDEX, sub_account_indices=()),
+    )
+    mocker.patch(
+        "tradeexecutor.exchange_account.lighter.fetch_lighter_accounts_equity",
+        side_effect=lambda *_args, **_kwargs: {LIGHTER_ACCOUNT_INDEX: _lighter_equity(lighter_state["equity"])},
     )
     environment = {
         "PATH": os.environ["PATH"],

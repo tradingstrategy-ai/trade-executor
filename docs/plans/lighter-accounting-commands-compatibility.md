@@ -5,7 +5,12 @@ for a Lagoon vault whose Safe owns a Lighter master account and sub-accounts
 (each its own exchange-account position, see
 [README-Lighter.md](../../tradeexecutor/exchange_account/README-Lighter.md)),
 and what still has to change. Written 2026-10-27 after PR #1683 merged, from
-reading the code at `befacd195`; nothing here has been implemented yet.
+reading the code at `befacd195`.
+
+**Status:** priorities 1 and 2 and the `check-accounts` items of priority 3
+are implemented as described in
+[lighter-accounting-commands-implementation.md](lighter-accounting-commands-implementation.md).
+`lagoon-lighter-test-trade` is unchanged and stays master-only.
 
 ## Summary of actions
 

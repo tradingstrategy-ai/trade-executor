@@ -14,7 +14,7 @@ from typing import Any
 
 import pytest
 from eth_account import Account
-from eth_defi.lighter.api import LIGHTER_MIN_MAINNET_USDC
+from eth_defi.lighter.api import LIGHTER_MIN_MAINNET_USDC, LighterAccounts
 from eth_defi.erc_4626.vault_protocol.lagoon.deployment import LIGHTER_BOOTSTRAP_SUBSCRIPTION
 from eth_defi.lighter.pubkey import MIN_API_KEY_INDEX
 from eth_defi.lighter.testing import register_lighter_account_on_anvil
@@ -280,6 +280,15 @@ def test_cli_lagoon_deploy_lighter_on_external_anvil(
     mocker.patch(
         "tradeexecutor.exchange_account.lighter.fetch_lighter_total_equity",
         return_value=FakeLighterEquity(),
+    )
+    # The Safe owns only the master account; the account-set check reads these.
+    mocker.patch(
+        "tradeexecutor.exchange_account.lighter.fetch_lighter_accounts",
+        return_value=LighterAccounts(master_index=LIGHTER_ACCOUNT_INDEX, sub_account_indices=()),
+    )
+    mocker.patch(
+        "tradeexecutor.exchange_account.lighter.fetch_lighter_accounts_equity",
+        return_value={LIGHTER_ACCOUNT_INDEX: FakeLighterEquity()},
     )
     cli.main(args=["init"], standalone_mode=False)
     with pytest.raises(SystemExit) as exit_info:

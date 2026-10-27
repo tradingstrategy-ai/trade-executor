@@ -1,4 +1,5 @@
 """Perform a test trade on a universe."""
+import datetime
 import logging
 from decimal import Decimal
 from typing import Callable
@@ -28,7 +29,8 @@ from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
 from tradeexecutor.ethereum.vault.settlement_retry import check_and_resolve_vault_settlements
 from tradeexecutor.ethereum.vault.vault_routing import get_vault_for_pair
 from tradeexecutor.ethereum.web3config import TEST_CHAIN_IDS
-from tradeexecutor.state.trade import TradeFlag, TradeStatus
+from tradeexecutor.exchange_account.lighter import LIGHTER_MASTER_ACCOUNT_ID, LIGHTER_PROTOCOL, get_lighter_account_id
+from tradeexecutor.state.trade import TradeExecution, TradeFlag, TradeStatus
 from tradeexecutor.state.types import Percent
 from tradeexecutor.statistics.core import update_statistics
 from tradeexecutor.statistics.statistics_table import serialise_long_short_stats_as_json_table
@@ -1021,6 +1023,55 @@ def _resolve_home_chain_async_settlement(
     return True
 
 
+def _make_exchange_account_test_trade(
+    execution_model: ExecutionModel,
+    state: State,
+    universe: TradingStrategyUniverse,
+    routing_model: RoutingModel,
+    routing_state: RoutingState,
+    pricing_model: PricingModel,
+    ts: datetime.datetime,
+    pair: TradingPairIdentifier,
+    amount: Decimal,
+    buy_only: bool,
+    close_only: bool,
+) -> None:
+    """Move ``amount`` USDC from the Safe to a Lighter account and back.
+
+    Each movement is the custody trade ``start`` makes, executed one at a
+    time through the normal pipeline. A sub-account is funded through the
+    master, so the master's free collateral must also cover Lighter's
+    transfer fee, which is zero between accounts of one owner.
+
+    :param pair:
+        The Lighter master or sub-account pair to test.
+    :param amount:
+        USDC to move; Lighter's minimum is 1 USDC.
+    :param buy_only:
+        Move the funds in and leave them there.
+    :param close_only:
+        Only withdraw ``amount`` from the account back to the Safe.
+    """
+    if pair.get_exchange_account_protocol() != LIGHTER_PROTOCOL:
+        raise NotImplementedError(f"Test trades are not supported for {pair.get_exchange_account_protocol()} exchange accounts")
+    account = get_lighter_account_id(pair)
+    notes = f"perform-test-trade: {amount} USDC through Lighter account {account}"
+    position_manager = PositionManager(ts, universe, state, pricing_model)
+
+    def execute(trade: TradeExecution) -> None:
+        execution_model.execute_trades(ts, state, [trade], routing_model, routing_state)
+        if not trade.is_success():
+            raise RuntimeError(f"Lighter test trade #{trade.trade_id} did not succeed: {trade.get_status().value}")
+        logger.info("Lighter test trade #%d succeeded: %s", trade.trade_id, trade.notes)
+
+    if not close_only:
+        execute(position_manager.deposit_to_lighter(amount, notes=notes))
+        if account != LIGHTER_MASTER_ACCOUNT_ID:
+            execute(position_manager.transfer_lighter_funds(LIGHTER_MASTER_ACCOUNT_ID, account, amount, notes=notes))
+    if not buy_only:
+        execute(position_manager.withdraw_from_lighter(account, amount, notes=notes))
+
+
 def make_test_trade(
     web3: Web3,
     execution_model: ExecutionModel,
@@ -1181,6 +1232,22 @@ def make_test_trade(
         logger.info("  Comptroller address: %s", vault.comptroller.address)
         logger.info("  Vault owner: %s", vault.vault.functions.getOwner().call())
         sync_model.check_ownership()
+
+    if pair is not None and pair.is_exchange_account():
+        _make_exchange_account_test_trade(
+            execution_model,
+            state,
+            universe,
+            routing_model,
+            routing_state,
+            pricing_model,
+            ts,
+            pair,
+            amount,
+            buy_only=buy_only,
+            close_only=close_only,
+        )
+        return
 
     if len(state.portfolio.reserves) == 0:
         raise RuntimeError("No reserves detected for the strategy. Does your wallet/vault have USDC deposited for trading?")

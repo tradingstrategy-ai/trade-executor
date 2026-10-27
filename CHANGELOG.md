@@ -2,6 +2,8 @@
 
 ## 0.2
 
+- `perform-test-trade` tests a Lighter vault with a Safe → account → Safe custody round trip for the master (`--single-pair`) and every sub-account (`--all-pairs`). `check-accounts` reports pending Lighter transfers instead of refusing the state and checks the accounts the Safe owns against the declared accounts and the tracked positions; `correct-accounts --dry-run` previews the transfer reconciliation, frozen exchange-account positions are revalued and never duplicated, and positions of sub-accounts the strategy stopped declaring are closed once below Lighter's 1 USDC withdrawal minimum (2026-10-27).
+
 - Unify vault closure and strategy-interaction decisions with enum outcomes, protocol-aware historical interpretation and shared chart/strategy admission rules; retain serialised evidence, reject ambiguous captured queries, preserve mandatory live account restrictions and document exceptions and keyword controls (2026-10-27).
 
 - Add historical vault deposit and redemption closure counts to trading-universe charts, with unknown-state coverage, synthetic-window labels and optional vault scope (2026-10-27).

@@ -512,12 +512,19 @@ def initialise_state(tutorial: Tutorial) -> None:
     assert list(get_lighter_account_resolution(state).values()) == tutorial.account_indices, "init did not record the Lighter accounts in the state"
 
 
-def subscribe(tutorial: Tutorial, **start_overrides: str) -> None:
+def subscribe(tutorial: Tutorial, settle_with_start: bool = True, **start_overrides: str) -> None:
     """Subscribe to Lagoon and run one ``start`` cycle, which settles the subscription.
 
     The deposit request is recorded in ``progress.json`` and checked onchain
     first, so a resumed run settles and claims the earlier request instead of
     subscribing twice.
+
+    :param settle_with_start:
+        Settle with a ``start`` cycle, which also runs the strategy. With
+        ``False`` the subscription is settled with
+        ``correct-accounts --process-redemption`` and stays in the Safe.
+    :param start_overrides:
+        Extra environment for the ``start`` cycle.
     """
     vault = get_vault(tutorial)
     deployer = tutorial.deployer.address
@@ -530,8 +537,10 @@ def subscribe(tutorial: Tutorial, **start_overrides: str) -> None:
         pending_raw = tutorial.usdc.convert_to_raw(amount)
     tutorial.progress["subscription_requested"] = True
     tutorial.write_progress()
-    if pending_raw > 0:
+    if pending_raw > 0 and settle_with_start:
         run_start(tutorial, **start_overrides)
+    elif pending_raw > 0:
+        run_cli(["correct-accounts", "--process-redemption"], get_cli_environment(tutorial))
     if vault.vault_contract.functions.maxDeposit(deployer).call() > 0:
         broadcast_and_wait(tutorial, vault.finalise_deposit(deployer))
 

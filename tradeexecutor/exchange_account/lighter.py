@@ -12,7 +12,7 @@ from collections.abc import Collection, Iterable, Mapping
 from decimal import Decimal, InvalidOperation
 from typing import Any, Callable
 
-from eth_defi.lighter.api import fetch_lighter_accounts
+from eth_defi.lighter.api import LIGHTER_MIN_MAINNET_USDC, fetch_lighter_accounts
 from eth_defi.lighter.constants import LIGHTER_L1_CONTRACT
 from eth_defi.lighter.session import LighterSession, create_lighter_session
 from eth_defi.lighter.valuation import fetch_lighter_accounts_equity, fetch_lighter_total_equity
@@ -52,6 +52,13 @@ LIGHTER_SUB_ACCOUNT_ADDRESS_PREFIX = "4c49"
 #: Above every Trading Strategy dataset pair id and above the ``2**48``
 #: Lighter account-index range.
 LIGHTER_SUB_ACCOUNT_INTERNAL_ID_OFFSET = 10**15
+#: Equity below which a Lighter account holds unwithdrawable dust.
+#:
+#: Lighter cannot withdraw less than its 1 USDC minimum, so a residual below
+#: it can never come back to the Safe. An account the strategy no longer
+#: declares is closed and its residual written off below this amount; at or
+#: above it the account must be drained first.
+LIGHTER_DUST_USDC = LIGHTER_MIN_MAINNET_USDC
 #: Explicit allowlist for public deployment artefacts and reports.
 LIGHTER_PUBLIC_METADATA_LABELS = {
     "account_index": "Account index",
@@ -90,40 +97,70 @@ def get_public_lighter_metadata(metadata: dict[Any, Any]) -> dict[str, Any]:
 
 def check_lighter_account_set(
     safe_address: str,
-    pairs: Iterable[TradingPairIdentifier],
+    tracked: Collection[int],
+    declared: Collection[int],
     session: LighterSession | None = None,
 ) -> tuple[bool, str]:
-    """Compare the Lighter accounts a Safe owns with the tracked positions.
+    """Compare the Lighter accounts a Safe owns with the strategy and the state.
 
-    An owned account that has no position is left out of the posted NAV, so
-    a mismatch is an accounting error. When Lighter does not list the Safe
-    at all, or cannot be read, the check cannot conclude and passes with a
-    message saying so.
+    The check is unclean when:
+
+    - an owned account holds at least :data:`LIGHTER_DUST_USDC` but has no
+      position, so the posted NAV or the state misses it;
+    - a position tracks an account the strategy no longer declares;
+    - a tracked or declared account is not owned by the Safe;
+    - Lighter cannot be read or lists no accounts for the Safe.
+
+    An owned account below :data:`LIGHTER_DUST_USDC` without a position is
+    clean: its residual cannot be withdrawn, so a drained or never-funded
+    sub-account does not fail the check.
 
     :param safe_address:
         Safe owning the Lighter accounts.
-    :param pairs:
-        Lighter exchange-account pairs of the tracked positions.
+    :param tracked:
+        Account indices of the open and frozen Lighter positions.
+    :param declared:
+        Account indices of the Lighter pairs in the strategy universe.
     :param session:
         Public Lighter HTTP session.
     :return:
         ``(clean, message)``.
     """
-    tracked = {int(pair.get_exchange_account_id()) for pair in pairs}
+    tracked = set(tracked)
+    declared = set(declared)
     lighter_session = session if session is not None else create_lighter_session()
     try:
         accounts = fetch_lighter_accounts(lighter_session, safe_address)
+        snapshot = fetch_lighter_accounts_equity(lighter_session, safe_address) if accounts is not None else {}
     except (RequestException, ValueError) as error:
-        return True, f"Could not read Lighter accounts for {safe_address} ({type(error).__name__})"
+        return False, f"Could not read Lighter accounts for {safe_address} ({type(error).__name__})"
     finally:
         if session is None:
             lighter_session.close()
     if accounts is None:
-        return True, f"Lighter lists no accounts for {safe_address}"
+        return False, f"Lighter lists no accounts for {safe_address}"
     owned = set(accounts.get_all_indices())
-    if owned == tracked:
-        return True, f"Lighter accounts match the tracked positions: {sorted(owned)}"
-    return False, f"Lighter accounts {sorted(owned - tracked)} have no position and positions {sorted(tracked - owned)} have no Lighter account"
+
+    def is_funded(index: int) -> bool:
+        # An account missing from the snapshot counts as funded, so the check fails closed.
+        return index not in snapshot or snapshot[index].get_total() >= LIGHTER_DUST_USDC
+
+    problems = []
+    unopened = sorted(index for index in (owned & declared) - tracked if is_funded(index))
+    if unopened:
+        problems.append(f"declared Lighter accounts {unopened} hold funds but have no position; run correct-accounts to open them")
+    undeclared = sorted(tracked - declared)
+    if undeclared:
+        problems.append(f"positions track Lighter accounts {undeclared} the strategy does not declare; run correct-accounts, which closes them once they hold less than {LIGHTER_DUST_USDC} USDC")
+    unknown = sorted(index for index in owned - declared - tracked if is_funded(index))
+    if unknown:
+        problems.append(f"Lighter accounts {unknown} hold funds but are neither declared by the strategy nor tracked, so the NAV omits them")
+    unowned = sorted((tracked | declared) - owned)
+    if unowned:
+        problems.append(f"Lighter accounts {unowned} are tracked or declared but not owned by {safe_address}")
+    if problems:
+        return False, "; ".join(problems)
+    return True, f"Lighter accounts match the strategy and the tracked positions: {sorted(owned)}"
 
 
 def format_lighter_sub_account_lines(
@@ -582,19 +619,21 @@ def create_lighter_vault_valuation_func(
     )
 
     def read_lighter_equity() -> Decimal:
-        # Fail closed: an owned account without a position would be left out
-        # of the posted NAV and understate the share price.
+        # Fail closed: an owned account outside the universe would be left out
+        # of the posted NAV and understate the share price. Dust below
+        # LIGHTER_DUST_USDC cannot be withdrawn and is written off, so an
+        # undeclared, drained sub-account does not block the NAV forever.
         accounts = fetch_lighter_accounts(lighter_session, safe_address)
-        if accounts is not None:
-            unconfigured = set(accounts.get_all_indices()) - set(indices)
-            if unconfigured:
-                raise ValueError(
-                    f"Lighter accounts {sorted(unconfigured)} owned by {safe_address} are not in the strategy universe, "
-                    f"so the NAV would omit them"
-                )
+        unconfigured = set(accounts.get_all_indices()) - set(indices) if accounts is not None else set()
+        snapshot = fetch_lighter_accounts_equity(lighter_session, safe_address) if unconfigured or len(indices) > 1 else {}
+        funded = sorted(index for index in unconfigured if index not in snapshot or snapshot[index].get_total() >= LIGHTER_DUST_USDC)
+        if funded:
+            raise ValueError(
+                f"Lighter accounts {funded} owned by {safe_address} are not in the strategy universe, "
+                f"so the NAV would omit them"
+            )
         if len(indices) == 1:
             return account_value_func(pair)
-        snapshot = fetch_lighter_accounts_equity(lighter_session, safe_address)
         missing = [index for index in indices if index not in snapshot]
         if missing:
             # Fail closed: a missing account would understate the posted NAV.

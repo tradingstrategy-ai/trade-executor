@@ -18,6 +18,7 @@ orders are submitted by a separate execution tool, not by trade-executor.
 | Public total-equity valuation | Yes, without an API key |
 | Lagoon NAV posting | `lagoon-settle` |
 | Manual Safe/Lighter custody diagnostic | `lighter-move-funds` |
+| Custody test trade through the normal pipeline | `perform-test-trade --single-pair` or `--all-pairs` |
 | Read-only accounting comparison | `check-accounts` |
 | Accounting correction, PnL and verified-transfer reconciliation | `correct-accounts` |
 | Interrupted-transfer reconciliation | `correct-accounts` or `repair` |
@@ -250,7 +251,8 @@ sub-account transfer to appear in Lighter's transfer history.
 ### Recovery
 
 An interrupted transfer makes the state unclean, and `start` refuses to run.
-Inspect it with `check-accounts`, then:
+`check-accounts` lists each pending Lighter transfer with its trade id,
+status and saved hashes, exits 1 and still prints the balance table. Then:
 
 - **Transfer between accounts:** `correct-accounts` or `repair` reconciles
   it from Lighter's transfer history; pass the sending account's record
@@ -503,6 +505,34 @@ report. The generated Lighter private key is written only to the paired
 never written to the text record, Markdown report, executor deployment
 artefact, strategy module or logs. Back up that JSON file in the organisation's
 secret manager without printing it to a terminal or chat.
+
+### Custody test trade with `perform-test-trade`
+
+`perform-test-trade` verifies a deployment's custody path with the same
+trades `start` makes:
+
+```shell
+export LIGHTER_OPERATOR_RECORD_FILE="/secure/path/vault-record.json"
+
+# Safe -> master -> Safe
+trade-executor perform-test-trade --single-pair --amount 1
+
+# Every account; a sub-account is funded through the master and withdrawn with the key-free L1 path
+trade-executor perform-test-trade --all-pairs --amount 1
+```
+
+`--amount` defaults to 1 USDC, Lighter's minimum. `--buy-only` leaves the
+deposit (and the funding of a sub-account) in place. A transfer between
+accounts charges Lighter's fee on top of the amount on the master; it is
+zero between accounts of one owner, but the master's free collateral must
+cover it if one is charged. Each withdrawal waits up to
+`LIGHTER_WITHDRAWAL_TIMEOUT` for Lighter to make it claimable, about half an
+hour live.
+
+The command saves the state only when it finishes. That is an accepted
+trade-off for a manual one-off check: if it is interrupted after Lighter
+accepted a movement, `check-accounts` shows the difference and
+`correct-accounts` books it before the test trade is rerun.
 
 ### 3. Perform a resumable ETH/USD test trade
 
@@ -800,6 +830,44 @@ trading PnL from a deposit or withdrawal solely from the account-value change:
 trade-executor correct-accounts
 trade-executor check-accounts
 ```
+
+`correct-accounts --dry-run` previews the run: it reconciles verified
+transfers and applies the Lighter close rule below in memory, prints the
+corrections and saves nothing.
+
+### Accounts the Safe owns, the strategy declares and the state tracks
+
+For a Lagoon vault both commands compare three sets: the Lighter accounts the
+Safe owns, the accounts the strategy declares (its universe) and the accounts
+with an open or frozen position. Lighter cannot withdraw less than its
+1 USDC minimum, so equity below `LIGHTER_DUST_USDC` (1 USDC) is
+unwithdrawable dust. The check fails when:
+
+- an owned account holds at least 1 USDC but has no position: for a
+  declared account `correct-accounts` opens it; an undeclared one is
+  outside the vault's accounting and needs the operator;
+- a position tracks an account the strategy no longer declares;
+- a tracked or declared account is not owned by the Safe, or Lighter cannot
+  be read.
+
+A declared account below 1 USDC without a position passes, so a drained
+sub-account does not fail the check. A closed position of a declared account
+is reopened at zero by the next `correct-accounts`.
+
+When the strategy stops declaring a sub-account, `correct-accounts` closes
+its position under Lighter's own rule, separate from the HyperCore dust
+rules: below 1 USDC the residual is written off as one `correction` balance
+update and the position is closed; at or above it the command logs the
+`lighter-move-funds --lighter-account-index <index>` command that drains the
+account, saves its other corrections and exits 1 until the account is
+drained. The posted NAV applies the same rule: an owned account outside the
+universe aborts the NAV only when it holds 1 USDC or more.
+
+The executor never freezes a Lighter position; a failed custody transfer
+keeps it open. A position frozen by a manual repair is still revalued by
+`correct-accounts`, but `start` looks up open positions only, so unfreeze it
+with `repair` before the next `start`, or the next custody trade opens a
+second position for the account.
 
 ### External transfer accounting
 

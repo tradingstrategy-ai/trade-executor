@@ -34,7 +34,8 @@ from tradeexecutor.ethereum.vault.hypercore_transit_recovery import (
     HypercoreTransitBalanceSnapshot,
 )
 from tradeexecutor.exchange_account.derive import DeriveNetwork
-from tradeexecutor.exchange_account.lighter import LIGHTER_PROTOCOL
+from tradeexecutor.exchange_account.lighter import LIGHTER_PROTOCOL, check_lighter_account_set, is_lighter_exchange_account_pair
+from tradeexecutor.exchange_account.lighter_cleanup import close_undeclared_lighter_positions
 from tradeexecutor.ethereum.lighter.transfer_verification import reconcile_verified_lighter_transfers
 from tradeexecutor.exchange_account.lighter_operator import load_lighter_signers
 from tradeexecutor.exchange_account.sync_model import ExchangeAccountSyncModel
@@ -798,19 +799,21 @@ def correct_accounts(
             return
         raise RuntimeError("Withdrawal evidence does not identify an unresolved withdrawal")
     if not at_risk_trades:
+        # A dry run reconciles too, so the preview matches the real run; its
+        # store never writes, and nothing below saves before the dry-run return.
         reconciled_transfers = reconcile_verified_lighter_transfers(
             state,
             web3,
-            mutate=not dry_run,
+            mutate=True,
             signers=load_lighter_signers(lighter_operator_record_file, lighter_sub_account_operator_record_files),
         )
         if reconciled_transfers:
             if not dry_run:
                 store.sync(state)
             logger.info(
-                "%s %d verified Lighter transfer(s)",
-                "Found" if dry_run else "Reconciled",
+                "Reconciled %d verified Lighter transfer(s)%s",
                 len(reconciled_transfers),
+                " (dry run, not saved)" if dry_run else "",
             )
 
     withdrawal = None
@@ -1087,6 +1090,24 @@ def correct_accounts(
             for evt in exchange_events:
                 logger.info("  Position %d: %s (change: %s)", evt.position_id, evt.notes, evt.quantity)
 
+    # Lighter's own close rule, then the owned/declared/tracked account check.
+    # Both run before the preflight and the dry-run return, so a dry run
+    # previews them; a mismatch exits 1 after the corrections are saved.
+    lighter_account_problem = None
+    if not incident and not withdrawal and isinstance(sync_model, LagoonVaultSyncModel):
+        declared = [int(pair.get_exchange_account_id()) for pair in universe.iterate_pairs() if is_lighter_exchange_account_pair(pair)]
+        if declared or any(is_lighter_exchange_account_pair(p.pair) for p in state.portfolio.get_open_and_frozen_positions()):
+            closed_lighter_positions = close_undeclared_lighter_positions(state, universe, native_datetime_utc_now())
+            if closed_lighter_positions:
+                logger.info("Closed %d Lighter position(s) of undeclared accounts", len(closed_lighter_positions))
+            tracked = [int(p.pair.get_exchange_account_id()) for p in state.portfolio.get_open_and_frozen_positions() if is_lighter_exchange_account_pair(p.pair)]
+            accounts_clean, message = check_lighter_account_set(sync_model.vault.safe_address, tracked=tracked, declared=declared)
+            if accounts_clean:
+                logger.info("%s", message)
+            else:
+                logger.error("%s", message)
+                lighter_account_problem = message
+
     closed_phantom_positions = False
     if not incident and not withdrawal:
         closed_phantom_positions = _sync_hypercore_vault_positions(
@@ -1300,6 +1321,9 @@ def correct_accounts(
         for correction in corrections:
             logger.info("  Would apply: %s", correction)
         logger.info("Dry run complete: no transactions broadcast and no state written")
+        if lighter_account_problem:
+            web3config.close()
+            sys.exit(1)
         if incident:
             logger.warning("Interrupted HyperCore deposit #%d is not safe to restart; slot %s remains pending", incident.trade.trade_id, state.pending_data_availability_slot)
         web3config.close()
@@ -1374,6 +1398,8 @@ def correct_accounts(
     ) or has_lagoon_lighter_position
     if not has_onchain_positions_final:
         logger.info("Final account check skipped - no on-chain positions")
+        if lighter_account_problem:
+            sys.exit(1)
         logger.info("All ok")
         sys.exit(0)
 
@@ -1385,6 +1411,7 @@ def correct_accounts(
         block_identifier=block_number,
         exchange_account_value_func=exchange_account_value_func,
     )
+    clean = clean and lighter_account_problem is None
 
     if withdrawal:
         if not clean:
