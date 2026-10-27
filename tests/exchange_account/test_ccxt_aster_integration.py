@@ -3,7 +3,8 @@
 Requires real Aster API credentials and the ccxt package.
 Skipped in CI.
 
-Set ASTER_API_KEY and ASTER_API_SECRET environment variables to run.
+Set ASTER_PRIVATE_KEY, the Aster account's L1 wallet key, to run: since
+ccxt 4.5.52 Aster no longer accepts an API key and secret.
 """
 
 import os
@@ -26,8 +27,8 @@ from tradeexecutor.state.identifier import (
 
 
 pytestmark = pytest.mark.skipif(
-    not os.environ.get("ASTER_API_KEY") or not os.environ.get("ASTER_API_SECRET"),
-    reason="Set ASTER_API_KEY and ASTER_API_SECRET for Aster integration tests",
+    not os.environ.get("ASTER_PRIVATE_KEY"),
+    reason="Set ASTER_PRIVATE_KEY, the Aster account's L1 wallet key, for Aster integration tests",
 )
 
 
@@ -35,8 +36,8 @@ pytestmark = pytest.mark.skipif(
 def aster_exchange():
     """Create authenticated Aster exchange via CCXT."""
     return create_ccxt_exchange("aster", {
-        "apiKey": os.environ["ASTER_API_KEY"],
-        "secret": os.environ["ASTER_API_SECRET"],
+        # Since ccxt 4.5.52 Aster signs with the L1 wallet key; an API key and secret are rejected.
+        "privateKey": os.environ["ASTER_PRIVATE_KEY"],
     })
 
 

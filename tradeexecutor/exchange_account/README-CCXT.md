@@ -119,10 +119,10 @@ from tradeexecutor.exchange_account.ccxt_exchange import (
     aster_total_equity,
 )
 
-# Create authenticated exchange
+# Create authenticated exchange: since ccxt 4.5.52 Aster signs with the
+# account's L1 wallet key and rejects an API key and secret
 exchange = create_ccxt_exchange("aster", {
-    "apiKey": os.environ["ASTER_API_KEY"],
-    "secret": os.environ["ASTER_API_SECRET"],
+    "privateKey": os.environ["ASTER_PRIVATE_KEY"],
 })
 
 # Create account value function
@@ -213,10 +213,10 @@ Set these to run the Aster integration tests:
 
 | Variable | Description |
 |----------|-------------|
-| `ASTER_API_KEY` | Aster API key |
-| `ASTER_API_SECRET` | Aster API secret |
+| `ASTER_PRIVATE_KEY` | The Aster account's L1 wallet private key. Since ccxt 4.5.52 Aster no longer accepts an API key and secret |
 
-Tests are skipped automatically when these variables are not set or when `ccxt` is not installed.
+Tests are skipped automatically when this variable is not set or when `ccxt` is not installed.
+A production `CCXT_OPTIONS` for Aster must likewise pass `{"privateKey": ...}`.
 
 ### Test files
 

@@ -242,7 +242,8 @@ def test_deploy_multichain_vault(
         "VAULT_RECORD_FILE": str(vault_record_file),
         "FUND_NAME": "Master Chain Multichain Test",
         "FUND_SYMBOL": "MCMT",
-        "ANY_ASSET": "true",
+        # The universe has Hyperliquid vaults: deploy their restrictive guard policy, which excludes anyAsset.
+        "WHITELIST_KNOWN_HYPERLIQUID_VAULTS": "true",
         "SAFE_SALT_NONCE": str(SAFE_SALT_NONCE),
         "TRADING_STRATEGY_API_KEY": TRADING_STRATEGY_API_KEY,
     }

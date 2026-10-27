@@ -24,8 +24,8 @@ from tradeexecutor.cli.main import app
 
 @pytest.mark.timeout(120)
 @pytest.mark.skipif(
-    os.environ.get("TRADING_STRATEGY_API_KEY") is None or os.environ.get("JSON_RPC_HYPERLIQUID") is None,
-    reason="Set TRADING_STRATEGY_API_KEY and JSON_RPC_HYPERLIQUID environment variables to run this test",
+    os.environ.get("TRADING_STRATEGY_API_KEY") is None or os.environ.get("JSON_RPC_HYPERLIQUID") is None or os.environ.get("VAULT_PRO_API_KEY") is None,
+    reason="Set TRADING_STRATEGY_API_KEY, JSON_RPC_HYPERLIQUID and VAULT_PRO_API_KEY environment variables to run this test",
 )
 def test_trade_ui_hypercore_loads_universe(
     tmp_path: Path,
@@ -45,6 +45,8 @@ def test_trade_ui_hypercore_loads_universe(
     environment = {
         "PATH": os.environ["PATH"],
         "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
+        # The Hypercore universe loads the paid vault datasets.
+        "VAULT_PRO_API_KEY": os.environ["VAULT_PRO_API_KEY"],
         "STRATEGY_FILE": str(strategy_file),
         "CACHE_PATH": str(tmp_path),
         "JSON_RPC_HYPERLIQUID": os.environ["JSON_RPC_HYPERLIQUID"],
