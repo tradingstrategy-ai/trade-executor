@@ -25,7 +25,6 @@ Evidence and earlier fixes:
 """
 
 import datetime
-import enum
 from collections.abc import Mapping
 from dataclasses import dataclass
 from decimal import Decimal
@@ -33,12 +32,13 @@ from typing import Literal
 
 import pandas as pd
 from eth_defi.erc_4626.core import ERC4626Feature
+from eth_defi.hyperliquid.vault import classify_hyperliquid_vault_deposit
 from eth_defi.vault.deposit_redeem import VaultFlowUnavailable
 from tradingstrategy.alternative_data.vault import HYPERCORE_DEPOSIT_STATE_CUTOFF
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.strategy.redemption import (
-    DepositBlockReason, DepositCheckResult, DepositCheckStage,
+    DepositBlockReason, DepositCheckResult, DepositCheckStage, VaultClosureOutcome,
     RedemptionBlockReason, RedemptionCheckResult, RedemptionCheckStage,
 )
 
@@ -48,15 +48,6 @@ BACKTEST_ALWAYS_OPEN_DEPOSIT_FEATURES = {
     ERC4626Feature.yearn_v3_like,
 }
 BACKTEST_ALWAYS_OPEN_DEPOSIT_PROTOCOLS = {"lagoon-finance", "yearn"}
-
-
-class VaultClosureOutcome(enum.Enum):
-    """Meaning of the available evidence, independently of execution policy."""
-
-    open = "open"
-    closed = "closed"
-    unknown = "unknown"
-    policy_blocked = "policy_blocked"
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,6 +73,7 @@ class VaultClosure:
     def as_deposit_check(self, vault, timestamp=None, stage=DepositCheckStage.unknown) -> DepositCheckResult:
         """Preserve the existing serialisable deposit-check API."""
         codes = {
+            **{reason.value: reason for reason in DepositBlockReason},
             "window_closed": DepositBlockReason.deposit_window_closed,
             "explicit_closed": DepositBlockReason.vault_deposits_closed,
             "capacity_zero": DepositBlockReason.vault_max_deposit_zero,
@@ -93,7 +85,8 @@ class VaultClosure:
             vault_address=vault.pool_address if vault else None,
             max_deposit=float(self.max_amount) if self.max_amount is not None else None,
             reason_code=codes.get(self.reason, DepositBlockReason.unknown) if self.blocked else None,
-            message=self.message if self.blocked else None,
+            message=self.message,
+            evidence_status=self.status, evidence_source=self.source, evidence_reason=self.reason,
         )
 
 
@@ -110,7 +103,7 @@ def _is_backtesting_always_open_protocol(pair) -> bool:
     return bool(features and features & BACKTEST_ALWAYS_OPEN_DEPOSIT_FEATURES) or protocol in BACKTEST_ALWAYS_OPEN_DEPOSIT_PROTOCOLS
 
 
-def is_vault_closed(vault: TradingPairIdentifier, **kwargs) -> bool:
+def is_vault_closed(vault: TradingPairIdentifier | VaultClosure, **kwargs) -> bool:
     """Is the requested operation known closed (including an explicit schedule)?
 
     A policy block or missing evidence does not establish a vault closure.
@@ -119,24 +112,33 @@ def is_vault_closed(vault: TradingPairIdentifier, **kwargs) -> bool:
     unknown arguments fail rather than silently disabling checks. Inspect the
     assessment's source to distinguish assumed schedules from observations.
     """
+    if isinstance(vault, VaultClosure):
+        if kwargs:
+            raise ValueError("A captured assessment cannot be combined with query options")
+        return vault.status is VaultClosureOutcome.closed
     return get_vault_closure(vault, **kwargs).status is VaultClosureOutcome.closed
 
 
-def can_interact_with_vault(vault: TradingPairIdentifier, **kwargs) -> bool:
+def can_interact_with_vault(vault: TradingPairIdentifier | VaultClosure, **kwargs) -> bool:
     """May the strategy perform a deposit or redemption under its chosen policy?
 
     This is the strategy-facing counterpart of :func:`is_vault_closed`.
-    Both consume the same :class:`VaultClosure` assessment, but a strategy can
-    refuse an interaction with an open vault (leader-share policy or account
-    lockup), or with an unknown vault (missing fresh HyperCore permission).
+    Both consume the same :class:`VaultClosure` assessment. Interaction can be
+    refused because of a leader-share policy, a mandatory account lockup or
+    missing fresh HyperCore permission without proving a global closure.
 
     Use ``operation="deposit"`` or ``operation="redemption"`` and pass the
     decision's ``pricing_model``, ``timestamp`` and redemption ``position``.
     All keyword-only controls are documented by :func:`get_vault_closure`.
-    ``assessment=`` reuses a captured decision without fetching live data again.
+    Pass a captured :class:`VaultClosure` as the first argument to reuse it
+    without another query. Do not combine a captured assessment with kwargs.
     This checks admission only; amount sizing, approvals, funding, transaction
     simulation and execution-time revalidation remain the execution layer's job.
     """
+    if isinstance(vault, VaultClosure):
+        if kwargs:
+            raise ValueError("A captured assessment cannot be combined with query options")
+        return not vault.blocked
     return not get_vault_closure(vault, **kwargs).blocked
 
 
@@ -148,7 +150,6 @@ def get_vault_closure(
     pricing_model=None,
     historical_state: Mapping | None = None,
     window_override=None,
-    assessment: VaultClosure | None = None,
     deposit_check: DepositCheckResult | None = None,
     position=None,
     include_strategy_policy: bool = True,
@@ -166,11 +167,13 @@ def get_vault_closure(
     :param historical_state: Already freshness-checked historical observation.
         Direct callers must not pass future, stale or timestamp-refreshed data.
     :param window_override: Explicit synthetic schedule, taking precedence over history.
-    :param assessment: Reuse an exact previous result; cannot combine with new options.
     :param deposit_check: Reuse an existing live/alpha-model deposit result.
+        Accepts policy controls only, not a replacement timestamp, position or
+        historical-only control. Recorded enum evidence survives serialisation.
     :param position: Position context for live redemption lockups and liquidity.
     :param include_strategy_policy: Include known policy blocks, such as HyperCore's
         leader-share amount limit, in the returned boolean. Evidence status is retained.
+        This cannot waive mandatory live account lockups or owner-specific limits.
     :param unknown_is_closed: Override unknown admission policy; ``None`` preserves
         the existing model defaults. Unknown remains labelled unknown either way.
     :param trust_protocol_state: Opt into an independently verified, protocol-specific
@@ -184,19 +187,18 @@ def get_vault_closure(
         raise ValueError(f"Unsupported vault operation: {operation}")
     if timestamp is not None and timestamp.tzinfo is not None:
         raise ValueError("Vault closure checks require naive UTC timestamps")
-    routes = sum(x is not None for x in (pricing_model, assessment, deposit_check))
+    routes = sum(x is not None for x in (pricing_model, deposit_check))
     if routes > 1 or (routes and (historical_state is not None or window_override is not None)):
         raise ValueError("Supply exactly one vault closure input route")
-    if assessment is not None:
-        if not include_strategy_policy or unknown_is_closed is not None or trust_protocol_state or not apply_hypercore_cutoff:
-            raise ValueError("Reused assessment cannot be combined with changed policy options")
-        return assessment
     if deposit_check is not None:
         if operation != "deposit":
             raise ValueError("A deposit check cannot classify redemptions")
+        if timestamp is not None or position is not None or trust_protocol_state or not apply_hypercore_cutoff:
+            raise ValueError("A captured deposit check accepts only policy controls")
         return _from_deposit_check(deposit_check, include_strategy_policy, unknown_is_closed)
     if pricing_model is not None:
-        # Use a real class method, not a fabricated attribute from permissive mocks.
+        # Providers opt into the assessment interface through a class method.
+        # Other providers retain the existing structured-check interface.
         getter = getattr(type(pricing_model), "get_vault_closure", None)
         if getter is not None:
             return pricing_model.get_vault_closure(
@@ -213,17 +215,7 @@ def get_vault_closure(
             result = pricing_model.check_deposit(timestamp, vault)
             return _from_deposit_check(result, include_strategy_policy, unknown_is_closed)
         result = pricing_model.check_redemption(timestamp, vault, position=position)
-        reason = result.reason_code.value if result.reason_code else None
-        # Account lockup / missing owner / API failure do not prove global closure.
-        status = VaultClosureOutcome.open if result.can_redeem else (
-            VaultClosureOutcome.unknown if reason in {"safe_address_unavailable", "user_equity_fetch_failed"}
-            else VaultClosureOutcome.policy_blocked if reason == "user_lockup_not_expired" else VaultClosureOutcome.closed)
-        blocked = not result.can_redeem
-        if status is VaultClosureOutcome.unknown and unknown_is_closed is not None:
-            blocked = unknown_is_closed
-        if status is VaultClosureOutcome.policy_blocked and not include_strategy_policy:
-            blocked = False
-        return VaultClosure(blocked, status, "live_adapter", reason, result.message, result.max_redemption)
+        return _from_redemption_check(result, unknown_is_closed)
 
     state = historical_state if historical_state is not None else {}
     is_deposit = operation == "deposit"
@@ -244,7 +236,9 @@ def get_vault_closure(
         # PR #1660: the pre-collection period is an explicit assumption. Do not
         # label it observed open. PR #1670 preserves original permission clocks;
         # freshness must have been checked by the provider before arriving here.
-        if timestamp is None or timestamp < HYPERCORE_DEPOSIT_STATE_CUTOFF:
+        if timestamp is None:
+            raise ValueError("Historical HyperCore deposit checks require a timestamp")
+        if timestamp < HYPERCORE_DEPOSIT_STATE_CUTOFF:
             return VaultClosure(bool(unknown_is_closed), VaultClosureOutcome.unknown, "pre_collection_assumption",
                                 "missing_history", "HyperCore admission assumed before reliable collection")
 
@@ -303,19 +297,70 @@ def get_vault_closure(
     return VaultClosure(False, VaultClosureOutcome.open, "historical_state", max_amount=cap)
 
 
-def _from_deposit_check(result, include_strategy_policy, unknown_is_closed):
-    """Normalise existing live adapter results without repeating protocol calls."""
+def _from_deposit_check(result: DepositCheckResult, include_strategy_policy: bool, unknown_is_closed: bool | None) -> VaultClosure:
+    """Adapt captured evidence without another API call or duplicate protocol rules."""
     reason = result.reason_code.value if result.reason_code else None
-    info = result.used_vault_info
-    policy = bool(not result.can_deposit and reason == "vault_max_deposit_zero"
-                  and info is not None and info.is_closed is False and info.allow_deposits is True)
-    status = VaultClosureOutcome.unknown if reason == "unknown" else VaultClosureOutcome.open if result.can_deposit else VaultClosureOutcome.policy_blocked if policy else VaultClosureOutcome.closed
+    source = "live_adapter"
+    if result.evidence_status is not None:
+        # Backtest/structured assessments survive serialisation. A policy cap
+        # must not become a venue closure when AlphaModel reuses its check.
+        status = result.evidence_status
+        source = result.evidence_source
+        reason = result.evidence_reason
+    elif result.reason_code is DepositBlockReason.unknown:
+        status = VaultClosureOutcome.unknown
+    elif result.can_deposit:
+        # Legacy live adapters sometimes allow a missing owner/cap by default.
+        # Keep that execution decision, but do not invent positive evidence.
+        status = VaultClosureOutcome.open if result.max_deposit is not None or result.used_vault_info is not None else VaultClosureOutcome.unknown
+    elif result.reason_code is DepositBlockReason.vault_max_deposit_zero:
+        status = VaultClosureOutcome.account_restricted
+        info = result.used_vault_info
+        if info is not None:
+            # Reuse eth-defi's HLP-parent and leader-share rules, including the
+            # conservative threshold; do not maintain another copy here.
+            permission = classify_hyperliquid_vault_deposit(
+                is_closed=info.is_closed, allow_deposits=info.allow_deposits,
+                relationship_type=info.relationship_type or "unknown",
+                leader_fraction=info.leader_fraction,
+            )
+            if permission.deposits_open is True and permission.max_deposit == 0:
+                status = VaultClosureOutcome.policy_blocked
+    elif result.reason_code is DepositBlockReason.deposit_request_unavailable:
+        # An owner-specific request refusal can be a whitelist/account limit.
+        # It does not by itself establish a global closed window.
+        status = VaultClosureOutcome.account_restricted
+    else:
+        status = VaultClosureOutcome.closed
     blocked = not result.can_deposit
-    if policy and not include_strategy_policy:
+    if status is VaultClosureOutcome.policy_blocked and not include_strategy_policy:
         blocked = False
     if status is VaultClosureOutcome.unknown and unknown_is_closed is not None:
         blocked = unknown_is_closed
-    return VaultClosure(blocked, status, "live_adapter", reason, result.message, result.max_deposit)
+    return VaultClosure(blocked, status, source, reason, result.message, result.max_deposit)
+
+
+def _from_redemption_check(result: RedemptionCheckResult, unknown_is_closed: bool | None) -> VaultClosure:
+    """Retain live account restrictions even when optional trading policy is off."""
+    reason = result.reason_code
+    if reason in (RedemptionBlockReason.safe_address_unavailable, RedemptionBlockReason.user_equity_fetch_failed):
+        status = VaultClosureOutcome.unknown
+    elif reason in (RedemptionBlockReason.user_lockup_not_expired, RedemptionBlockReason.vault_max_withdrawable_zero):
+        # HyperCore account lockups and maxWithdrawable do not prove the venue
+        # closed. PR #1542/#1671 distinguish account liquidity from admission.
+        # Neither policy nor unknown-state overrides may waive a real lockup.
+        status = VaultClosureOutcome.account_restricted
+    elif reason is RedemptionBlockReason.redemption_window_closed:
+        status = VaultClosureOutcome.closed
+    elif result.can_redeem:
+        status = VaultClosureOutcome.open if result.max_redemption is not None else VaultClosureOutcome.unknown
+    else:
+        # Base live pricing can return zero maxRedeem for an empty owner balance.
+        status = VaultClosureOutcome.account_restricted
+    blocked = not result.can_redeem
+    if status is VaultClosureOutcome.unknown and unknown_is_closed is not None:
+        blocked = unknown_is_closed
+    return VaultClosure(blocked, status, "live_adapter", reason.value if reason else None, result.message, result.max_redemption)
 
 
 def is_backtesting_deposit_open(pair, deposits_open, max_deposit):

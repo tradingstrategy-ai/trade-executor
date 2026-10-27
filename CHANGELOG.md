@@ -2,7 +2,7 @@
 
 ## 0.2
 
-- Unify vault closure and strategy-interaction decisions with enum outcomes, protocol-aware historical interpretation and shared chart/strategy admission rules; document evidence, exceptions and keyword controls (2026-10-27).
+- Unify vault closure and strategy-interaction decisions with enum outcomes, protocol-aware historical interpretation and shared chart/strategy admission rules; retain serialised evidence, reject ambiguous captured queries, preserve mandatory live account restrictions and document exceptions and keyword controls (2026-10-27).
 
 - Add historical vault deposit and redemption closure counts to trading-universe charts, with unknown-state coverage, synthetic-window labels and optional vault scope (2026-10-27).
 

@@ -489,3 +489,5 @@ Each test doubles as a worked example:
 ## Shared vault admission rule
 
 Strategies and charts use `tradeexecutor.strategy.vault_closure`: `is_vault_closed()` reports closure, while `can_interact_with_vault()` applies interaction policy. See [protocol cases and API controls](../../docs/vault-closure.md). Do not reinterpret raw maximum-capacity fields at call sites.
+
+The shared closure analytics expose unknown evidence, optional policy blocks and total interactions blocked by the strategy rules separately. Account restrictions in live adapters are not global vault closures. `strategy.deposit_check` is a compatibility import shim. See [the unified rule](../../docs/vault-closure.md).

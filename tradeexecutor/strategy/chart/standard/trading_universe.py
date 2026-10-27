@@ -115,7 +115,8 @@ def available_trading_pairs(
 
     df = pd.DataFrame(data)
 
-    if any(pair.kind.is_vault() for pair in input.strategy_universe.iterate_pairs()):
+    if any(pair.kind.is_vault() and (vault_pair_ids is None or pair.internal_id in vault_pair_ids)
+           for pair in input.strategy_universe.iterate_pairs()):
         window_counts = calculate_vault_window_counts(
             input.strategy_universe,
             pd.DatetimeIndex(df.index),

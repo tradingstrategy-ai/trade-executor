@@ -131,7 +131,7 @@ sequenceDiagram
 ## The mechanism
 
 **Phase 1 — park (before trade generation).** For each fresh positive deposit
-signal whose window is closed (`can_deposit()` false; settlement-pending pins
+signal whose window is closed (`can_interact_with_vault()` false; settlement-pending pins
 are left to the base model): zero the adjustment, flag
 `parked_in_queue_vault`, record `parked_usd`, and log a park event. Parking
 *before* generation matters twice: the whole-portfolio `min_trade_threshold`

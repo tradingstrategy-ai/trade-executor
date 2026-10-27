@@ -5,8 +5,6 @@ All historical and live deposit interpretations are maintained in that module.
 from tradeexecutor.strategy.vault_closure import (
     BACKTEST_ALWAYS_OPEN_DEPOSIT_FEATURES,
     BACKTEST_ALWAYS_OPEN_DEPOSIT_PROTOCOLS,
-    _is_backtesting_always_open_protocol,
-    _fetch_live_deposit_closed_reason,
     is_backtesting_deposit_open,
     check_backtesting_deposit,
     get_live_max_deposit,

@@ -11,6 +11,16 @@ from eth_defi.compat import native_datetime_utc_fromtimestamp
 from tradeexecutor.state.types import JSONHexAddress, Percent, USDollarAmount
 
 
+class VaultClosureOutcome(enum.Enum):
+    """Meaning of the available evidence, independently of execution policy."""
+
+    open = "open"
+    closed = "closed"
+    unknown = "unknown"
+    policy_blocked = "policy_blocked"
+    account_restricted = "account_restricted"
+
+
 class RedemptionCheckStage(enum.Enum):
     """Where the strategy asked whether a position can be redeemed."""
 
@@ -193,6 +203,11 @@ class DepositCheckResult:
     max_deposit: USDollarAmount | None = None
     #: Compact source fields actually used for a HyperCore deposit decision.
     used_vault_info: VaultInfoSnapshot | None = None
+    #: Optional shared assessment, retained through AlphaModel and JSON round trips.
+    #: Older/live adapters may omit these fields; the shared rule adapts their reasons.
+    evidence_status: VaultClosureOutcome | None = None
+    evidence_source: str | None = None
+    evidence_reason: str | None = None
 
 
 @dataclass_json

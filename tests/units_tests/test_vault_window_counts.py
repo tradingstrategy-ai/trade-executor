@@ -1,17 +1,17 @@
 """Historical universe charts must not confuse closures with missing evidence."""
 
 import datetime
-from eth_defi.erc_4626.core import ERC4626Feature
-from tradeexecutor.backtest.backtest_pricing import BacktestPricing
-from tradeexecutor.strategy.vault_closure import can_interact_with_vault
 from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pandas as pd
 import pytest
+from eth_defi.erc_4626.core import ERC4626Feature
 from tradingstrategy.candle import GroupedCandleUniverse
 
-from tradeexecutor.analysis.vault_windows import calculate_vault_window_counts
+from tradeexecutor.analysis.vault_windows import calculate_vault_window_counts, calculate_vault_window_diagnostics
+from tradeexecutor.backtest.backtest_pricing import BacktestPricing
+from tradeexecutor.strategy.vault_closure import can_interact_with_vault
 from tradeexecutor.backtest.vault_windows import VaultWindowSchedule
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
 from tradeexecutor.strategy.chart.definition import ChartInput
@@ -133,16 +133,46 @@ def test_synthetic_windows_empty_scope_and_chart(universe: TradingStrategyUniver
         calculate_vault_window_counts(universe, index.tz_localize("UTC"))
 
 
-def test_protocol_non_admission_fields_do_not_inflate_chart(universe):
-    """Lagoon zero claimable capacity must agree with strategy admission, not look closed."""
+def test_protocol_non_admission_fields_do_not_inflate_chart(universe: TradingStrategyUniverse) -> None:
+    """Keep charts and strategy permission consistent for Lagoon claimable maxima.
+
+    1. Attach Lagoon metadata and zero claimable maxima to a real pair.
+    2. Compare chart categories with the strategy interaction rule.
+    """
+    # 1. Universe metadata is mocked; the shared pricing rule executes normally.
     pairs = list(universe.iterate_pairs())
     pairs[0].other_data['vault_features'] = {ERC4626Feature.lagoon_like}
     universe.iterate_pairs.side_effect = lambda: iter(pairs)
     ts = pd.Timestamp('2026-03-02')
     universe.vault_state = pd.DataFrame([dict(pair_id=1, timestamp=ts,
         deposits_open=False, redemption_open=pd.NA, max_deposit=0., max_redeem=0.)])
+    # 2. Unknown admission is not a known closure.
     counts = calculate_vault_window_counts(universe, pd.DatetimeIndex([ts]), pair_ids={1})
     assert counts.iloc[0]['Deposits closed'] == 0
     assert counts.iloc[0]['Deposit state unknown'] == 1
     assert counts.iloc[0]['Deposits blocked by rules'] == 0
     assert can_interact_with_vault(pairs[0], timestamp=ts, pricing_model=BacktestPricing(universe, routing_model=None))
+
+
+def test_diagnostics_empty_scope_and_partial_final_cycle(universe: TradingStrategyUniverse) -> None:
+    """Keep empty scopes and non-aligned exclusive end times well-defined.
+
+    1. Evaluate unknown vaults on a calendar ending between decision cycles.
+    2. Verify unknown explanations are not listed as closure reasons.
+    3. Check empty scope is supported and empty time ranges fail clearly.
+    """
+    # 1. Include March 2 midnight, before the exclusive March 2 noon end.
+    diagnostics = calculate_vault_window_diagnostics(universe, datetime.datetime(2026, 3, 1),
+        datetime.datetime(2026, 3, 2, 12), pd.Timedelta(days=1))
+    assert len(diagnostics.cycle_index) == 2
+    # 2. Missing evidence does not become a closed-vault explanation.
+    assert (diagnostics.summary_df["Deposit closed reasons"] == "").all()
+    assert set(diagnostics.summary_df["Source"]) == {"no_state"}
+    # 3. Only universe iteration is replaced; diagnostics execute normally.
+    universe.iterate_pairs.side_effect = lambda: iter([])
+    empty = calculate_vault_window_diagnostics(universe, datetime.datetime(2026, 3, 1),
+        datetime.datetime(2026, 3, 2), pd.Timedelta(days=1))
+    assert empty.summary_df.empty and empty.status_counts_df.empty
+    with pytest.raises(ValueError, match="at least one"):
+        calculate_vault_window_diagnostics(universe, datetime.datetime(2026, 3, 1),
+            datetime.datetime(2026, 3, 1), pd.Timedelta(days=1))

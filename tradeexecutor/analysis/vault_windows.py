@@ -32,10 +32,10 @@ if TYPE_CHECKING:
 #: Cycle status: the window is known open.
 STATUS_OPEN = "open"
 
-#: Cycle status: the window is known closed (flag false or zero cap).
+#: Cycle status: the shared rule identifies an operation closure.
 STATUS_CLOSED = "closed"
 
-#: Cycle status: no fresh vault-state sample; BacktestPricing allows the trade.
+#: Cycle status: evidence is missing/unsuitable and the chosen policy allows the trade.
 STATUS_UNKNOWN_ALLOWED = "unknown_allowed"
 STATUS_UNKNOWN_BLOCKED = "unknown_blocked"
 STATUS_POLICY_BLOCKED = "policy_blocked"
@@ -67,7 +67,7 @@ class VaultWindowDiagnostics:
     def get_description(self) -> str:
         """One-line description of the diagnostics run for notebook output."""
         return (
-            f"Vault window diagnostics over {len(self.cycle_index)} daily cycles "
+            f"Vault window diagnostics over {len(self.cycle_index)} decision cycles "
             f"({self.cycle_index[0].date()} to {self.cycle_index[-1].date()}); "
             f"availability tolerance {self.availability_tolerance}. "
             f"Unknown is reported separately from admission policy."
@@ -148,7 +148,8 @@ def calculate_vault_window_counts(
     columns = ["Vaults with price history", "Deposits closed" + suffix,
                "Redemptions closed" + suffix, "Deposit state unknown", "Redemption state unknown",
                "Deposit policy blocks", "Redemption policy blocks", "Deposits blocked by rules", "Redemptions blocked by rules"]
-    counts = pd.DataFrame(0, index=cycle_index, columns=columns, dtype="int64")
+    values = np.zeros((len(cycle_index), len(columns)), dtype="int64")
+    counts = pd.DataFrame(values, index=cycle_index, columns=columns, copy=False)
     if not pairs or cycle_index.empty:
         return counts
     pricing = BacktestPricing(strategy_universe, routing_model=None, data_delay_tolerance=availability_tolerance)
@@ -157,20 +158,21 @@ def calculate_vault_window_counts(
         if candles is None or candles.empty:
             continue
         timestamps = candles.index.get_level_values("timestamp")
-        covered_index = cycle_index[(cycle_index >= timestamps.min()) & (cycle_index <= timestamps.max())]
-        counts.loc[covered_index, columns[0]] += 1
-        for ts in covered_index:
+        covered_rows = np.flatnonzero((cycle_index >= timestamps.min()) & (cycle_index <= timestamps.max()))
+        values[covered_rows, 0] += 1
+        for row in covered_rows:
+            ts = cycle_index[row]
             for operation, closed, unknown, policy, blocked in (
-                ("deposit", columns[1], columns[3], columns[5], columns[7]),
-                ("redemption", columns[2], columns[4], columns[6], columns[8]),
+                ("deposit", 1, 3, 5, 7),
+                ("redemption", 2, 4, 6, 8),
             ):
                 assessment = get_vault_closure(pair, timestamp=ts, pricing_model=pricing, operation=operation)
                 # Only presentation belongs here. The shared module owns all
                 # protocol exceptions, policy blocks and unknown admission rules.
-                counts.loc[ts, closed] += int(is_vault_closed(pair, assessment=assessment))
-                counts.loc[ts, unknown] += int(assessment.status is VaultClosureOutcome.unknown)
-                counts.loc[ts, policy] += int(assessment.status is VaultClosureOutcome.policy_blocked)
-                counts.loc[ts, blocked] += int(not can_interact_with_vault(pair, assessment=assessment))
+                values[row, closed] += int(is_vault_closed(assessment))
+                values[row, unknown] += int(assessment.status is VaultClosureOutcome.unknown)
+                values[row, policy] += int(assessment.status is VaultClosureOutcome.policy_blocked)
+                values[row, blocked] += int(not can_interact_with_vault(assessment))
 
     return counts
 
@@ -195,7 +197,7 @@ def calculate_vault_window_diagnostics(
       strategy-policy blocks. Unknown admission is reported separately.
 
     - Missing state is unknown; the shared rule decides whether interaction is allowed
-      (source ``no_state_allowed``), which ``BacktestPricing`` permits
+      (source ``no_state``); post-cutoff HyperCore unknowns are refused.
 
     Example:
 
@@ -223,7 +225,7 @@ def calculate_vault_window_diagnostics(
 
     :param end:
         Backtest end timestamp, exclusive: the last evaluated cycle is
-        one ``freq`` before it.
+        the final timestamp strictly before it on the requested cycle grid.
 
     :param freq:
         Decision cycle frequency, e.g. ``TimeBucket.d1.to_frequency()``.
@@ -232,9 +234,19 @@ def calculate_vault_window_diagnostics(
         Maximum age of a vault-state sample still considered fresh for a cycle.
 
     :return:
-        The three diagnostics tables and the evaluated cycle index.
+        The three diagnostics tables and the evaluated cycle index. Historical
+        column names ending in "days" (and "Days") count decision cycles; they
+        represent days only for daily input. Source labels describe the input
+        table/override, not observed permission. Empty vault scopes return empty
+        tables; an empty decision calendar raises ``ValueError``.
     """
-    cycle_index = pd.date_range(start=start, end=end - freq, freq=freq)
+    if start >= end:
+        raise ValueError("Vault diagnostics require at least one decision cycle")
+    cycle_index = pd.date_range(start=start, end=end, freq=freq, inclusive="left")
+    if cycle_index.empty:
+        raise ValueError("Vault diagnostics require at least one decision cycle")
+    if cycle_index.tz is not None or availability_tolerance < pd.Timedelta(0):
+        raise ValueError("Use naive UTC timestamps and a non-negative availability tolerance")
     vault_state_df = strategy_universe.vault_state
     vault_window_overrides = getattr(strategy_universe, "vault_window_overrides", {}) or {}
     vault_pairs = [pair for pair in strategy_universe.iterate_pairs() if pair.kind.is_vault()]
@@ -254,7 +266,7 @@ def calculate_vault_window_diagnostics(
         pair_id = pair.internal_id
         override = vault_window_overrides.get(pair_id)
         state_group = vault_state_by_pair.get(pair_id)
-        source = "override" if override is not None else ("vault_state" if state_group is not None else "no_state_allowed")
+        source = "override" if override is not None else ("vault_state" if state_group is not None else "no_state")
 
         deposit_statuses = []
         redemption_statuses = []
@@ -290,16 +302,16 @@ def calculate_vault_window_diagnostics(
                 ("redemption", redemption_statuses, redemption_reasons),
             ):
                 assessment = get_vault_closure(pair, timestamp=ts, pricing_model=pricing, operation=operation)
-                if is_vault_closed(pair, assessment=assessment):
+                if is_vault_closed(assessment):
                     status = STATUS_CLOSED
                 elif assessment.status is VaultClosureOutcome.policy_blocked:
                     status = STATUS_POLICY_BLOCKED
                 elif assessment.status is VaultClosureOutcome.unknown:
-                    status = STATUS_UNKNOWN_ALLOWED if can_interact_with_vault(pair, assessment=assessment) else STATUS_UNKNOWN_BLOCKED
+                    status = STATUS_UNKNOWN_ALLOWED if can_interact_with_vault(assessment) else STATUS_UNKNOWN_BLOCKED
                 else:
                     status = STATUS_OPEN
                 statuses.append(status)
-                if assessment.message:
+                if assessment.status is VaultClosureOutcome.closed and assessment.message:
                     reasons.append(assessment.message)
 
         deposit_counts = pd.Series(deposit_statuses).value_counts().to_dict()
@@ -388,13 +400,15 @@ def calculate_vault_window_diagnostics(
             for status, days in redemption_counts.items()
         )
 
-    summary_df = pd.DataFrame(summary_rows).sort_values(
-        ["Source", "Longest deposit closed gap", "Longest deposit unknown gap", "Deposit closed days"],
-        ascending=[True, False, False, False],
-    )
+    summary_df = pd.DataFrame(summary_rows)
+    if not summary_df.empty:
+        summary_df = summary_df.sort_values(
+            ["Source", "Longest deposit closed gap", "Longest deposit unknown gap", "Deposit closed days"],
+            ascending=[True, False, False, False],
+        )
     gap_df = pd.DataFrame(gap_rows, columns=["Kind", "Status", "Pair id", "Ticker", "Protocol", "Chain", "Source", "Days", "Start", "End"]).sort_values(["Days", "Status", "Kind"], ascending=[False, True, True])
     status_counts_df = (
-        pd.DataFrame(status_rows)
+        pd.DataFrame(status_rows, columns=["Kind", "Status", "Days", "Pair id", "Ticker", "Source"])
         .groupby(["Kind", "Status", "Source"], as_index=False)
         .agg(Vaults=("Pair id", "nunique"), Days=("Days", "sum"))
         .sort_values(["Kind", "Source", "Status"])

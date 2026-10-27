@@ -722,7 +722,7 @@ class BacktestPricing(PricingModel):
         result = RedemptionCheckResult(timestamp=ts, stage=stage, can_redeem=not decision.blocked,
             pair_ticker=pair.get_ticker() if pair else None, vault_address=pair.pool_address if pair else None)
         if decision.blocked:
-            result.reason_code = (RedemptionBlockReason.redemption_window_closed if decision.source == "synthetic_schedule"
+            result.reason_code = (RedemptionBlockReason.redemption_window_closed if decision.reason in ("window_closed", "explicit_closed")
                                   else RedemptionBlockReason.vault_max_withdrawable_zero)
             result.max_redemption = result.max_withdrawable = 0.0
             result.message = decision.message
