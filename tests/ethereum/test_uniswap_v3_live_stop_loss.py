@@ -476,6 +476,7 @@ def test_live_stop_loss(
     assert state.portfolio.reserves[usdc_id].quantity == pytest.approx(Decimal('8588.907521'))
 
 
+@pytest.mark.skip(reason="kaleido issues")
 def test_live_stop_loss_missing(
         logger,
         web3: Web3,
