@@ -161,7 +161,6 @@ source .local-test.env && PYTHONPATH="$(pwd):$PYTHONPATH" poetry run pytest test
 - Never push directly to a master if not told explicitly
 - If the user ask to open a pull request as feature then start the PR title with "feat:" prefix and also add one line about the feature into `CHANGELOG.md`
 - Each changelog entry should follow the date of the PR in YYYY-MM-DD format. Example: Something was updated (2026-01-01).
-- Before opening or updating a pull request, format the code
 - When merging pull request, squash and merge commits and use the PR description as the commit message
 - If continuous integration (CI) tests fail on your PR, and they are marked flaky, run tests locally to repeat the issue if it is real flakiness or regression
 - If we add unrelated test fixes to the PR, include a section "Unrelated test fixes for CI green" in the PR description
