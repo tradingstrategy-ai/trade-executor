@@ -5,6 +5,8 @@ import json
 import sys
 from dataclasses import dataclass
 
+from eth_defi.lighter.constants import LIGHTER_CHAIN_ID
+
 from tradingstrategy.vault_data_client import VaultDataClient, VaultDataset
 
 from tradeexecutor.curator.curator import EXCLUDED_PROTOCOLS, EXCLUDED_VAULTS, MUST_INCLUDE
@@ -57,7 +59,7 @@ def lighter_llp_exclusion_reason(
     Opting in only permits universe membership; it does not model acquisition,
     staking, lock-up or valuation of LIT. Those require explicit strategy work.
     """
-    if not include_lighter_llp and chain_id == 9998 and address.lower() == LIGHTER_LLP_ADDRESS:
+    if not include_lighter_llp and chain_id == LIGHTER_CHAIN_ID and address.lower() == LIGHTER_LLP_ADDRESS:
         return LIGHTER_LLP_EXCLUSION_REASON
     return None
 

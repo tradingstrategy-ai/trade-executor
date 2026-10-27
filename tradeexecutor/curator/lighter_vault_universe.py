@@ -188,6 +188,7 @@ def build_lighter_vault_universe(
     exclude_leveraged_beta: bool = False,
     printer: Callable[[str], None] = print,
     vault_data_client: VaultDataClient | None = None,
+    *,
     include_lighter_llp: bool = False,
 ) -> list[tuple[ChainId, str]]:
     """Build a filtered Lighter vault universe, cached by parameters.
@@ -242,6 +243,9 @@ def build_lighter_vault_universe(
             parsed.append(v)
 
     printer(f"Parsed {len(parsed)} Lighter vaults from API")
+    for vault in parsed:
+        if vault.excluded_reason:
+            printer(f"Excluded {vault.name}: {vault.excluded_reason}")
 
     selected = select_top_vaults(
         parsed,
