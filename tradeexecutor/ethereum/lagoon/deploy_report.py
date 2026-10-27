@@ -17,6 +17,7 @@ from eth_defi.chain import get_chain_name
 from eth_defi.etherscan.config import get_etherscan_url
 
 from tradeexecutor.exchange_account.lighter import (
+    format_lighter_sub_account_lines,
     LIGHTER_PUBLIC_METADATA_LABELS,
     get_public_lighter_metadata,
 )
@@ -137,6 +138,7 @@ def print_deployment_report(
         for key, label in LIGHTER_PUBLIC_METADATA_LABELS.items():
             if key in public_lighter_metadata:
                 public_lines.append(f"  {label}: {public_lighter_metadata[key]}")
+        public_lines.extend(format_lighter_sub_account_lines(public_lighter_metadata))
         unicode_report = "\n".join(public_lines) + "\n\n" + unicode_report
 
         metadata_lines = [
@@ -148,6 +150,7 @@ def print_deployment_report(
         for key, label in LIGHTER_PUBLIC_METADATA_LABELS.items():
             if key in public_lighter_metadata:
                 metadata_lines.append(f"- **{label}**: `{public_lighter_metadata[key]}`")
+        metadata_lines.extend(format_lighter_sub_account_lines(public_lighter_metadata, markdown=True))
         metadata_lines.extend(["", "---", "", markdown_report])
         markdown_report = "\n".join(metadata_lines)
 
@@ -230,6 +233,7 @@ def _format_deployment_metadata_markdown(
             for key, label in LIGHTER_PUBLIC_METADATA_LABELS.items():
                 if key in public_lighter_metadata:
                     lines.append(f"- **Lighter {label}**: `{public_lighter_metadata[key]}`")
+            lines.extend(format_lighter_sub_account_lines(public_lighter_metadata, markdown=True))
 
         lines.append("")
 
@@ -337,6 +341,7 @@ def generate_multichain_deployment_report(
         for key, label in LIGHTER_PUBLIC_METADATA_LABELS.items():
             if key in lighter_data:
                 lighter_lines.append(f"  {label}: {lighter_data[key]}")
+        lighter_lines.extend(format_lighter_sub_account_lines(lighter_data))
         lighter_lines.append("")
     if lighter_lines:
         unicode_report = "\n".join(lighter_lines) + "\n" + unicode_report

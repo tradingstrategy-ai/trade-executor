@@ -103,33 +103,37 @@ def test_get_redemption_nav_ignores_small_lighter_balance() -> None:
         patch("tradeexecutor.cli.commands.lagoon_redeem.fetch_lighter_total_equity", return_value=equity) as mock_equity,
     ):
         # 3. Verify the Safe balance is posted when the equity is below five USDC.
-        assert _get_redemption_nav(vault, Decimal("20"), 747918) == Decimal("20")
+        assert _get_redemption_nav(vault, Decimal("20"), [747918]) == Decimal("20")
         mock_session.assert_called_once_with()
         mock_equity.assert_called_once_with(mock_session.return_value.__enter__.return_value, 747918)
 
 
 @pytest.mark.timeout(30)
 def test_get_redemption_nav_keeps_material_lighter_balance() -> None:
-    """Material Lighter equity remains in the settlement NAV.
+    """Material Lighter equity across a master and a sub-account remains in the settlement NAV.
+
+    The threshold applies to the combined equity of all accounts, so two
+    accounts that are each below it can still hold material capital.
 
     1. Read a normal Lagoon NAV that includes Lighter equity.
-    2. Read public Lighter equity equal to the five-USDC threshold.
-    3. Verify the normal NAV remains unchanged because only lower values are ignored.
+    2. Read public Lighter equity of 2.5 USDC on each of two accounts, together equal to the five-USDC threshold.
+    3. Verify the normal NAV remains unchanged because only lower combined values are ignored.
     """
     # 1. Read a normal Lagoon NAV that includes Lighter equity.
     vault = MagicMock()
     vault.fetch_nav.return_value = Decimal("25")
 
-    # 2. Read public Lighter equity equal to the five-USDC threshold.
+    # 2. Read public Lighter equity of 2.5 USDC on each of two accounts, together equal to the five-USDC threshold.
     equity = MagicMock()
-    equity.get_total.return_value = Decimal("5")
+    equity.get_total.return_value = Decimal("2.5")
 
     with (
         patch("tradeexecutor.cli.commands.lagoon_redeem.create_lighter_session"),
-        patch("tradeexecutor.cli.commands.lagoon_redeem.fetch_lighter_total_equity", return_value=equity),
+        patch("tradeexecutor.cli.commands.lagoon_redeem.fetch_lighter_total_equity", return_value=equity) as mock_equity,
     ):
-        # 3. Verify the normal NAV remains unchanged because only lower values are ignored.
-        assert _get_redemption_nav(vault, Decimal("20"), 747918) == Decimal("25")
+        # 3. Verify the normal NAV remains unchanged because only lower combined values are ignored.
+        assert _get_redemption_nav(vault, Decimal("20"), [747918, 2**47 + 1]) == Decimal("25")
+        assert mock_equity.call_count == 2
 
 
 @pytest.mark.timeout(30)

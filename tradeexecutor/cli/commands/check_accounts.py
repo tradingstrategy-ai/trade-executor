@@ -8,10 +8,12 @@ from eth_defi.hotwallet import HotWallet
 from tabulate import tabulate
 
 from tradeexecutor.exchange_account.lighter import (
+    check_lighter_account_set,
     create_lighter_account_value_func,
     validate_lighter_exchange_account_pairs,
 )
 from tradeexecutor.ethereum.lighter.transfer_verification import reconcile_verified_lighter_transfers
+from tradeexecutor.exchange_account.lighter_operator import load_lighter_signers
 from tradeexecutor.strategy.account_correction import check_accounts as _check_accounts
 
 from ...state.state import UncleanState
@@ -62,6 +64,8 @@ def check_accounts(
     test_evm_uniswap_v2_init_code_hash: Optional[str] = shared_options.test_evm_uniswap_v2_init_code_hash,
     unit_testing: bool = shared_options.unit_testing,
     raise_on_unclean: bool = typer.Option(False, is_flag=False, envvar="RAISE_ON_UNCLEAN", help="Raise an exception if unclean. Unit test option."),
+    lighter_operator_record_file: Path | None = shared_options.lighter_operator_record_file_for_accounting,
+    lighter_sub_account_operator_record_files: str | None = shared_options.lighter_sub_account_operator_record_files,
 ):
     """Check that the state ledger matches onchain and external balances.
 
@@ -125,7 +129,12 @@ def check_accounts(
     assert not store.is_pristine(), f"State does not exists yet: {state_file}"
 
     state = store.load()
-    verified_transfers = reconcile_verified_lighter_transfers(state, web3, mutate=False)
+    verified_transfers = reconcile_verified_lighter_transfers(
+        state,
+        web3,
+        mutate=False,
+        signers=load_lighter_signers(lighter_operator_record_file, lighter_sub_account_operator_record_files),
+    )
     if verified_transfers:
         logger.info(
             "Found %d verified but unreconciled Lighter transfer(s); run correct-accounts or repair",
@@ -167,6 +176,7 @@ def check_accounts(
         execution_context.mode,
         UniverseOptions(history_period=mod.get_live_trading_history_period()),
         strategy_parameters=mod.parameters,
+        state=state,
     )
 
     logger.info("Universe contains %d pairs", universe.data_universe.pairs.get_count())
@@ -199,6 +209,16 @@ def check_accounts(
         sync_model,
         exchange_account_value_func=exchange_account_value_func,
     )
+
+    vault = getattr(sync_model, "vault", None)
+    if lighter_pairs and vault is not None:
+        # Every Lighter account the Safe owns must be a position, or NAV misses it.
+        accounts_clean, message = check_lighter_account_set(vault.safe_address, lighter_pairs)
+        if accounts_clean:
+            logger.info("%s", message)
+        else:
+            logger.error("%s", message)
+            clean = False
 
     output = tabulate(
         df,

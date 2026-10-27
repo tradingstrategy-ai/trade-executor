@@ -13,7 +13,7 @@ deployment:
 | Asset | Amount | Purpose |
 |-------|--------|---------|
 | ETH | Non-zero and sufficient for current mainnet gas | Lagoon/Safe deployment and Lighter activation transactions; gas varies. |
-| Native Ethereum USDC | **20 USDC** for initial capital | Deployment subscribes 20 USDC, transfers 1 USDC to Lighter and leaves 19 USDC in the Safe. |
+| Native Ethereum USDC | **1 USDC** for activation | Deployment subscribes 1 USDC and transfers all of it to Lighter, the direct Ethereum deposit minimum. The Safe holds no USDC afterwards. |
 
 Use native Ethereum USDC at
 `0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48`; bridged USDC is not suitable.
@@ -44,12 +44,13 @@ export LAGOON_SETTLEMENT_WINDOW="86400"
 ```
 
 This is a cumulative gross budget across the fixed 24-hour window, not a
-one-settlement-per-day cooldown. The 20 USDC Lighter bootstrap subscription
-therefore consumes 20 USDC of the first window, leaving 4,980 USDC available
+one-settlement-per-day cooldown. The 1 USDC Lighter bootstrap subscription
+therefore consumes 1 USDC of the first window, leaving 4,999 USDC available
 for normal automated settlement.
 
-The activation makes a Lagoon-accounted 20 USDC subscription, transfers its
-fixed 1 USDC Lighter deposit and leaves 19 USDC in the Safe. It waits for
+The activation makes a Lagoon-accounted 1 USDC subscription and transfers all
+of it to Lighter as the fixed 1 USDC activation deposit, leaving the Safe
+empty. Add operating capital with a normal Lagoon subscription afterwards. It waits for
 Lighter public state before executing `changePubKey`. It is Ethereum-only and
 cannot be simulated on a private Anvil fork. Enabling it therefore spends real
 gas and USDC.
@@ -66,6 +67,48 @@ If `VAULT_RECORD_FILE` is `/secure/path/vault-record.txt`, the private key is
 in the paired `/secure/path/vault-record.json` operator record. Do not print,
 copy into a strategy module, pass on a command line, or add it to executor
 state. Move the mode-`0600` JSON record to the secret manager after deployment.
+
+Deployment writes the private records only after the whole command returns.
+If it fails after a key has been registered on Lighter, that key is lost and
+the account needs a new key through a Safe `changePubKey`.
+
+### Sub-accounts
+
+To give external traders their own Lighter sub-accounts, declare them in the
+strategy's `Parameters.lighter_sub_accounts` as `SubAccount` values and pass
+the strategy with `STRATEGY_FILE` instead of `DENOMINATION_ASSET` (optionally with
+`LIGHTER_SUB_ACCOUNT_API_KEY_INDEX`, default 4). Deployment creates one
+sub-account per declaration with the master key, registers one key on each
+through the Safe and records each sub-account's id in the deployment
+artefact; `init` then records the account indices in the state. Each sub-account's API key is written to its own mode-0600
+`vault-record.nautilus.<id>.json` hand-over file; the executor record keeps
+only the master key. Sub-accounts start empty.
+
+The executor funds sub-accounts from the master with same-owner L2
+transfers, which Lighter did not charge for on 2026-10-26, and withdraws
+them to the Safe with the key-free L1 `withdraw(subIndex)`, which took about
+29 minutes on mainnet. A trader may transfer between sub-accounts with its
+own key; the executor only revalues the positions, unless it is given that
+key with `LIGHTER_SUB_ACCOUNT_OPERATOR_RECORD_FILES`. A strategy declares
+its sub-accounts in `Parameters.lighter_sub_accounts` as `SubAccount` values
+with stable ids, never Lighter account indices, and moves funds between them
+by id with the `PositionManager` custody methods, see
+[README-Lighter.md](../tradeexecutor/exchange_account/README-Lighter.md#strategy-setup-for-sub-accounts).
+
+The live tutorial
+[`manual-trade-executor-lighter-subaccounts.py`](../scripts/lagoon/manual-trade-executor-lighter-subaccounts.py)
+needs 5 USDC plus gas: the 1 USDC bootstrap and a 4 USDC subscription. It
+saves each generated key to a mode-0600 temporary file until deployment
+completes, to work around the limitation above.
+[`manual-trade-executor-lighter-transfers.py`](../scripts/lagoon/manual-trade-executor-lighter-transfers.py)
+books every deposit, transfer and withdrawal as its own trade with a scripted
+strategy, including transfers signed by the sub-account keys given to
+`start` with `LIGHTER_SUB_ACCOUNT_OPERATOR_RECORD_FILES`, and verifies the
+state afterwards; with `SIMULATE=true` it runs on an Anvil fork and the fake
+Lighter sequencer. See
+[README-Lighter.md](../tradeexecutor/exchange_account/README-Lighter.md#sub-accounts)
+for the custody model, fees, strategy setup, recovery and the verified
+mainnet results.
 
 ## Pair a compatible strategy module
 
@@ -105,21 +148,21 @@ Use the small
 [`lighter_cash_management_strategy.py`](../strategies/test_only/lighter_cash_management_strategy.py)
 as a reference. Its policy retains a 20 USDC Safe buffer, keeps the configured
 free Lighter collateral buffer, ignores transfers below 1 USDC and uses a
-30-minute withdrawal timeout configured at the `start` CLI boundary:
+one-hour withdrawal timeout configured at the `start` CLI boundary:
 
 ```python
-LIGHTER_ACCOUNT_INDEX = 123  # Public infrastructure identity
-
 class Parameters:
     lighter_cash_management = True
     lighter_safe_cash_buffer_usd = Decimal("20")
     lighter_free_collateral_buffer_usd = Decimal("0")
-    lighter_min_transfer_usd = Decimal("1")
 ```
 
-Keep the public account identity separate from behavioural strategy parameters,
-as shown above. Runtime secrets and withdrawal settings are parsed by the CLI
-and passed to routing explicitly.
+That single-account module keeps a module-level `LIGHTER_ACCOUNT_INDEX`, as
+`strategies/lighter-ai.py` does. A strategy with sub-accounts declares them
+in `Parameters` and takes every account index from the state through
+`create_lighter_account_universe()`; see `docs/strategy-parameters.md`.
+Runtime secrets and withdrawal settings are parsed by the CLI and passed to
+routing explicitly.
 
 Use `PositionManager.get_current_cash()` and
 `PositionManager.get_exchange_account_available_balance(pair)` in
@@ -133,7 +176,7 @@ creates a Lighter withdrawal. The Safe target is
 `max(pending redemptions - pending deposits, 0) + buffer`. Secure
 withdrawals normally take about 20 minutes, so the live executor waits
 synchronously and starts no later trades while the request is pending. The
-30-minute timeout is a safety limit, not the expected delay. A restart
+one-hour timeout is a safety limit, not the expected delay. A restart
 aborts safely on an unfinished transfer; reconcile verified evidence through
 `correct-accounts` or `repair` before restarting. Set
 `LIGHTER_OPERATOR_RECORD_FILE` to the mode-`0600` deployment JSON so the
@@ -156,14 +199,16 @@ and synchronise Lagoon NAV throughout.
 
 The operational sequence is:
 
-1. Deploy with `GENERATE_LIGHTER_API_KEY=true`. The deployment subscribes 20
-   USDC to Lagoon, transfers 1 USDC from the Safe to Lighter and leaves 19 USDC
-   in the Safe. The vault is no longer eligible for `lagoon-first-deposit`.
+1. Deploy with `GENERATE_LIGHTER_API_KEY=true`. The deployment subscribes 1
+   USDC to Lagoon and transfers all of it from the Safe to Lighter, leaving the
+   Safe empty. The vault is no longer eligible for `lagoon-first-deposit`.
 2. Run `init`, then `correct-accounts --process-redemption`. The runtime
    deployment artefact supplies the original vault block, so the command records
-   the 20 USDC Lagoon investor flow and the public 1 USDC Lighter exchange
+   the 1 USDC Lagoon investor flow and the public 1 USDC Lighter exchange
    account without a repair or transfer script.
-3. Run `lagoon-lighter-test-trade --lighter-test-deposit-usdc 19` to make the bounded Lighter deposit, ETH/USD
+3. Run `scripts/lagoon/deposit-and-settle.py 19` to subscribe 19 USDC of test
+   capital through Lagoon and settle it into the Safe.
+4. Run `lagoon-lighter-test-trade --lighter-test-deposit-usdc 19` to make the bounded Lighter deposit, ETH/USD
    round trip and secure withdrawal back to the Safe.
 
 For automated Safe cash management, a secure withdrawal writes its public
@@ -194,6 +239,7 @@ export LIGHTER_TEST_DEPOSIT_USDC="19"
 
 trade-executor init
 trade-executor correct-accounts --process-redemption
+poetry run python scripts/lagoon/deposit-and-settle.py 19
 trade-executor lagoon-lighter-test-trade --lighter-test-deposit-usdc 19
 ```
 
@@ -205,7 +251,8 @@ both 0.005 ETH and 10 USDC of notional; 0.005 ETH was about 12 USDC at the time.
 Thus 20 USDC clears the zk deposit minimum and leaves modest collateral
 headroom for the automatically sized ETH perpetual order. Market limits are
 fetched at runtime and may change. The Safe must hold at least the selected
-deposit amount.
+deposit amount, so a fresh deployment first subscribes it with
+`deposit-and-settle.py`.
 
 To add further capital to an existing vault, stop the executor and run the
 reusable Lagoon subscription script. From a source checkout use:
@@ -235,12 +282,12 @@ or claimable deposit; it refuses a different amount. `lagoon-settle` settles
 the vault's eligible investor queue, so do not run this operator script while
 another investor's request needs separate handling.
 
-A Lighter-enabled deployment subscribes 20 USDC to Lagoon, transfers 1 USDC
-to activate the Safe-owned Lighter account and leaves 19 USDC in the Safe.
-Thus a correctly deployed vault has an executor reserve before its first
-normal trade. `lagoon-first-deposit` remains reserved for a vault with no NAV
-or shares. The deposit-and-settle script also accepts a zero-Safe baseline only
-to recover a legacy one-USDC Lighter activation deployment.
+A Lighter-enabled deployment subscribes 1 USDC to Lagoon and transfers all
+of it to activate the Safe-owned Lighter account, leaving the Safe empty. Use
+this script for the first operating capital; it accepts the zero-Safe
+baseline. Until that subscription settles, the Safe holds no cash to pay a
+Lagoon redemption. `lagoon-first-deposit` remains reserved for a vault with no
+NAV or shares.
 
 The Lighter AI Yubi deployment convention maps `~/secrets/lighter` to
 `/secure-lighter` inside the manual-command container. Its mode-`0600`

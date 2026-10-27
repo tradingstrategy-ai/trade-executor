@@ -45,6 +45,8 @@ def _make_trade() -> MagicMock:
     trade = MagicMock()
     trade.is_buy.return_value = True
     trade.is_vault.return_value = True
+    # An on-chain vault deposit, not an off-chain transfer between exchange accounts.
+    trade.is_internal_account_transfer.return_value = False
     trade.get_planned_reserve.return_value = Decimal("48.884068")
     trade.trade_id = 1486
     trade.planned_quantity = Decimal("48.884068")
@@ -350,6 +352,8 @@ def test_execution_persists_at_risk_marker_before_broadcast() -> None:
     trade = MagicMock()
     trade.trade_id = 1486
     trade.get_planned_value.return_value = 48.884068
+    # An on-chain vault deposit, not an off-chain transfer between exchange accounts.
+    trade.is_internal_account_transfer.return_value = False
     trade.pair.get_ticker.return_value = "Citadel-USDC"
     trade.is_failed.return_value = False
     trade.other_data = {}

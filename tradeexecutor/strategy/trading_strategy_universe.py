@@ -2121,6 +2121,7 @@ class TradingStrategyUniverseModel(UniverseModel):
         options: UniverseOptions,
         strategy_parameters: "tradeexecutor.strategy.parameters.StrategyParameters | None" = None,
         execution_model: "tradeexecutor.strategy.execution_model.ExecutionModel | None" = None,
+        state: "tradeexecutor.state.state.State | None" = None,
     ) -> TradingStrategyUniverse:
         pass
 
@@ -2164,6 +2165,7 @@ class DefaultTradingStrategyUniverseModel(TradingStrategyUniverseModel):
         execution_context: ExecutionContext | None = None,
         strategy_parameters: StrategyParameters | None = None,
         execution_model: "tradeexecutor.strategy.execution_model.ExecutionModel | None" = None,
+        state: "tradeexecutor.state.state.State | None" = None,
     ):
         """Build the initial backtest or live-trading universe.
 
@@ -2180,6 +2182,7 @@ class DefaultTradingStrategyUniverseModel(TradingStrategyUniverseModel):
                 execution_context=execution_context,
                 strategy_parameters=strategy_parameters,
                 execution_model=execution_model,
+                state=state,
             )
 
     def construct_universe(
@@ -2189,6 +2192,7 @@ class DefaultTradingStrategyUniverseModel(TradingStrategyUniverseModel):
         options: UniverseOptions,
         strategy_parameters: "tradeexecutor.strategy.parameters.StrategyParameters | None" = None,
         execution_model: "tradeexecutor.strategy.execution_model.ExecutionModel | None" = None,
+        state: "tradeexecutor.state.state.State | None" = None,
     ) -> TradingStrategyUniverse:
         with self.execution_context.timed_task_context_manager(task_name="create_trading_universe"):
             universe = call_create_trading_universe(
@@ -2199,6 +2203,7 @@ class DefaultTradingStrategyUniverseModel(TradingStrategyUniverseModel):
                 execution_model=execution_model,
                 strategy_parameters=strategy_parameters,
                 universe_options=options,
+                state=state,
             )
             assert isinstance(universe, TradingStrategyUniverse), f"Expected TradingStrategyUniverse, got {universe.__class__}"
             universe.validate()
@@ -2226,7 +2231,9 @@ def create_pair_universe_from_code(chain_id: ChainId, pairs: List[TradingPairIde
             else:
                 dex_type = ExchangeType.erc_4626_vault
         elif p.is_exchange_account():
-            dex_type = ExchangeType.derive
+            # Each external-account protocol with its own exchange type keeps it; others are typed as Derive.
+            protocol = p.get_exchange_account_protocol()
+            dex_type = ExchangeType(protocol) if protocol in {member.value for member in ExchangeType} else ExchangeType.derive
         else:
             dex_type = ExchangeType.uniswap_v2
 

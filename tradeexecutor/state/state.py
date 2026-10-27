@@ -790,7 +790,10 @@ class State:
 
         # Allocate reserve capital for this trade.
         # Reserve capital cannot be double spent until the trades are executed.
-        if TradeFlag.external_account_transfer in (trade.flags or set()):
+        if trade.is_internal_account_transfer():
+            # Funded from another exchange account, not from reserves.
+            pass
+        elif TradeFlag.external_account_transfer in (trade.flags or set()):
             if trade.is_buy():
                 self.portfolio.move_capital_from_reserves_to_spot_trade(
                     trade,
@@ -932,8 +935,13 @@ class State:
             trade.pair.is_exchange_account()
             and TradeFlag.external_account_transfer in (trade.flags or set())
         )
+        # Funding between exchange accounts moves no reserve cash; the source
+        # account decrease is booked by the protocol settlement helper.
+        is_internal_exchange_transfer = trade.is_internal_account_transfer()
+        if is_internal_exchange_transfer:
+            assert trade.is_buy(), f"Internal exchange-account transfers fund the destination position: {trade}"
 
-        if trade.is_spot() or is_exchange_transfer:
+        if trade.is_spot() or is_exchange_transfer or is_internal_exchange_transfer:
             if trade.is_buy():
                 assert executed_amount and executed_amount > 0, f"Executed amount was {executed_amount}"
             else:
@@ -999,7 +1007,7 @@ class State:
             position.loan = trade.executed_loan_update
 
         # Update share price running state for positions representing capital.
-        if position.is_spot() or position.is_vault() or is_exchange_transfer:
+        if position.is_spot() or position.is_vault() or is_exchange_transfer or is_internal_exchange_transfer:
             from tradeexecutor.strategy.position_internal_share_price import (
                 create_share_price_state,
                 update_share_price_state,
@@ -1134,6 +1142,10 @@ class State:
         caller—including startup repair—preserves the no-double-spend invariant.
         """
         trade.mark_failed(failed_at)
+        if trade.is_internal_account_transfer():
+            # No reserve was allocated, so there is nothing to return. The
+            # transfer stays pending until reconciled from exchange evidence.
+            return
         if TradeFlag.external_account_transfer in (trade.flags or set()):
             # A deposit may have left the Safe even if its final receipt was
             # not observed. Keep the allocation until account reconciliation.
@@ -1390,7 +1402,7 @@ class State:
         for p in self.portfolio.get_open_and_frozen_positions():
             t: TradeExecution
             for t in p.trades.values():
-                if t.is_unfinished() or t.is_external_account_transfer_pending():
+                if t.is_unfinished() or t.is_exchange_account_transfer_pending():
                     tx_hashes = ", ".join([str(tx.tx_hash) for tx in t.blockchain_transactions])
                     raise UncleanState(
                         f"Position #{p.position_id}, trade #{t.trade_id} "

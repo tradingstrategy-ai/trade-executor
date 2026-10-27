@@ -34,6 +34,7 @@ from ..bootstrap import (
     resolve_deployment_file,
 )
 from ..log import setup_logging
+from ...exchange_account.sub_account import read_lighter_account_resolution, store_lighter_account_resolution
 from ...strategy.execution_model import AssetManagementMode
 from . import shared_options
 
@@ -180,6 +181,14 @@ def init(
         logger.warning("To speed up process use --vault_deployment_block_number hint as a command line argument.")
     logger.info(f"Vault deployment block number hint is {start_block or 0:,}.")
     sync_model.sync_initial(state, start_block=start_block)
+
+    if asset_management_mode == AssetManagementMode.lagoon:
+        deployment_file = resolve_deployment_file(id, state_file)
+        if deployment_file.exists():
+            resolution = read_lighter_account_resolution(json.loads(deployment_file.read_text()), vault_address)
+            if resolution:
+                store_lighter_account_resolution(state, resolution)
+                logger.info("Recorded Lighter accounts from %s: %s", deployment_file, resolution)
 
     store.sync(state)
 

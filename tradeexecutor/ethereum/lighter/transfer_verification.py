@@ -1,20 +1,26 @@
 """Read-only verification for completed Lighter custody transfers."""
 
+import asyncio
+import logging
 from dataclasses import dataclass
 from decimal import Decimal
 
 from eth_defi.compat import native_datetime_utc_now
 from eth_defi.lighter.api import wait_for_lighter_collateral
 from eth_defi.lighter.session import LighterSession, create_lighter_session
+from eth_defi.lighter.transfer import LighterTransferRecord
 from eth_defi.lighter.valuation import fetch_lighter_total_equity
 from eth_defi.token import fetch_erc20_details
 from web3 import Web3
 from web3.exceptions import TransactionNotFound
 
 from tradeexecutor.exchange_account.lighter import LIGHTER_PROTOCOL
-from tradeexecutor.exchange_account.state import complete_exchange_account_transfer
+from tradeexecutor.exchange_account.lighter_operator import USDC_PRECISION, LighterOperatorRecord, fetch_lighter_funding_transfer
+from tradeexecutor.exchange_account.state import complete_exchange_account_funding, complete_exchange_account_transfer
 from tradeexecutor.state.state import State
-from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.state.trade import TradeExecution, TradeStatus
+
+logger = logging.getLogger(__name__)
 
 
 class LighterTransferVerificationError(RuntimeError):
@@ -125,13 +131,80 @@ def verify_lighter_transfer(
     )
 
 
+@dataclass(frozen=True, slots=True)
+class LighterFundingVerification:
+    """Verified result of one transfer between two accounts of the Safe."""
+
+    #: USDC credited to the destination account.
+    amount: Decimal
+
+    #: Fee charged to the sending account on top of the amount.
+    fee: Decimal
+
+
+def get_lighter_funding_evidence(record: LighterTransferRecord) -> dict[str, int | str]:
+    """Convert a transfer-history row to the evidence stored on a funding trade.
+
+    :param record:
+        Executed transfer read from the sending account's transfer history.
+    :return:
+        Public ``other_data`` fields read by :py:func:`verify_lighter_funding`.
+    """
+    return {
+        "lighter_transfer_from_account": record.from_account_index,
+        "lighter_transfer_to_account": record.to_account_index,
+        "lighter_transfer_amount_usdc": str(record.amount),
+        "lighter_transfer_fee_usdc": str(record.fee),
+    }
+
+
+def verify_lighter_funding(
+    trade: TradeExecution,
+    record: LighterTransferRecord | None = None,
+) -> LighterFundingVerification | None:
+    """Verify a funding transfer from its transfer-history evidence.
+
+    The history row is authoritative. Account equity is not used, because
+    the external trader can change either account while the transfer settles.
+
+    :param trade:
+        Funding trade on the destination account's position.
+    :param record:
+        History row fetched during reconciliation; otherwise the evidence
+        stored on the trade is used.
+    :return:
+        Verified amounts, or ``None`` while there is no history evidence.
+    """
+    evidence = get_lighter_funding_evidence(record) if record is not None else trade.other_data
+    if "lighter_transfer_amount_usdc" not in evidence:
+        return None
+    from_account = int(evidence["lighter_transfer_from_account"])
+    to_account = int(evidence["lighter_transfer_to_account"])
+    amount = Decimal(str(evidence["lighter_transfer_amount_usdc"]))
+    fee = Decimal(str(evidence["lighter_transfer_fee_usdc"]))
+    if from_account != int(trade.other_data["funding_source_account_id"]) or to_account != int(trade.pair.get_exchange_account_id()):
+        raise LighterTransferVerificationError("Lighter transfer history accounts differ from the funding trade")
+    if abs(amount - trade.planned_quantity) > USDC_PRECISION:
+        raise LighterTransferVerificationError("Lighter transfer history amount differs from the funding trade")
+    if fee < 0:
+        raise LighterTransferVerificationError("Lighter transfer history reports a negative fee")
+    return LighterFundingVerification(amount=amount, fee=fee)
+
+
 def reconcile_verified_lighter_transfers(
     state: State,
     web3: Web3,
     *,
     mutate: bool,
+    signers: dict[int, LighterOperatorRecord] | None = None,
 ) -> list[TradeExecution]:
     """Inspect or apply verified unfinished Lighter transfers.
+
+    Reserve transfers are verified from Ethereum receipts and public Lighter
+    data. A transfer between accounts interrupted before its history row was
+    stored needs the sending account's operator record to read authenticated
+    transfer history; without it the transfer stays pending. A funding still
+    planned after a halted cycle was never submitted and is expired.
 
     :param state:
         State containing the transfers to inspect.
@@ -139,9 +212,14 @@ def reconcile_verified_lighter_transfers(
         Chain reader used for the verification evidence.
     :param mutate:
         Apply verified results when ``True``; otherwise only return them.
+    :param signers:
+        Operator records the executor holds, keyed by account index, for
+        the authenticated transfer-history reads; see
+        :py:func:`~tradeexecutor.exchange_account.lighter_operator.load_lighter_signers`.
     :return:
         Transfers whose evidence is complete.
     """
+    signers = signers or {}
     pending_transfers = [
         (position, trade)
         for position in state.portfolio.get_open_and_frozen_positions()
@@ -149,12 +227,68 @@ def reconcile_verified_lighter_transfers(
         if trade.is_external_account_transfer_pending()
         and trade.pair.get_exchange_account_protocol() == LIGHTER_PROTOCOL
     ]
+    pending_funding = [
+        trade
+        for position in state.portfolio.get_open_and_frozen_positions()
+        for trade in position.trades.values()
+        if trade.is_internal_account_transfer_pending()
+        and trade.pair.get_exchange_account_protocol() == LIGHTER_PROTOCOL
+    ]
+
+    verified_trades = []
+
+    # Sequential execution starts each trade just before submitting it, so a
+    # transfer still planned after a halted cycle was never submitted and
+    # holds no reserve. Expire it so it does not block the executor.
+    never_started = [trade for trade in [*pending_funding, *(trade for _, trade in pending_transfers)] if trade.get_status() == TradeStatus.planned]
+    for trade in never_started:
+        verified_trades.append(trade)
+        if mutate:
+            trade.mark_expired(native_datetime_utc_now())
+    pending_funding = [trade for trade in pending_funding if trade not in never_started]
+    pending_transfers = [(position, trade) for position, trade in pending_transfers if trade not in never_started]
+
+    for trade in pending_funding:
+        record = None
+        tx_hash = trade.other_data.get("lighter_transfer_tx_hash")
+        if "lighter_transfer_amount_usdc" not in trade.other_data:
+            if not tx_hash:
+                logger.warning(
+                    "Lighter funding trade #%d may have been submitted but its hash was not recorded; check the sending account's transfer history manually",
+                    trade.trade_id,
+                )
+                continue
+            sender = signers.get(int(trade.other_data.get("funding_source_account_id", -1)))
+            if sender is None:
+                logger.warning(
+                    "Lighter funding trade #%d needs the sending account's record (LIGHTER_OPERATOR_RECORD_FILE or LIGHTER_SUB_ACCOUNT_OPERATOR_RECORD_FILES) to read transfer history",
+                    trade.trade_id,
+                )
+                continue
+            record = asyncio.run(fetch_lighter_funding_transfer(sender, str(tx_hash)))
+            if record is None:
+                continue
+        verification = verify_lighter_funding(trade, record)
+        if verification is None:
+            continue
+        verified_trades.append(trade)
+        if mutate:
+            if record is not None:
+                trade.other_data.update(get_lighter_funding_evidence(record))
+            complete_exchange_account_funding(
+                state=state,
+                trade=trade,
+                executed_amount=verification.amount,
+                fee=verification.fee,
+                executed_at=native_datetime_utc_now(),
+                recovery=True,
+            )
+
     if not pending_transfers:
-        return []
+        return verified_trades
 
     session = create_lighter_session()
     try:
-        verified_trades = []
         for position, trade in pending_transfers:
             verification = verify_lighter_transfer(web3, trade, session)
             if verification is None:

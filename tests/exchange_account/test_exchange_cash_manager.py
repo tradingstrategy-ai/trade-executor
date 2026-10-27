@@ -25,6 +25,7 @@ from tradeexecutor.exchange_account.state import (
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeFlag
+from tradeexecutor.strategy.strategy_module import StrategyParameters
 from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
 from tradeexecutor.strategy.strategy_module import read_strategy_module
 
@@ -81,6 +82,8 @@ def test_exchange_cash_manager_selects_safe_transfers() -> None:
     ))
     assert decision.direction == "withdraw"
     assert decision.amount_usdc == Decimal("20")
+    # A redemption priced from shares can have more decimals than USDC moves; the amount is rounded down.
+    assert manager.decide(_snapshot(safe_usdc="10", pending_redemptions_usdc="40.0000004")).amount_usdc == Decimal("50")
 
     # 4. Return no action for pending, minimum-sized and fully buffered cash.
     assert not manager.decide(_snapshot(), transfer_pending=True).should_transfer
@@ -217,11 +220,10 @@ def test_lighter_decide_trades_partially_redeems_free_collateral() -> None:
         state=state,
         timestamp=pd.Timestamp(native_datetime_utc_now()),
         execution_context=ExecutionContext(mode=ExecutionMode.unit_testing_trading),
-        parameters=SimpleNamespace(
-            lighter_safe_cash_buffer_usd=Decimal("20"),
-            lighter_free_collateral_buffer_usd=Decimal("0"),
-            lighter_min_transfer_usd=Decimal("1"),
-        ),
+        parameters=StrategyParameters({
+            "lighter_safe_cash_buffer_usd": Decimal("20"),
+            "lighter_free_collateral_buffer_usd": Decimal("0"),
+        }),
         get_position_manager=lambda: position_manager,
     )
 

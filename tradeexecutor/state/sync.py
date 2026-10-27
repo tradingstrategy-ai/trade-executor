@@ -71,6 +71,11 @@ class Deployment:
     #:
     initialised_at: Optional[datetime.datetime] = None
 
+    #: Lighter account index of the master, under ``master``, and of each sub-account id.
+    #:
+    #: Written by ``init`` from the deployment artefact; an id's index never changes.
+    lighter_accounts: dict[str, int] | None = None
+
     def __repr__(self):
         chain = self.chain_id.name if self.chain_id is not None else None
         return f"<Deployment chain:{chain} address:{self.address} name:{self.vault_token_name} token:{self.vault_token_symbol}>"

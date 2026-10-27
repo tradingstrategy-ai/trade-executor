@@ -91,6 +91,8 @@ def _make_trade(trade_id: int) -> MagicMock:
     trade.route = None
     trade.pair = MagicMock()
     trade.pair.is_exchange_account.return_value = False
+    # An on-chain trade, not an off-chain transfer between exchange accounts.
+    trade.is_internal_account_transfer.return_value = False
     trade.pair.get_ticker.return_value = f"PAIR-{trade_id}"
     trade.get_planned_value.return_value = float(trade_id)
     trade.get_status.return_value = SimpleNamespace(value="planned")

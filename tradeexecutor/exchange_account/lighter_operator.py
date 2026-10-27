@@ -6,6 +6,8 @@ import logging
 import os
 import stat
 import time
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
@@ -14,7 +16,18 @@ import lighter
 
 from eth_defi.lighter.api import LIGHTER_STATE_POLL_SECONDS
 from eth_defi.lighter.constants import LIGHTER_API_URL
-from eth_defi.lighter.sdk import LighterAuthTokenManager
+from eth_defi.lighter.sdk import LighterAuthTokenManager, create_lighter_signer_client
+from eth_defi.lighter.transfer import (
+    LighterTransferError,
+    LighterTransferRecord,
+    create_lighter_auth_token_manager,
+    fetch_lighter_transfer_fee,
+    fetch_lighter_transfer_record,
+    request_lighter_transfer,
+    wait_for_lighter_transfer,
+)
+
+from tradeexecutor.exchange_account.cash_manager import USDC_PRECISION
 
 logger = logging.getLogger(__name__)
 
@@ -24,8 +37,6 @@ OWNER_ONLY_FILE_MODE = 0o600
 UNSAFE_FILE_PERMISSION_MASK = 0o077
 #: Lighter history timestamps are allowed this much clock skew.
 WITHDRAWAL_HISTORY_CLOCK_SKEW_SECONDS = 60
-#: Lighter USDC precision used when matching withdrawal history amounts.
-USDC_PRECISION = Decimal("0.000001")
 
 
 @dataclass(slots=True)
@@ -54,6 +65,10 @@ class LighterOperatorRecord:
 def load_lighter_operator_record(path: Path) -> LighterOperatorRecord:
     """Load an owner-only operator record without logging its private key.
 
+    Accepts the executor's deployment record, which holds the master key under
+    ``lighter_account_setup``, and a sub-account hand-over file, which holds
+    one sub-account's key at its top level.
+
     :param path:
         Private JSON record created during Lighter Lagoon deployment.
     :return:
@@ -68,6 +83,9 @@ def load_lighter_operator_record(path: Path) -> LighterOperatorRecord:
     payload = json.loads(path.read_text())
     deployment = payload.get("deployments", {}).get("ethereum", payload)
     setup = deployment.get("lighter_account_setup")
+    if setup is None and "private_key" in deployment:
+        # A sub-account hand-over file carries the key at its top level.
+        setup = deployment
     if not isinstance(setup, dict):
         raise ValueError("Lighter operator record has no delegated API key")
     try:
@@ -81,6 +99,59 @@ def load_lighter_operator_record(path: Path) -> LighterOperatorRecord:
         )
     except (KeyError, TypeError, ValueError) as error:
         raise ValueError("Lighter operator record is incomplete") from error
+
+
+def load_lighter_sub_account_operator_records(paths: str | None) -> dict[int, LighterOperatorRecord]:
+    """Load the hand-over records of sub-accounts the executor may sign for.
+
+    The executor normally holds only the master key and moves capital
+    between sub-accounts through the Safe. Giving it a sub-account's hand-over
+    record lets it sign transfers from that sub-account directly.
+
+    :param paths:
+        Comma-separated hand-over file paths, or ``None``.
+    :return:
+        Records keyed by sub-account index.
+    """
+    records = {}
+    for raw in (paths or "").split(","):
+        if not raw.strip():
+            continue
+        record = load_lighter_operator_record(Path(raw.strip()))
+        if record.account_index in records:
+            raise ValueError(f"Lighter account {record.account_index} has more than one operator record")
+        records[record.account_index] = record
+    return records
+
+
+def load_lighter_signers(master_path: Path | None, sub_account_paths: str | None) -> dict[int, LighterOperatorRecord]:
+    """Load every operator record the executor holds, keyed by account index.
+
+    :param master_path:
+        Owner-only master operator record, or ``None``.
+    :param sub_account_paths:
+        Comma-separated sub-account hand-over files, or ``None``.
+    :return:
+        Signers of the master and of the sub-accounts given.
+    """
+    signers = load_lighter_sub_account_operator_records(sub_account_paths)
+    if master_path is not None:
+        master = load_lighter_operator_record(master_path)
+        signers[master.account_index] = master
+    return signers
+
+
+def get_lighter_handover_path(record_json: Path, account_id: str) -> Path:
+    """Return the hand-over file of one sub-account next to the vault's private record.
+
+    :param record_json:
+        The vault's private JSON record written by ``lagoon-deploy-vault``.
+    :param account_id:
+        The id the strategy declared for the sub-account.
+    :return:
+        ``<record stem>.nautilus.<id>.json`` in the record's directory.
+    """
+    return record_json.with_name(f"{record_json.stem}.nautilus.{account_id}.json")
 
 
 def _public_sdk_error(operation: str, error: Exception) -> RuntimeError:
@@ -218,3 +289,115 @@ async def wait_for_lighter_withdrawal_claimable(
             await api_client.close()
         if client is not None:
             await client.close()
+
+
+@dataclass(slots=True, frozen=True)
+class LighterFundingRequest:
+    """Public result of submitting a transfer between two accounts of one owner."""
+
+    #: L2 transaction hash used to confirm the transfer from history.
+    tx_hash: str
+
+    #: Fee charged to the sending account on top of the amount.
+    fee: Decimal
+
+
+@asynccontextmanager
+async def _open_transfer_client(
+    operator: LighterOperatorRecord,
+    operation: str,
+) -> AsyncIterator[tuple[object, LighterAuthTokenManager]]:
+    """Open the sending account's signer and auth-token manager for transfer calls.
+
+    Lighter transfer and timeout errors pass through; any other SDK error is
+    replaced by a secret-free :py:class:`RuntimeError`.
+
+    :param operator:
+        Signer of the account sending or reading transfers.
+    :param operation:
+        Operation name for the public error message.
+    :return:
+        Signer client and its auth-token manager.
+    """
+    client = None
+    try:
+        client = create_lighter_signer_client(operator.account_index, operator.api_key_index, operator.api_private_key)
+        yield client, create_lighter_auth_token_manager(client, operator.api_key_index)
+    except (LighterTransferError, TimeoutError):
+        raise
+    except Exception as error:  # noqa: BLE001 - SDK exception types vary by release
+        raise _public_sdk_error(operation, error) from None
+    finally:
+        if client is not None:
+            await client.close()
+
+
+async def request_lighter_funding_transfer(
+    operator: LighterOperatorRecord,
+    to_account_index: int,
+    amount: Decimal,
+) -> LighterFundingRequest:
+    """Transfer USDC from the signer's account to another account of the same owner.
+
+    The fee comes from Lighter's authenticated quote, which is zero for
+    transfers between accounts of one owner. The submission is not
+    idempotent: persist the returned hash before waiting for confirmation.
+
+    :param operator:
+        Signer of the sending account, the master or a sub-account.
+    :param to_account_index:
+        Destination account owned by the same Safe.
+    :param amount:
+        USDC credited to the destination.
+    :return:
+        Transaction hash and the fee charged on top of the amount.
+    """
+    async with _open_transfer_client(operator, "account transfer") as (client, auth):
+        fee = await fetch_lighter_transfer_fee(client, auth, to_account_index=to_account_index)
+        tx_hash = await request_lighter_transfer(
+            client,
+            to_account_index=to_account_index,
+            amount=amount,
+            fee=fee,
+            api_key_index=operator.api_key_index,
+        )
+        return LighterFundingRequest(tx_hash=tx_hash, fee=fee)
+
+
+async def wait_for_lighter_funding_transfer(
+    operator: LighterOperatorRecord,
+    tx_hash: str,
+    timeout: int,
+) -> LighterTransferRecord:
+    """Wait until a funding transfer appears in the sending account's transfer history.
+
+    :param operator:
+        Signer of the sending account, used for the authenticated history read.
+    :param tx_hash:
+        Hash returned by :py:func:`request_lighter_funding_transfer`.
+    :param timeout:
+        Maximum seconds to wait.
+    :return:
+        Executed transfer record.
+    """
+    async with _open_transfer_client(operator, "transfer history") as (client, auth):
+        return await wait_for_lighter_transfer(client, auth, account_index=operator.account_index, tx_hash=tx_hash, timeout=timeout)
+
+
+async def fetch_lighter_funding_transfer(
+    operator: LighterOperatorRecord,
+    tx_hash: str,
+) -> LighterTransferRecord | None:
+    """Read one funding transfer from history without waiting.
+
+    Used by reconciliation after an interrupted run.
+
+    :param operator:
+        Signer of the sending account, used for the authenticated history read.
+    :param tx_hash:
+        Hash recorded when the transfer was submitted.
+    :return:
+        Executed transfer, or ``None`` if it is not in history.
+    """
+    async with _open_transfer_client(operator, "transfer history") as (client, auth):
+        return await fetch_lighter_transfer_record(client, auth, account_index=operator.account_index, tx_hash=tx_hash)

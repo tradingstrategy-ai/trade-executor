@@ -3,6 +3,7 @@
 import datetime
 from decimal import Decimal
 
+from eth_defi.lighter.api import LIGHTER_MIN_MAINNET_USDC
 from eth_defi.lighter.constants import LIGHTER_L1_CONTRACT
 from eth_defi.token import USDC_NATIVE_TOKEN
 from tradingstrategy.chain import ChainId
@@ -26,19 +27,13 @@ from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
 from tradeexecutor.strategy.pandas_trader.trading_universe_input import CreateTradingUniverseInput
-from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.strategy_module import StrategyParameters
-from tradeexecutor.strategy.strategy_type import StrategyType
 from tradeexecutor.strategy.trading_strategy_universe import (
     TradingStrategyUniverse,
     create_pair_universe_from_code,
 )
 
 trading_strategy_engine_version = "0.5"
-trading_strategy_type = StrategyType.managed_positions
-trading_strategy_cycle = CycleDuration.cycle_1d
-trade_routing = TradeRouting.default
-reserve_currency = ReserveCurrency.usdc
 
 #: Synthetic public account index returned by the fixed-fork Lighter mock.
 LIGHTER_ACCOUNT_INDEX = 126
@@ -56,18 +51,16 @@ class Parameters:
     lighter_cash_management = True
     lighter_safe_cash_buffer_usd = Decimal("20")
     lighter_free_collateral_buffer_usd = Decimal("0")
-    lighter_min_transfer_usd = Decimal("1")
 
 
 def create_trading_universe(input: CreateTradingUniverseInput) -> TradingStrategyUniverse:
     """Create one synthetic Ethereum Lighter exchange-account pair.
 
     :param input:
-        Unused strategy-universe construction input.
+        Universe construction input; this static universe needs nothing from it.
     :return:
         Static universe containing the Lighter account and USDC reserve.
     """
-    del input
     usdc = AssetIdentifier(
         chain_id=ChainId.ethereum.value,
         address=USDC_NATIVE_TOKEN[ChainId.ethereum.value],
@@ -85,7 +78,7 @@ def create_trading_universe(input: CreateTradingUniverseInput) -> TradingStrateg
         exchange_id=1,
         exchange_slug="lighter",
         address=LIGHTER_L1_CONTRACT,
-        exchange_type=ExchangeType.derive,
+        exchange_type=ExchangeType.lighter,
         pair_count=1,
     )
     universe = Universe(
@@ -119,7 +112,6 @@ def create_indicators(
     :param execution_context:
         Current execution context.
     """
-    del parameters, indicators, strategy_universe, execution_context
 
 
 def decide_trades(input: StrategyInput) -> list[TradeExecution]:
@@ -159,7 +151,7 @@ def decide_trades(input: StrategyInput) -> list[TradeExecution]:
     manager = ExchangeCashManager(
         safe_cash_buffer_usdc=Decimal(str(input.parameters.lighter_safe_cash_buffer_usd)),
         free_collateral_buffer_usdc=Decimal(str(input.parameters.lighter_free_collateral_buffer_usd)),
-        minimum_transfer_usdc=Decimal(str(input.parameters.lighter_min_transfer_usd)),
+        minimum_transfer_usdc=Decimal(str(input.parameters.get("lighter_min_transfer_usd") or LIGHTER_MIN_MAINNET_USDC)),
     )
     transfer_pending = any(
         trade.is_external_account_transfer_pending()

@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 from eth_defi.compat import native_datetime_utc_now
+from eth_defi.lighter.api import LighterAccounts
 from pytest_mock import MockerFixture
 from web3 import Web3
 
@@ -154,7 +155,7 @@ def test_lighter_runtime_auto_discovery_wires_account_and_nav_readers(
         web3=web3,
         safe_address=safe_address,
         reserve_asset=strategy_universe.get_reserve_asset(),
-        account_index=EXAMPLE_LIGHTER_ACCOUNT_INDEX,
+        account_indices=[EXAMPLE_LIGHTER_ACCOUNT_INDEX],
         session=session,
     )
 
@@ -354,13 +355,17 @@ def test_lighter_vault_valuation_adds_safe_balance_and_external_equity(
     3. Verify Decimal components are summed before the float boundary.
     """
     # 1. Mock the ERC-20 Safe balance and public Lighter account response.
-    # Both reads are mocked because this unit test isolates the NAV formula;
-    # the Anvil test covers the real ERC-20 read.
+    # The ERC-20, equity and account-list reads are mocked because this unit
+    # test isolates the NAV formula; the Anvil test covers the real reads.
     token = SimpleNamespace(fetch_balance_of=mocker.Mock(return_value=Decimal("3.25")))
     mocker.patch("tradeexecutor.exchange_account.lighter.fetch_erc20_details", return_value=token)
     mocker.patch(
         "tradeexecutor.exchange_account.lighter.fetch_lighter_total_equity",
         return_value=SimpleNamespace(get_total=lambda: Decimal("8.75")),
+    )
+    mocker.patch(
+        "tradeexecutor.exchange_account.lighter.fetch_lighter_accounts",
+        return_value=LighterAccounts(master_index=EXAMPLE_LIGHTER_ACCOUNT_INDEX, sub_account_indices=()),
     )
     web3 = object()
 
@@ -369,7 +374,7 @@ def test_lighter_vault_valuation_adds_safe_balance_and_external_equity(
         web3=web3,
         safe_address="0x0000000000000000000000000000000000000002",
         reserve_asset=usdc,
-        account_index=EXAMPLE_LIGHTER_ACCOUNT_INDEX,
+        account_indices=[EXAMPLE_LIGHTER_ACCOUNT_INDEX],
         session=object(),
     )
     result = valuation(None, block_number=42)
@@ -386,11 +391,16 @@ def test_negative_lighter_vault_valuation_aborts_before_nav(
     usdc: AssetIdentifier,
     mocker: MockerFixture,
 ) -> None:
-    """Reject negative external equity before a Lagoon NAV can be posted.
+    """Reject negative equity and unlisted accounts before a Lagoon NAV can be posted.
+
+    An owned Lighter account without a position would be left out of the NAV
+    and understate the share price, so it must abort the NAV like an invalid
+    equity value.
 
     1. Mock a valid Safe balance and negative public Lighter equity.
     2. Evaluate the custom NAV function.
     3. Verify the invariant aborts before returning a value to Lagoon.
+    4. Verify a Safe-owned sub-account outside the universe also aborts the NAV.
     """
     # 1. Mock a valid Safe balance and negative public Lighter equity.
     # These reads are mocked because the unit test targets the fail-closed NAV
@@ -401,18 +411,27 @@ def test_negative_lighter_vault_valuation_aborts_before_nav(
         "tradeexecutor.exchange_account.lighter.fetch_lighter_total_equity",
         return_value=SimpleNamespace(get_total=lambda: Decimal("-0.01")),
     )
+    accounts = mocker.patch(
+        "tradeexecutor.exchange_account.lighter.fetch_lighter_accounts",
+        return_value=LighterAccounts(master_index=124, sub_account_indices=()),
+    )
 
     # 2. Evaluate the custom NAV function.
     valuation = create_lighter_vault_valuation_func(
         web3=object(),
         safe_address="0x0000000000000000000000000000000000000002",
         reserve_asset=usdc,
-        account_index=124,
+        account_indices=[124],
         session=object(),
     )
 
     # 3. Verify the invariant aborts before returning a value to Lagoon.
     with pytest.raises(NegativeLighterEquityError):
+        valuation(None, block_number=7)
+
+    # 4. Verify a Safe-owned sub-account outside the universe also aborts the NAV.
+    accounts.return_value = LighterAccounts(master_index=124, sub_account_indices=(2**47,))
+    with pytest.raises(ValueError, match="not in the strategy universe"):
         valuation(None, block_number=7)
 
 

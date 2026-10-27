@@ -64,7 +64,7 @@ def test_cli_since_last_cycle_end_offsets_from_previous_cycle_end(
         self.universe_model = SimpleNamespace()
         return state
 
-    def fake_warm_up_live_trading(self: ExecutionLoop):
+    def fake_warm_up_live_trading(self: ExecutionLoop, state: State | None = None):
         return SimpleNamespace()
 
     def fake_refresh_live_run_state(

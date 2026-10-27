@@ -247,7 +247,7 @@ def test_live_scheduler_state_mutating_jobs_share_single_executor(monkeypatch: p
     monkeypatch.setattr(loop_module, "register_worker", lambda registry, name, delay: None)
     monkeypatch.setattr(loop_module, "display_strategy_universe", lambda universe: pd.DataFrame())
     monkeypatch.setattr(loop_module.logger, "trade", lambda *args, **kwargs: None, raising=False)
-    monkeypatch.setattr(ExecutionLoop, "warm_up_live_trading", lambda self: SimpleNamespace())
+    monkeypatch.setattr(ExecutionLoop, "warm_up_live_trading", lambda self, state=None: SimpleNamespace())
     monkeypatch.setattr(ExecutionLoop, "refresh_live_run_state", lambda self, state, visualisation=False, universe=None, cycle_duration=None: None)
 
     loop = ExecutionLoop(

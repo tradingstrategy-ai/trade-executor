@@ -18,6 +18,7 @@ from tradeexecutor.exchange_account.lighter import (
     LIGHTER_PROTOCOL,
     validate_lighter_account_value,
 )
+from tradeexecutor.exchange_account.state import allocate_exchange_account_balance_update_id
 from tradeexecutor.state.balance_update import (
     BalanceUpdate,
     BalanceUpdateCause,
@@ -213,8 +214,7 @@ class ExchangeAccountSyncModel(SyncModel):
             )
 
             # Allocate event ID
-            event_id = state.portfolio.next_balance_update_id
-            state.portfolio.next_balance_update_id += 1
+            event_id = allocate_exchange_account_balance_update_id(state, position)
 
             # Create balance update event
             evt = BalanceUpdate(

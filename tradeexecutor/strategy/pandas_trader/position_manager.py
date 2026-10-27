@@ -15,6 +15,8 @@ import pandas as pd
 from eth_defi.compat import native_datetime_utc_now
 from eth_defi.token_analysis.blacklist import is_blacklisted_address
 from tradeexecutor.ethereum.lagoon.hypercore_whitelist import HypercoreVaultWhitelist, load_hypercore_vault_whitelist
+from tradeexecutor.exchange_account.lighter import LIGHTER_MASTER_ACCOUNT_ID, LIGHTER_PROTOCOL, find_lighter_account_pair
+from tradeexecutor.exchange_account.state import create_exchange_account_funding, create_exchange_account_transfer, open_exchange_account_position
 from tradeexecutor.strategy.recorder.recorder import DecisionRecorder
 from tradeexecutor.strategy.routing import PositionAvailabilityResponse, RoutingModel, RoutingState
 from tradingstrategy.candle import CandleSampleUnavailable
@@ -425,6 +427,133 @@ class PositionManager:
         """
         cash = self.state.portfolio.get_current_cash()  # How much cash we have in a hand
         return cash
+
+    # ----- Lighter custody: move funds between the Safe, the master and sub-accounts -----
+
+    def get_lighter_account_pair(self, account: str = LIGHTER_MASTER_ACCOUNT_ID) -> TradingPairIdentifier:
+        """Return the pair of a Lighter account declared in the strategy parameters.
+
+        :param account:
+            ``master`` or a sub-account id from ``Parameters.lighter_sub_accounts``.
+        :return:
+            The account's exchange-account pair.
+        """
+        return find_lighter_account_pair(self.strategy_universe.iterate_pairs(), account)
+
+    def get_lighter_balance(self, account: str = LIGHTER_MASTER_ACCOUNT_ID) -> Decimal:
+        """Return the equity the executor tracks for a Lighter account, zero before any funds moved in."""
+        position = self.state.portfolio.get_open_position_for_pair(self.get_lighter_account_pair(account))
+        return Decimal(0) if position is None else position.get_quantity()
+
+    def get_lighter_free_collateral(self, account: str = LIGHTER_MASTER_ACCOUNT_ID) -> Decimal:
+        """Return the collateral a Lighter account can move out now, read from Lighter."""
+        return self.get_exchange_account_available_balance(self.get_lighter_account_pair(account))
+
+    def is_lighter_transfer_pending(self) -> bool:
+        """Return whether a Lighter custody movement from an earlier cycle is still in flight."""
+        return any(trade.is_exchange_account_transfer_pending() for position in self.state.portfolio.get_open_and_frozen_positions() for trade in position.trades.values())
+
+    def deposit_to_lighter(self, amount: Decimal | None = None, notes: str | None = None) -> TradeExecution:
+        """Move USDC from the Safe to the Lighter master account.
+
+        An L1 deposit always credits the master; fund a sub-account afterwards
+        with :py:meth:`transfer_lighter_funds`.
+
+        :param amount:
+            USDC to deposit, or ``None`` for all idle Safe cash.
+        :param notes:
+            Trade notes.
+        :return:
+            The planned deposit trade.
+        """
+        amount = Decimal(str(self.get_current_cash())) if amount is None else amount
+        position = self._get_or_open_lighter_position(LIGHTER_MASTER_ACCOUNT_ID)
+        return create_exchange_account_transfer(
+            state=self.state,
+            position=position,
+            strategy_cycle_at=self.timestamp,
+            reserve_currency=self.strategy_universe.get_reserve_asset(),
+            amount=amount,
+            deposit=True,
+            notes=notes or f"Deposit {amount} USDC from the Safe to Lighter account {LIGHTER_MASTER_ACCOUNT_ID}",
+            metadata={"direction": "deposit", "protocol": LIGHTER_PROTOCOL},
+        )
+
+    def withdraw_from_lighter(self, account: str = LIGHTER_MASTER_ACCOUNT_ID, amount: Decimal | None = None, notes: str | None = None) -> TradeExecution:
+        """Move USDC from a Lighter account to the Safe.
+
+        The master uses its API key; a sub-account uses the key-free L1
+        withdrawal. Either takes about half an hour to become claimable.
+
+        :param account:
+            ``master`` or a sub-account id.
+        :param amount:
+            USDC to withdraw, or ``None`` for the account's free collateral.
+        :param notes:
+            Trade notes.
+        :return:
+            The planned withdrawal trade.
+        """
+        amount = self.get_lighter_free_collateral(account) if amount is None else amount
+        position = self._get_or_open_lighter_position(account)
+        return create_exchange_account_transfer(
+            state=self.state,
+            position=position,
+            strategy_cycle_at=self.timestamp,
+            reserve_currency=self.strategy_universe.get_reserve_asset(),
+            amount=amount,
+            deposit=False,
+            notes=notes or f"Withdraw {amount} USDC from Lighter account {account} to the Safe",
+            metadata={"direction": "withdraw", "protocol": LIGHTER_PROTOCOL},
+        )
+
+    def transfer_lighter_funds(self, source: str, destination: str, amount: Decimal, notes: str | None = None) -> TradeExecution:
+        """Move USDC between two Lighter accounts of the vault.
+
+        The transfer is signed with the source account's key: the master key
+        the executor always holds, or a sub-account key given to ``start``
+        with ``LIGHTER_SUB_ACCOUNT_OPERATOR_RECORD_FILES``. It is booked as a
+        buy on the destination position and balance updates on the source.
+
+        :param source:
+            ``master`` or a sub-account id.
+        :param destination:
+            ``master`` or a sub-account id.
+        :param amount:
+            USDC credited to the destination; Lighter's fee, if any, is charged on top.
+        :param notes:
+            Trade notes.
+        :return:
+            The planned funding trade.
+        """
+        source_position = self._get_or_open_lighter_position(source)
+        destination_position = self._get_or_open_lighter_position(destination)
+        return create_exchange_account_funding(
+            state=self.state,
+            source_position=source_position,
+            destination_position=destination_position,
+            strategy_cycle_at=self.timestamp,
+            reserve_currency=self.strategy_universe.get_reserve_asset(),
+            amount=amount,
+            notes=notes or f"Transfer {amount} USDC from Lighter account {source} to account {destination}",
+            metadata={"protocol": LIGHTER_PROTOCOL},
+        )
+
+    def _get_or_open_lighter_position(self, account: str) -> TradingPosition:
+        """Return a Lighter account's position, opening an empty one when funds first move."""
+        pair = self.get_lighter_account_pair(account)
+        position = self.state.portfolio.get_open_position_for_pair(pair)
+        if position is None:
+            open_exchange_account_position(
+                state=self.state,
+                strategy_cycle_at=self.timestamp,
+                pair=pair,
+                reserve_currency=self.strategy_universe.get_reserve_asset(),
+                reserve_amount=Decimal(0),
+                notes=f"Open the position of Lighter account {account}",
+            )
+            position = self.state.portfolio.get_open_position_for_pair(pair)
+        return position
 
     def get_exchange_account_available_balance(
         self,

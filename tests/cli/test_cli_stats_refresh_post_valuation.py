@@ -95,7 +95,7 @@ def patch_cli_startup(
         self.universe_model = SimpleNamespace()
         return state
 
-    def fake_warm_up_live_trading(self: ExecutionLoop):
+    def fake_warm_up_live_trading(self: ExecutionLoop, state: State | None = None):
         return SimpleNamespace(reserve_assets=[])
 
     def fake_refresh_live_run_state(

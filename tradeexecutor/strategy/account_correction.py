@@ -30,6 +30,7 @@ from eth_typing import HexAddress
 
 from eth_defi.tx import AssetDelta
 from tradeexecutor.ethereum.tx import TransactionBuilder
+from tradeexecutor.exchange_account.lighter import LIGHTER_PROTOCOL
 from tradeexecutor.exchange_account.state import open_exchange_account_position
 from tradeexecutor.state.generic_position import GenericPosition
 from tradeexecutor.state.portfolio import Portfolio
@@ -1027,12 +1028,16 @@ def create_missing_exchange_account_positions(
                    pair.get_human_description(),
                    pair.get_exchange_account_protocol())
 
+        # Lighter positions open at zero, as the Lighter strategies do: a
+        # vault with several sub-accounts would otherwise move one placeholder
+        # dollar out of reserves per account. Sync sets the real equity.
+        placeholder = Decimal(0) if pair.get_exchange_account_protocol() == LIGHTER_PROTOCOL else Decimal(1)
         trades = open_exchange_account_position(
             state=state,
             strategy_cycle_at=strategy_cycle_at,
             pair=pair,
             reserve_currency=reserve_asset,
-            reserve_amount=Decimal(1),  # Placeholder value, sync will update
+            reserve_amount=placeholder,  # Placeholder value, sync will update
             notes=f"Auto-created by correct-accounts for {pair.get_exchange_account_protocol()}",
         )
         created_trades.extend(trades)
@@ -1660,7 +1665,7 @@ def preflight_state_for_account_correction(
             )
 
     has_pending_external_transfer = any(
-        trade.is_external_account_transfer_pending()
+        trade.is_exchange_account_transfer_pending()
         for position in state.portfolio.get_open_and_frozen_positions()
         for trade in position.trades.values()
     )

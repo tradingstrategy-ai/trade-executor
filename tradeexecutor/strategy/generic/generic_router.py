@@ -11,7 +11,7 @@ from web3 import Web3
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.state import State
-from tradeexecutor.state.trade import TradeExecution, TradeFlag
+from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.generic.pair_configurator import PairConfigurator
 from tradeexecutor.strategy.routing import RoutingModel, RoutingState
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
@@ -130,7 +130,7 @@ class GenericRouting(RoutingModel):
 
         for t in trades:
             if t.pair.is_exchange_account():
-                assert TradeFlag.external_account_transfer in (t.flags or set()), \
+                assert t.is_exchange_account_transfer(), \
                     f"Unsupported unflagged exchange account trade: {t}"
             router, protocol_config = self.get_router(t.pair)
             # Set the router, so we know

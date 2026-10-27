@@ -26,19 +26,13 @@ from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
 from tradeexecutor.strategy.pandas_trader.trading_universe_input import (
     CreateTradingUniverseInput,
 )
-from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.strategy_module import StrategyParameters
-from tradeexecutor.strategy.strategy_type import StrategyType
 from tradeexecutor.strategy.trading_strategy_universe import (
     TradingStrategyUniverse,
     create_pair_universe_from_code,
 )
 
 trading_strategy_engine_version = "0.5"
-trading_strategy_type = StrategyType.managed_positions
-trading_strategy_cycle = CycleDuration.cycle_1d
-trade_routing = TradeRouting.default
-reserve_currency = ReserveCurrency.usdc
 
 #: Lighter custody and the Lagoon vault both reside on Ethereum mainnet.
 CHAIN_ID = ChainId.ethereum
@@ -60,7 +54,6 @@ class Parameters:
 
 def create_trading_universe(input: CreateTradingUniverseInput) -> TradingStrategyUniverse:
     """Create a single Ethereum Lighter exchange-account pair."""
-    del input
     usdc = AssetIdentifier(
         chain_id=CHAIN_ID.value,
         address=USDC_NATIVE_TOKEN[CHAIN_ID.value],
@@ -78,7 +71,7 @@ def create_trading_universe(input: CreateTradingUniverseInput) -> TradingStrateg
         exchange_id=1,
         exchange_slug="lighter",
         address=LIGHTER_L1_CONTRACT,
-        exchange_type=ExchangeType.derive,
+        exchange_type=ExchangeType.lighter,
         pair_count=1,
     )
     universe = Universe(
@@ -102,10 +95,8 @@ def create_indicators(
     execution_context: ExecutionContext,
 ) -> None:
     """No indicators are needed for deployment or account monitoring."""
-    del parameters, indicators, strategy_universe, execution_context
 
 
 def decide_trades(input: StrategyInput) -> list[TradeExecution]:
     """Passive strategy used only to exercise the deployment/runtime wiring."""
-    del input
     return []

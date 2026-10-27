@@ -52,7 +52,7 @@ def rebroadcast_all(
             continue
         # Exchange-account transfers may have an off-chain withdrawal phase.
         # Recovery commands only reconcile their recorded receipts.
-        if t.is_external_account_transfer_pending():
+        if t.is_exchange_account_transfer_pending():
             continue
         if t.is_unfinished() and not t.is_failed():
             logger.info("Marking trade %s for rebroadcast", t)

@@ -103,8 +103,7 @@ def create_trading_universe(input: CreateTradingUniverseInput) -> TradingStrateg
         exchange_id=1,
         exchange_slug="lighter",
         address=LIGHTER_L1_CONTRACT,
-        # Shared external-account exchange type, as in the upstream template.
-        exchange_type=ExchangeType.derive,
+        exchange_type=ExchangeType.lighter,
         pair_count=1,
     )
     universe = Universe(

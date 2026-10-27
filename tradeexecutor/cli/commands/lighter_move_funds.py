@@ -1,8 +1,13 @@
-"""Move USDC manually between a Lagoon Safe and its Lighter account.
+"""Move USDC manually between a Lagoon Safe and its Lighter accounts.
 
 This command is an operator diagnostic and recovery tool. It records verified
 custody movements in the executor state, but it does not execute strategy
 trades or settle Lagoon investor flows.
+
+The master account is the default. ``--lighter-account-index`` selects a
+sub-account, which can only be withdrawn: the Safe requests an L1
+``withdraw(subAccountIndex, ...)`` through the guard, which needs no
+sub-account API key, then claims the proceeds once they are claimable.
 """
 
 import asyncio
@@ -28,6 +33,9 @@ from eth_defi.lighter.constants import (
 from eth_defi.lighter.lagoon import (
     claim_usdc_to_lagoon_safe_from_lighter,
     deposit_usdc_from_lagoon_safe_into_lighter,
+    fetch_lighter_pending_balance,
+    request_usdc_withdrawal_from_lighter_account,
+    wait_for_lighter_pending_balance,
 )
 from eth_defi.lighter.session import LighterSession, create_lighter_session
 from eth_defi.lighter.valuation import (
@@ -58,13 +66,20 @@ from tradeexecutor.cli.commands.lagoon_utils import (
     resolve_state_store,
 )
 from tradeexecutor.cli.log import setup_logging
-from tradeexecutor.exchange_account.lighter import LIGHTER_PROTOCOL
+from tradeexecutor.exchange_account.cash_manager import USDC_PRECISION
+from tradeexecutor.exchange_account.lighter import (
+    LIGHTER_PROTOCOL,
+    get_lighter_master_account_index,
+    is_lighter_exchange_account_pair,
+    is_lighter_sub_account_pair,
+)
 from tradeexecutor.exchange_account.state import (
     ExchangeAccountTransferError,
     complete_exchange_account_transfer,
     create_exchange_account_transfer,
 )
 from tradeexecutor.exchange_account.sync_model import ExchangeAccountSyncModel
+from tradeexecutor.ethereum.lighter.lighter_routing import ensure_lighter_l1_withdrawal_mined
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
@@ -84,8 +99,6 @@ from tradeexecutor.strategy.strategy_module import read_strategy_module
 logger = logging.getLogger(__name__)
 
 
-#: Lighter USDC amounts use six decimal places.
-USDC_DECIMALS = Decimal("0.000001")
 
 
 class LighterMoveFundsError(RuntimeError):
@@ -106,7 +119,7 @@ def _parse_usdc_amount(value: str) -> Decimal:
         raise LighterMoveFundsError("Amount in USDC must be a decimal value") from error
     if amount <= 0 or not amount.is_finite():
         raise LighterMoveFundsError("Amount in USDC must be positive")
-    if amount.quantize(USDC_DECIMALS) != amount:
+    if amount.quantize(USDC_PRECISION) != amount:
         raise LighterMoveFundsError("Amount in USDC can have at most six decimal places")
     return amount
 
@@ -128,20 +141,30 @@ def _validate_transfer_funds(
         raise LighterMoveFundsError("Lighter available balance is insufficient for this withdrawal")
 
 
-def _get_lighter_position(state: State, account_index: int) -> TradingPosition:
-    """Return the one Lighter exchange-account position for this command."""
+def _get_lighter_position(state: State, account_index: int, master_index: int) -> TradingPosition:
+    """Return the Lighter exchange-account position of one account.
+
+    :param state:
+        Executor state.
+    :param account_index:
+        Master or sub-account selected for this command.
+    :param master_index:
+        Master account of the operator record.
+    :return:
+        The position tracking ``account_index``.
+    """
     positions = [
         position
         for position in state.portfolio.get_open_and_frozen_positions()
-        if position.is_exchange_account()
-        and position.pair.get_exchange_account_protocol() == LIGHTER_PROTOCOL
+        if is_lighter_exchange_account_pair(position.pair)
+        and int(position.pair.get_exchange_account_id()) == account_index
     ]
     if len(positions) != 1:
         raise LighterMoveFundsError(
-            f"Expected exactly one Lighter exchange-account position, got {len(positions)}",
+            f"Expected exactly one Lighter exchange-account position for account {account_index}, got {len(positions)}",
         )
     position = positions[0]
-    if int(position.pair.get_exchange_account_id()) != account_index:
+    if get_lighter_master_account_index(position.pair) != master_index:
         raise LighterMoveFundsError("Executor state Lighter account does not match the operator record")
     return position
 
@@ -232,10 +255,22 @@ def _sync_lighter_position(
     state: State,
     equity: LighterEquity,
 ) -> None:
-    """Record residual Lighter PnL after a verified custody movement."""
-    sync_model = ExchangeAccountSyncModel(
-        lambda _pair, **_kwargs: equity.get_total(),
-    )
+    """Record residual Lighter PnL of the moved account after a verified custody movement.
+
+    Only the account in ``equity`` is revalued. Other Lighter accounts keep
+    their tracked quantity until the next full valuation.
+    """
+    tracked = {
+        int(position.pair.get_exchange_account_id()): position.get_quantity()
+        for position in state.portfolio.get_open_positions()
+        if is_lighter_exchange_account_pair(position.pair)
+    }
+
+    def get_account_value(pair, **_kwargs) -> Decimal:
+        account_index = int(pair.get_exchange_account_id())
+        return equity.get_total() if account_index == equity.account_index else tracked[account_index]
+
+    sync_model = ExchangeAccountSyncModel(get_account_value)
     sync_model.sync_positions(
         timestamp=native_datetime_utc_now(),
         state=state,
@@ -247,7 +282,7 @@ def _sync_lighter_position(
 def _create_transfer_metadata(
     *,
     direction: str,
-    operator: LighterOperatorRecord,
+    account_index: int,
     amount: Decimal,
     safe_before: Decimal,
     equity_before: LighterEquity,
@@ -256,7 +291,7 @@ def _create_transfer_metadata(
     return {
         "direction": direction,
         "protocol": LIGHTER_PROTOCOL,
-        "account_index": operator.account_index,
+        "account_index": account_index,
         "requested_amount": str(amount),
         "safe_balance_before": str(safe_before),
         "lighter_equity_before": str(equity_before.get_total()),
@@ -299,20 +334,25 @@ def _mark_transfer_broadcasted(
 
 
 def _get_transfer_amount(trade: TradeExecution) -> Decimal:
-    """Read and validate a pending transfer amount from public metadata."""
+    """Read and validate a pending transfer amount.
+
+    A manual transfer records ``requested_amount``. A transfer planned by
+    ``decide_trades()`` carries the amount as its planned quantity.
+    """
     metadata = trade.other_data or {}
-    try:
-        return _parse_usdc_amount(str(metadata["requested_amount"]))
-    except KeyError as error:
-        raise LighterMoveFundsError("Unfinished Lighter transfer has no requested amount") from error
+    return _parse_usdc_amount(str(metadata.get("requested_amount", abs(trade.planned_quantity))))
 
 
 def _get_transfer_requested_at(trade: TradeExecution) -> int:
-    """Read the public request time used to locate the Lighter history row."""
+    """Read the public request time used to locate the Lighter history row.
+
+    Manual transfers record ``requested_at``; automatic ones record
+    ``lighter_withdrawal_requested_at``.
+    """
     metadata = trade.other_data or {}
     try:
-        return int(metadata["requested_at"])
-    except (KeyError, TypeError, ValueError) as error:
+        return int(metadata.get("requested_at", metadata.get("lighter_withdrawal_requested_at")))
+    except (TypeError, ValueError) as error:
         raise LighterMoveFundsError("Unfinished Lighter transfer has no request time") from error
 
 
@@ -373,19 +413,27 @@ def _resume_withdrawal(
     trade: TradeExecution,
     withdraw_timeout: int,
 ) -> None:
-    """Resume one persisted secure withdrawal without resubmitting it."""
+    """Resume one persisted secure withdrawal without resubmitting it.
+
+    An API-key withdrawal waits for its withdrawal-history row. A key-free
+    L1 ``withdraw`` waits for the Safe's onchain pending balance to grow by
+    the requested amount.
+    """
     metadata = trade.other_data or {}
     if metadata.get("direction") != "withdraw":
         raise LighterMoveFundsError("Only a pending Lighter withdrawal can be resumed")
+    account_index = int(position.pair.get_exchange_account_id())
     amount = _get_transfer_amount(trade)
+    # Manual transfers record safe_balance_before; automatic ones record the
+    # Safe balance before the claim, which is the same baseline.
     try:
-        safe_before = Decimal(str(metadata["safe_balance_before"]))
+        safe_before = Decimal(str(metadata.get("safe_balance_before", metadata["lighter_safe_balance_before_claim"])))
     except (KeyError, InvalidOperation, ValueError) as error:
         raise LighterMoveFundsError("Unfinished Lighter transfer has no Safe balance baseline") from error
     safe_now = usdc.fetch_balance_of(vault.safe_address)
     if safe_now - safe_before == amount:
         logger.info("Detected an already claimed Lighter withdrawal; completing accounting")
-        equity_after = fetch_lighter_total_equity(session, operator.account_index)
+        equity_after = fetch_lighter_total_equity(session, account_index)
         _complete_transfer(
             state=state,
             store=store,
@@ -399,15 +447,28 @@ def _resume_withdrawal(
         )
         return
 
-    logger.info("Resuming secure Lighter withdrawal of %s USDC", amount)
-    claimable = asyncio.run(
-        wait_for_lighter_withdrawal_claimable(
-            operator,
-            amount,
-            withdraw_timeout,
-            _get_transfer_requested_at(trade),
-        ),
-    )
+    logger.info("Resuming secure Lighter withdrawal of %s USDC from account %d", amount, account_index)
+    if metadata.get("lighter_withdrawal_method") == "l1_withdraw":
+        if metadata.get("lighter_withdrawal_request_id"):
+            ensure_lighter_l1_withdrawal_mined(vault.web3, trade)
+        pending_before = Decimal(str(metadata["lighter_pending_balance_before_usdc"]))
+        wait_for_lighter_pending_balance(
+            vault.web3,
+            owner=vault.safe_address,
+            usdc=usdc,
+            minimum=pending_before + amount,
+            timeout=withdraw_timeout,
+        )
+        claimable = amount
+    else:
+        claimable = asyncio.run(
+            wait_for_lighter_withdrawal_claimable(
+                operator,
+                amount,
+                withdraw_timeout,
+                _get_transfer_requested_at(trade),
+            ),
+        )
     if claimable != amount:
         raise LighterMoveFundsError("Lighter claimable withdrawal amount differs from the saved request")
     _append_transfer_metadata(trade, lighter_claimable_usdc=str(claimable))
@@ -426,7 +487,7 @@ def _resume_withdrawal(
         claimed_safe_credit=str(safe_after - safe_now),
     )
     _mark_transfer_broadcasted(state, store, trade)
-    equity_after = fetch_lighter_total_equity(session, operator.account_index)
+    equity_after = fetch_lighter_total_equity(session, account_index)
     _complete_transfer(
         state=state,
         store=store,
@@ -462,7 +523,7 @@ def lighter_move_funds(
     lighter_account_index: int | None = Option(
         None,
         envvar="LIGHTER_ACCOUNT_INDEX",
-        help="Optional public account index to cross-check the operator record.",
+        help="Lighter account to move funds for: the master account by default, or one of its sub-accounts. Sub-accounts can only be withdrawn.",
     ),
     lighter_deposit_timeout: int = Option(
         DEFAULT_LIGHTER_DEPOSIT_TIMEOUT,
@@ -498,8 +559,7 @@ def lighter_move_funds(
         state_file=resolved_state_file,
         operator=operator,
     )
-    if lighter_account_index is not None and lighter_account_index != operator.account_index:
-        raise LighterMoveFundsError("LIGHTER_ACCOUNT_INDEX does not match the Lighter operator record")
+    account_index = lighter_account_index if lighter_account_index is not None else operator.account_index
 
     module = read_strategy_module(strategy_file)
     web3config = create_single_chain_web3_config(mod=module, **(rpc_kwargs or {}))
@@ -531,11 +591,12 @@ def lighter_move_funds(
         )
 
         state = initial_store.load()
-        position = _get_lighter_position(state, operator.account_index)
+        position = _get_lighter_position(state, account_index, operator.account_index)
+        is_sub_account = is_lighter_sub_account_pair(position.pair)
         pending_trade = _get_pending_transfer(position)
         safe_balance = usdc.fetch_balance_of(vault.safe_address)
-        equity = fetch_lighter_total_equity(session, operator.account_index)
-        account = fetch_lighter_account_by_index(session, operator.account_index)
+        equity = fetch_lighter_total_equity(session, account_index)
+        account = fetch_lighter_account_by_index(session, account_index)
         _assert_non_negative(safe_balance, "Safe USDC balance")
         _assert_non_negative(equity.get_total(), "Lighter equity")
         _log_balances(
@@ -554,7 +615,7 @@ def lighter_move_funds(
                 backup_suffix="lighter-move-funds",
                 unit_testing=unit_testing,
             )
-            position = _get_lighter_position(resume_state, operator.account_index)
+            position = _get_lighter_position(resume_state, account_index, operator.account_index)
             pending_trade = _get_pending_transfer(position)
             assert pending_trade is not None
             _resume_withdrawal(
@@ -580,19 +641,21 @@ def lighter_move_funds(
             direction = typer.prompt("Move direction [d/w]").strip().lower()
             if direction not in {"d", "w"}:
                 raise LighterMoveFundsError("Move direction must be d or w")
+            if direction == "d" and is_sub_account:
+                raise LighterMoveFundsError("An L1 deposit always credits the Lighter master account; deposit to the master instead")
             amount = _parse_usdc_amount(typer.prompt("Amount in USDC"))
             _validate_transfer_funds(direction, amount, safe_balance, equity)
             direction_label = "Safe -> Lighter" if direction == "d" else "Lighter -> Safe"
             if not typer.confirm(
-                f"Confirm {direction_label} transfer of {amount} USDC for Lighter account {operator.account_index}?",
+                f"Confirm {direction_label} transfer of {amount} USDC for Lighter account {account_index}?",
                 default=False,
             ):
                 raise typer.Abort()
 
             store, state = backup_state(resolved_state_file, backup_suffix="lighter-move-funds", unit_testing=unit_testing)
-            position = _get_lighter_position(state, operator.account_index)
+            position = _get_lighter_position(state, account_index, operator.account_index)
             safe_balance = usdc.fetch_balance_of(vault.safe_address)
-            equity = fetch_lighter_total_equity(session, operator.account_index)
+            equity = fetch_lighter_total_equity(session, account_index)
             state.check_if_clean()
             _assert_reserve_matches_safe(state, reserve_asset, safe_balance)
             _assert_clean_custody_baseline(
@@ -603,7 +666,7 @@ def lighter_move_funds(
 
             metadata = _create_transfer_metadata(
                 direction="deposit" if direction == "d" else "withdraw",
-                operator=operator,
+                account_index=account_index,
                 amount=amount,
                 safe_before=safe_balance,
                 equity_before=equity,
@@ -676,14 +739,32 @@ def lighter_move_funds(
                     lighter_safe_address=vault.safe_address,
                 )
                 _start_transfer(state, store, trade)
-                try:
-                    withdrawal_request_id = asyncio.run(request_lighter_withdrawal(operator, amount))
-                except LighterWithdrawalRejected:
-                    failed_at = native_datetime_utc_now()
-                    state.mark_trade_failed(failed_at, trade)
-                    _append_transfer_metadata(trade, outcome="withdrawal_rejected")
+                if is_sub_account:
+                    # Key-free L1 request through the guard; the proceeds join the
+                    # Safe's pending balance, which the resume step waits for.
+                    _append_transfer_metadata(
+                        trade,
+                        lighter_withdrawal_method="l1_withdraw",
+                        lighter_pending_balance_before_usdc=str(fetch_lighter_pending_balance(web3, owner=vault.safe_address, usdc=usdc)),
+                    )
                     store.sync(state)
-                    raise
+                    withdrawal_request_id = request_usdc_withdrawal_from_lighter_account(
+                        web3,
+                        hot_wallet,
+                        vault=vault,
+                        usdc=usdc,
+                        account_index=account_index,
+                        amount=amount,
+                    )
+                else:
+                    try:
+                        withdrawal_request_id = asyncio.run(request_lighter_withdrawal(operator, amount))
+                    except LighterWithdrawalRejected:
+                        failed_at = native_datetime_utc_now()
+                        state.mark_trade_failed(failed_at, trade)
+                        _append_transfer_metadata(trade, outcome="withdrawal_rejected")
+                        store.sync(state)
+                        raise
                 _append_transfer_metadata(
                     trade,
                     lighter_withdrawal_request_id=withdrawal_request_id,
@@ -704,10 +785,10 @@ def lighter_move_funds(
                 )
 
         final_state = initial_store.load()
-        final_position = _get_lighter_position(final_state, operator.account_index)
+        final_position = _get_lighter_position(final_state, account_index, operator.account_index)
         final_safe = usdc.fetch_balance_of(vault.safe_address)
-        final_equity = fetch_lighter_total_equity(session, operator.account_index)
-        final_account = fetch_lighter_account_by_index(session, operator.account_index)
+        final_equity = fetch_lighter_total_equity(session, account_index)
+        final_account = fetch_lighter_account_by_index(session, account_index)
         _log_balances(
             state=final_state,
             reserve_asset=reserve_asset,

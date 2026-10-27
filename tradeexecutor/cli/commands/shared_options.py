@@ -69,6 +69,17 @@ optional_strategy_file = Option(None, envvar="STRATEGY_FILE", help="Python tradi
 private_key = Option(None, envvar="PRIVATE_KEY", help="Ethereum private key to be used as a hot wallet for paying transaction broadcasts and gas")
 
 vault_address = Option(None, envvar="VAULT_ADDRESS", help="Deployed strategy vault address")
+
+lighter_operator_record_file_for_accounting = Option(
+    None,
+    envvar="LIGHTER_OPERATOR_RECORD_FILE",
+    help="Owner-only Lighter master operator record, used to read transfer history when reconciling an interrupted transfer between accounts",
+)
+lighter_sub_account_operator_record_files = Option(
+    None,
+    envvar="LIGHTER_SUB_ACCOUNT_OPERATOR_RECORD_FILES",
+    help="Comma-separated owner-only hand-over records of Lighter sub-accounts the executor may sign transfers from, and read transfer history for. The automatic cash policy still rebalances sub-accounts through the Safe.",
+)
 vault_adapter_address = Option(None, envvar="VAULT_ADAPTER_ADDRESS", help="Deployed GenericAdapter contract address for the vault")
 vault_payment_forwarder = Option(None, envvar="VAULT_PAYMENT_FORWARDER_ADDRESS", help="USDC EIP-3009 payment forwarder contract for the Enzyme vault")
 vault_deployment_block_number = Option(None, envvar="VAULT_DEPLOYMENT_BLOCK_NUMBER", help="When the vault was deployed: a block number before the deployment.")
