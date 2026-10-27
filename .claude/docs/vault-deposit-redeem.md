@@ -197,6 +197,14 @@ apply:
 
 ## Backtesting
 
+USDC Lighter Liquidity Provider (LLP), `lighter-pool-281474976710654` on synthetic
+chain 9998, requires staked LIT. Reserve-only vault strategies exclude it by
+default rather than implicitly acquiring or staking another asset. The shared
+curator parser and `build_lighter_vault_universe()` accept
+`include_lighter_llp=True` only for explicit inclusion requests; membership opt-in
+does not model LIT acquisition, staking, lock-up or valuation. This identity rule
+does not cover Hyperliquid HLP, Lighter XLP or Robinhood's USDG pool.
+
 A backtest has no vault operator, so the settlement wait must be declared.
 Two parameters on the backtest entry points (`run_backtest_inline()` and
 friends) control it:
