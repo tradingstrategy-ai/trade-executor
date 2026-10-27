@@ -91,6 +91,8 @@ def _make_trade(trade_id: int) -> MagicMock:
     trade.route = None
     trade.pair = MagicMock()
     trade.pair.is_exchange_account.return_value = False
+    # These ordinary on-chain trades must not enter Lighter's off-chain settlement path.
+    trade.is_internal_account_transfer.return_value = False
     trade.pair.get_ticker.return_value = f"PAIR-{trade_id}"
     trade.get_planned_value.return_value = float(trade_id)
     trade.get_status.return_value = SimpleNamespace(value="planned")
@@ -147,6 +149,7 @@ def test_execute_trades_runs_sequential_router_one_trade_at_a_time(
     assert [trade.planned_max_slippage for trade in trades] == [execution.max_slippage, execution.max_slippage]
     assert [call.kwargs["trades"][0].trade_id for call in routing_model.setup_trades.call_args_list] == [1, 2]
     assert execution.executed_batches == [[1], [2]]
+    routing_model.settle_trade.assert_not_called()
     assert frozen_batches == [[1], [2]]
     assert execution.logged_outcomes == [1, 2]
 
@@ -257,6 +260,7 @@ def test_execute_trades_stops_sequential_batch_after_failed_trade(
     assert [call.args[1].trade_id for call in state.start_execution.call_args_list] == [21]
     assert [call.kwargs["trades"][0].trade_id for call in routing_model.setup_trades.call_args_list] == [21]
     assert execution.executed_batches == [[21]]
+    routing_model.settle_trade.assert_not_called()
     assert frozen_batches == [[21]]
     assert execution.logged_outcomes == [21]
 

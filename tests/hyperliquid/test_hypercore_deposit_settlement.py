@@ -351,12 +351,15 @@ def test_execution_persists_at_risk_marker_before_broadcast() -> None:
     trade.trade_id = 1486
     trade.get_planned_value.return_value = 48.884068
     trade.pair.get_ticker.return_value = "Citadel-USDC"
+    # A HyperCore deposit broadcasts on-chain, unlike a Lighter internal transfer.
+    trade.is_internal_account_transfer.return_value = False
     trade.is_failed.return_value = False
     trade.other_data = {}
     state = MagicMock()
     routing = MagicMock()
     routing.check_trade_before_execution.return_value = None
     checkpointed_markers: list[dict] = []
+    broadcasted_trade_ids: list[int] = []
 
     def create_marker(*args, **kwargs) -> None:
         trade.other_data["hypercore_deposit_capital_at_risk"] = {"phase": "phase1_broadcast_pending"}
@@ -366,6 +369,7 @@ def test_execution_persists_at_risk_marker_before_broadcast() -> None:
 
     def broadcast(*args, **kwargs) -> None:
         assert checkpointed_markers == [{"hypercore_deposit_capital_at_risk": {"phase": "phase1_broadcast_pending"}}]
+        broadcasted_trade_ids.append(trade.trade_id)
 
     routing.setup_trades.side_effect = create_marker
     execution.set_pre_broadcast_state_sync_callback(checkpoint)
@@ -385,6 +389,8 @@ def test_execution_persists_at_risk_marker_before_broadcast() -> None:
 
     # 3. The persisted snapshot supplies the marker after a hard restart.
     assert checkpointed_markers == [{"hypercore_deposit_capital_at_risk": {"phase": "phase1_broadcast_pending"}}]
+    assert broadcasted_trade_ids == [trade.trade_id]
+    routing.settle_trade.assert_not_called()
 
 
 @pytest.mark.parametrize("already_held", [False, True])
