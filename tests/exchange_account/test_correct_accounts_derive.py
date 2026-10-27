@@ -19,7 +19,7 @@ from tradeexecutor.cli.main import app
 from tradeexecutor.state.identifier import TradingPairKind
 from tradeexecutor.state.state import State
 
-pytestmark = pytest.mark.skip(reason="Derive v3 needs a testnet account created by a deposit on Ethereum Sepolia and a session key registered with private/set_session_key")
+pytestmark = pytest.mark.skip(reason="Derive v3 migration: the testnet account and its session key need to be set up again (deposit on Ethereum Sepolia, then private/set_session_key)")
 from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
 

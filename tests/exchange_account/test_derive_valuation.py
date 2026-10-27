@@ -36,7 +36,7 @@ from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.trade import TradeExecution, TradeType
 from tradeexecutor.strategy.execution_model import AssetManagementMode
 
-pytestmark = pytest.mark.skip(reason="Derive v3 needs a testnet account created by a deposit on Ethereum Sepolia and a session key registered with private/set_session_key")
+pytestmark = pytest.mark.skip(reason="Derive v3 migration: the testnet account and its session key need to be set up again (deposit on Ethereum Sepolia, then private/set_session_key)")
 
 
 @pytest.fixture(scope="module")

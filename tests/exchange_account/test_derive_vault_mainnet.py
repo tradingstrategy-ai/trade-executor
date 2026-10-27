@@ -130,6 +130,7 @@ def test_derive_vault_mainnet_cli_init_and_start(environment: dict):
     assert trade.get_status() == TradeStatus.success
 
 
+@pytest.mark.skip(reason="Derive v3 migration: the test Safe account and its session key need to be set up again on Ethereum (deposit through OnchainActionManager, then an onchain session key registration)")
 @pytest.mark.slow_test_group
 def test_derive_vault_mainnet_correct_accounts(environment: dict):
     """Test correct-accounts syncs Derive mainnet vault balance.
