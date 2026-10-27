@@ -10,6 +10,7 @@ import flaky
 import pytest
 from eth_defi.erc_4626.core import ERC4626Feature
 from eth_defi.erc_4626.vault_protocol.ipor.vault import IPORVault
+from eth_defi.provider.anvil import mine
 
 from tradeexecutor.ethereum.hot_wallet_sync_model import HotWalletSyncModel
 from tradeexecutor.ethereum.vault.vault_routing import VaultRouting
@@ -109,6 +110,12 @@ def test_vault_trading_deposit_redeem(
 
     position = position_manager.get_current_position_for_pair(pair)
     assert position.get_quantity() == pytest.approx(Decimal(9.67523177))
+
+    # IPOR locks shares for its redemption delay after a deposit. Mine past it, as eth_defi's
+    # IPOR tests do, so the redemption checks below do not race Anvil's background block mining.
+    redemption_delay = vault.get_redemption_delay() or datetime.timedelta(0)
+    mine(vault.web3, increase_timestamp=int(redemption_delay.total_seconds()) + 1)
+
     max_redemption = pricing_model.get_max_redemption(native_datetime_utc_now(), pair)
     assert max_redemption is not None
     assert max_redemption > 0

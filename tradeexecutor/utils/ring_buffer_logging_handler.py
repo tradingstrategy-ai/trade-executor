@@ -61,7 +61,13 @@ class ExportedRecord(TypedDict):
             # so only build traceback_data when we actually have a traceback.
             traceback_data = Traceback(tb).to_dict() if tb is not None else None
             exception_type = str(et) if et is not None else None
-            message = repr(record.msg)  # This is exception message in Python developer format
+            # logger.exception(e) logs the exception itself: export it in Python developer
+            # format. eth_defi's RPC URL redaction replaces record.msg with the rendered text
+            # before handlers run, so compare the rendered text, not the message object.
+            if ev is not None and record.getMessage() == str(ev):
+                message = repr(ev)
+            else:
+                message = repr(record.msg)
         else:
             exception_type = traceback_data = None
             message = record.getMessage()  # Expand log args
