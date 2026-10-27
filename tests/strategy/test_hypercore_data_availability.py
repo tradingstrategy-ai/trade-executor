@@ -124,7 +124,7 @@ def test_hypercore_startup_builds_universe_before_future_slot(tmp_path: Path, mo
     )
     loop._get_live_universe_options = lambda state: ExecutionLoop._get_live_universe_options(loop, state)
 
-    def warm_up() -> None:
+    def warm_up(state: State | None = None) -> None:
         """Stop after the universe build entry point proves start-up reached it."""
         assert loop.universe_options.vault_price_snapshot == tmp_path / "vault-prices.parquet"
         assert loop.universe_options.end_at <= loop_module.native_datetime_utc_now()
@@ -143,7 +143,7 @@ def test_hypercore_startup_builds_universe_before_future_slot(tmp_path: Path, mo
     assert snapshot_calls == [tmp_path / "vault-prices.parquet"]
     assert state.pending_data_availability_slot == datetime.datetime(2026, 9, 24)
 
-    def late_warm_up() -> SimpleNamespace:
+    def late_warm_up(state: State | None = None) -> SimpleNamespace:
         """Model a start-up universe build crossing the eight-hour deadline."""
         current[0] = datetime.datetime(2026, 9, 24, 8, 5)
         return SimpleNamespace()
