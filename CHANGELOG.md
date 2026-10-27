@@ -2,6 +2,8 @@
 
 ## 0.2
 
+- Unify vault closure and strategy-interaction decisions with enum outcomes, protocol-aware historical interpretation and shared chart/strategy admission rules; document evidence, exceptions and keyword controls (2026-10-27).
+
 - Add historical vault deposit and redemption closure counts to trading-universe charts, with unknown-state coverage, synthetic-window labels and optional vault scope (2026-10-27).
 
 - Document strategy parameters in `docs/strategy-parameters.md` and drop the redundant module-level `trading_strategy_type`, `trading_strategy_cycle`, `trade_routing` and `reserve_currency` from the test-only Lighter strategies; engine version 0.5 takes them from `Parameters`. Lighter exchange-account pairs use the new `ExchangeType.lighter` instead of `derive` (2026-10-26)

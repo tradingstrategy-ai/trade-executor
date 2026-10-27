@@ -485,3 +485,7 @@ Each test doubles as a worked example:
   force-settles on the destination chain on Anvil, instead of crashing.
 - [strategies/test_only/async_vault_backtest_example.py](../../strategies/test_only/async_vault_backtest_example.py)
   — a minimal strategy module written against an async vault.
+
+## Shared vault admission rule
+
+Strategies and charts use `tradeexecutor.strategy.vault_closure`: `is_vault_closed()` reports closure, while `can_interact_with_vault()` applies interaction policy. See [protocol cases and API controls](../../docs/vault-closure.md). Do not reinterpret raw maximum-capacity fields at call sites.

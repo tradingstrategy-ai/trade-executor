@@ -28,6 +28,7 @@ from tradeexecutor.strategy.dust import (
 from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.pandas_trader.position_manager import \
     HypercorePositionReductionPlan, PositionManager
+from tradeexecutor.strategy.vault_closure import can_interact_with_vault
 from tradeexecutor.strategy.redemption import (
     DepositCheckResult,
     DepositCheckStage,
@@ -1264,9 +1265,9 @@ class AlphaModel:
         # A second API read here could exclude a still-planned buy from its budget.
         deposit_check = signal.get_deposit_check_result(DepositCheckStage.buy_rebalance) if signal.pair.is_hyperliquid_vault() else None
         if deposit_check is not None:
-            if not deposit_check.can_deposit:
+            if not can_interact_with_vault(signal.pair, deposit_check=deposit_check):
                 return False
-        elif not position_manager.pricing_model.can_deposit(self.timestamp, signal.pair):
+        elif not can_interact_with_vault(signal.pair, timestamp=self.timestamp, pricing_model=position_manager.pricing_model):
             return False
 
         settlement_position = self._resolve_pending_settlement_position(signal, position_manager, current_positions)
@@ -2294,7 +2295,7 @@ class AlphaModel:
                 signal.pair,
                 stage=DepositCheckStage.buy_rebalance,
             )
-            if not deposit_check.can_deposit:
+            if not can_interact_with_vault(signal.pair, deposit_check=deposit_check):
                 return self._on_deposit_window_closed(signal, position_manager, deposit_check)
 
         softband_bypassed = False
@@ -2368,7 +2369,7 @@ class AlphaModel:
                 stage=DepositCheckStage.buy_rebalance,
             )
             signal.set_deposit_check_result(deposit_check)
-            if not deposit_check.can_deposit and self._on_deposit_window_closed(signal, position_manager, deposit_check):
+            if not can_interact_with_vault(signal.pair, deposit_check=deposit_check) and self._on_deposit_window_closed(signal, position_manager, deposit_check):
                 signal.position_adjust_usd = 0.0
                 signal.position_adjust_quantity = 0.0
 

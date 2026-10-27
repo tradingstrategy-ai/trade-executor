@@ -20,6 +20,7 @@ from tradeexecutor.strategy.redemption import (
     RedemptionCheckResult,
     RedemptionCheckStage,
 )
+from tradeexecutor.strategy.vault_closure import get_vault_closure
 from tradeexecutor.strategy.trade_pricing import TradePricing
 
 
@@ -184,6 +185,10 @@ class GenericPricing(PricingModel):
         route = self.route(pair)
         getter = getattr(route, "get_vault_settlement_event_at", None)
         return getter(ts, pair) if getter is not None else None
+
+    def get_vault_closure(self, ts, pair, **kwargs):
+        """Route the unified closure query without reinterpreting fields."""
+        return get_vault_closure(pair, timestamp=ts, pricing_model=self.route(pair), **kwargs)
 
     def can_deposit(
         self,

@@ -16,6 +16,8 @@ cycle, so a "quiet" queue cycle still exists in the store without the queue key)
 """
 import dataclasses
 from typing import Iterable
+from collections.abc import Callable
+from tradeexecutor.strategy.vault_closure import can_interact_with_vault
 
 from tradeexecutor.state.other_data import OtherData
 from tradeexecutor.state.portfolio import Portfolio
@@ -411,7 +413,7 @@ class PhaseAwareAlphaModel(AlphaModel):
         return super()._should_carry_forward_position(position)
 
     # -- Phase 1 (park): defer closed-window deposits BEFORE trade generation --
-    def apply_phase_aware_intent(self, position_manager: PositionManager) -> None:
+    def apply_phase_aware_intent(self, position_manager: PositionManager, *, vault_interaction_check: Callable = can_interact_with_vault) -> None:
         """Park closed-window deposits and classify open park events, before trade generation.
 
         Call after :py:meth:`calculate_target_positions` and before
@@ -431,6 +433,10 @@ class PhaseAwareAlphaModel(AlphaModel):
 
         Then each still-open park event that was neither re-parked nor promoted this
         cycle, and is not held by an in-flight settlement pin, is stale-closed.
+
+        :param vault_interaction_check: Shared admission callable. Defaults to
+            :func:`tradeexecutor.strategy.vault_closure.can_interact_with_vault`;
+            strategies may bind explicit policy kwargs without duplicating rules.
         """
         if self.phase_aware_cycle is None:
             return
@@ -450,7 +456,7 @@ class PhaseAwareAlphaModel(AlphaModel):
                 continue
             if vault_id not in self.window_gated_pair_ids:
                 continue
-            if pricing_model.can_deposit(self.timestamp, signal.pair):
+            if vault_interaction_check(signal.pair, timestamp=self.timestamp, pricing_model=pricing_model):
                 if vault_id in open_events:
                     self._promote_candidates.add(vault_id)
             else:

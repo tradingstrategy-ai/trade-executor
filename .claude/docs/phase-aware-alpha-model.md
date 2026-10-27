@@ -384,3 +384,7 @@ Related material:
 - `strategies/test_only/09-backtest-capped-waterfall-phase-aware.ipynb` — the
   self-verifying acceptance notebook (derived from `08-…`).
 - PR: https://github.com/tradingstrategy-ai/trade-executor/pull/1550
+
+## Shared vault admission rule
+
+Strategies and charts use `tradeexecutor.strategy.vault_closure`: `is_vault_closed()` reports closure, while `can_interact_with_vault()` applies interaction policy. See [protocol cases and API controls](../../docs/vault-closure.md). Do not reinterpret raw maximum-capacity fields at call sites.

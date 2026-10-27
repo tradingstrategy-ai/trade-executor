@@ -1,6 +1,9 @@
 """Historical universe charts must not confuse closures with missing evidence."""
 
 import datetime
+from eth_defi.erc_4626.core import ERC4626Feature
+from tradeexecutor.backtest.backtest_pricing import BacktestPricing
+from tradeexecutor.strategy.vault_closure import can_interact_with_vault
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -91,6 +94,8 @@ def test_permission_and_capacity_clocks(universe: TradingStrategyUniverse):
     assert counts.iloc[0].to_dict() == {
         "Vaults with price history": 1, "Deposits closed": 0, "Redemptions closed": 0,
         "Deposit state unknown": 1, "Redemption state unknown": 0,
+        "Deposit policy blocks": 0, "Redemption policy blocks": 0,
+        "Deposits blocked by rules": 0, "Redemptions blocked by rules": 0,
     }
 
 
@@ -126,3 +131,18 @@ def test_synthetic_windows_empty_scope_and_chart(universe: TradingStrategyUniver
     assert calculate_vault_window_counts(universe, pd.DatetimeIndex([])).empty
     with pytest.raises(ValueError, match="naive UTC"):
         calculate_vault_window_counts(universe, index.tz_localize("UTC"))
+
+
+def test_protocol_non_admission_fields_do_not_inflate_chart(universe):
+    """Lagoon zero claimable capacity must agree with strategy admission, not look closed."""
+    pairs = list(universe.iterate_pairs())
+    pairs[0].other_data['vault_features'] = {ERC4626Feature.lagoon_like}
+    universe.iterate_pairs.side_effect = lambda: iter(pairs)
+    ts = pd.Timestamp('2026-03-02')
+    universe.vault_state = pd.DataFrame([dict(pair_id=1, timestamp=ts,
+        deposits_open=False, redemption_open=pd.NA, max_deposit=0., max_redeem=0.)])
+    counts = calculate_vault_window_counts(universe, pd.DatetimeIndex([ts]), pair_ids={1})
+    assert counts.iloc[0]['Deposits closed'] == 0
+    assert counts.iloc[0]['Deposit state unknown'] == 1
+    assert counts.iloc[0]['Deposits blocked by rules'] == 0
+    assert can_interact_with_vault(pairs[0], timestamp=ts, pricing_model=BacktestPricing(universe, routing_model=None))

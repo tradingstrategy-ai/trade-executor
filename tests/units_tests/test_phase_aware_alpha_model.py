@@ -19,6 +19,8 @@ import datetime
 
 import pytest
 
+from tradeexecutor.strategy.redemption import DepositCheckResult
+
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.other_data import OtherData
 from tradeexecutor.strategy.alpha_model import AlphaModel, TradingPairSignal, TradingPairSignalFlags
@@ -97,6 +99,10 @@ class _StubPricing:
 
     def can_deposit(self, timestamp, pair) -> bool:
         return pair.internal_id in self.open_pairs
+
+    def check_deposit(self, timestamp, pair):
+        # This stub models the pricing interface, not protocol-specific rules.
+        return DepositCheckResult(can_deposit=self.can_deposit(timestamp, pair))
 
 
 @dataclasses.dataclass
