@@ -76,12 +76,12 @@ the account needs a new key through a Safe `changePubKey`.
 
 To give external traders their own Lighter sub-accounts, declare them in the
 strategy's `Parameters.lighter_sub_accounts` as `SubAccount` values and pass
-the strategy with `STRATEGY_FILE` (optionally with
+the strategy with `STRATEGY_FILE` instead of `DENOMINATION_ASSET` (optionally with
 `LIGHTER_SUB_ACCOUNT_API_KEY_INDEX`, default 4). Deployment creates one
 sub-account per declaration with the master key, registers one key on each
 through the Safe and records each sub-account's id in the deployment
 artefact; `init` then records the account indices in the state. Each sub-account's API key is written to its own mode-0600
-`vault-record.nautilus.<index>.json` hand-over file; the executor record keeps
+`vault-record.nautilus.<id>.json` hand-over file; the executor record keeps
 only the master key. Sub-accounts start empty.
 
 The executor funds sub-accounts from the master with same-owner L2
@@ -151,18 +151,18 @@ free Lighter collateral buffer, ignores transfers below 1 USDC and uses a
 one-hour withdrawal timeout configured at the `start` CLI boundary:
 
 ```python
-LIGHTER_ACCOUNT_INDEX = 123  # Public infrastructure identity
-
 class Parameters:
     lighter_cash_management = True
     lighter_safe_cash_buffer_usd = Decimal("20")
     lighter_free_collateral_buffer_usd = Decimal("0")
-    lighter_min_transfer_usd = Decimal("1")
 ```
 
-Keep the public account identity separate from behavioural strategy parameters,
-as shown above. Runtime secrets and withdrawal settings are parsed by the CLI
-and passed to routing explicitly.
+That single-account module keeps a module-level `LIGHTER_ACCOUNT_INDEX`, as
+`strategies/lighter-ai.py` does. A strategy with sub-accounts declares them
+in `Parameters` and takes every account index from the state through
+`create_lighter_account_universe()`; see `docs/strategy-parameters.md`.
+Runtime secrets and withdrawal settings are parsed by the CLI and passed to
+routing explicitly.
 
 Use `PositionManager.get_current_cash()` and
 `PositionManager.get_exchange_account_available_balance(pair)` in

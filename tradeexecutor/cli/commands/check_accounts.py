@@ -13,7 +13,7 @@ from tradeexecutor.exchange_account.lighter import (
     validate_lighter_exchange_account_pairs,
 )
 from tradeexecutor.ethereum.lighter.transfer_verification import reconcile_verified_lighter_transfers
-from tradeexecutor.exchange_account.lighter_operator import load_lighter_operator_record, load_lighter_sub_account_operator_records
+from tradeexecutor.exchange_account.lighter_operator import load_lighter_signers
 from tradeexecutor.strategy.account_correction import check_accounts as _check_accounts
 
 from ...state.state import UncleanState
@@ -64,7 +64,7 @@ def check_accounts(
     test_evm_uniswap_v2_init_code_hash: Optional[str] = shared_options.test_evm_uniswap_v2_init_code_hash,
     unit_testing: bool = shared_options.unit_testing,
     raise_on_unclean: bool = typer.Option(False, is_flag=False, envvar="RAISE_ON_UNCLEAN", help="Raise an exception if unclean. Unit test option."),
-    lighter_operator_record_file: Path | None = typer.Option(None, envvar="LIGHTER_OPERATOR_RECORD_FILE", help="Owner-only Lighter operator record used to read transfer history for an interrupted sub-account funding"),
+    lighter_operator_record_file: Path | None = shared_options.lighter_operator_record_file_for_accounting,
     lighter_sub_account_operator_record_files: str | None = shared_options.lighter_sub_account_operator_record_files,
 ):
     """Check that the state ledger matches onchain and external balances.
@@ -133,8 +133,7 @@ def check_accounts(
         state,
         web3,
         mutate=False,
-        operator_record=load_lighter_operator_record(lighter_operator_record_file) if lighter_operator_record_file else None,
-        sub_account_operator_records=load_lighter_sub_account_operator_records(lighter_sub_account_operator_record_files),
+        signers=load_lighter_signers(lighter_operator_record_file, lighter_sub_account_operator_record_files),
     )
     if verified_transfers:
         logger.info(

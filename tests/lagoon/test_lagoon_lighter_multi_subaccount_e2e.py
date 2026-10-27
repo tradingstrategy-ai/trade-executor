@@ -204,6 +204,7 @@ def test_cli_lagoon_lighter_multi_subaccount_lifecycle(
         "CACHE_PATH": (tmp_path / "cache").as_posix(),
         "MIN_GAS_BALANCE": "0",
     }
+    # The commands read their options from the environment like the production Docker deployment does.
     mocker.patch.dict("os.environ", environment, clear=True)
     cli = get_command(app)
 
@@ -333,6 +334,7 @@ def test_cli_lagoon_lighter_multi_subaccount_lifecycle(
     fake_lighter_core.get_account(sub_1).margin_in_use = Decimal(0)
     manual_amount = Decimal(2)
     safe_before_manual = usdc.fetch_balance_of(safe_address)
+    # lighter-move-funds is interactive; answer its prompts as an operator would.
     mocker.patch("tradeexecutor.cli.commands.lighter_move_funds.typer.prompt", side_effect=["w", str(manual_amount)])
     mocker.patch("tradeexecutor.cli.commands.lighter_move_funds.typer.confirm", return_value=True)
     _run(cli, "lighter-move-funds", "--lighter-account-index", str(sub_2))

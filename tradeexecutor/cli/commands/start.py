@@ -164,7 +164,7 @@ def start(
         envvar="LIGHTER_OPERATOR_RECORD_FILE",
         help="Owner-only Lighter operator record used for automatic master withdrawals and master to sub-account transfers",
     ),
-    lighter_sub_account_operator_record_files: Optional[str] = shared_options.lighter_sub_account_operator_record_files,
+    lighter_sub_account_operator_record_files: str | None = shared_options.lighter_sub_account_operator_record_files,
     lighter_withdrawal_timeout: int = typer.Option(
         DEFAULT_LIGHTER_WITHDRAWAL_TIMEOUT_SECONDS,
         envvar="LIGHTER_WITHDRAWAL_TIMEOUT",

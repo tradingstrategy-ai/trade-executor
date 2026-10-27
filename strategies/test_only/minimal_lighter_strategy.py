@@ -95,6 +95,8 @@ def create_indicators(
     execution_context: ExecutionContext,
 ) -> None:
     """No indicators are needed for deployment or account monitoring."""
+
+
 def decide_trades(input: StrategyInput) -> list[TradeExecution]:
     """Passive strategy used only to exercise the deployment/runtime wiring."""
     return []

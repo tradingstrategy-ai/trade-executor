@@ -74,7 +74,7 @@ class Deployment:
     #: Lighter account index of the master, under ``master``, and of each sub-account id.
     #:
     #: Written by ``init`` from the deployment artefact; an id's index never changes.
-    lighter_accounts: Optional[dict[str, int]] = None
+    lighter_accounts: dict[str, int] | None = None
 
     def __repr__(self):
         chain = self.chain_id.name if self.chain_id is not None else None

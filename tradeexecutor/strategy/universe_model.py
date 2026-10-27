@@ -174,7 +174,6 @@ class UniverseModel(abc.ABC):
         execution_context: ExecutionContext | None = None,
         strategy_parameters: StrategyParameters | None = None,
         execution_model: "tradeexecutor.strategy.execution_model.ExecutionModel | None" = None,
-    
         state: "tradeexecutor.state.state.State | None" = None,
     ):
         """Build a universe before backtesting or the live scheduler starts.

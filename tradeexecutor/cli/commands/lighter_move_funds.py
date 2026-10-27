@@ -66,6 +66,7 @@ from tradeexecutor.cli.commands.lagoon_utils import (
     resolve_state_store,
 )
 from tradeexecutor.cli.log import setup_logging
+from tradeexecutor.exchange_account.cash_manager import USDC_PRECISION
 from tradeexecutor.exchange_account.lighter import (
     LIGHTER_PROTOCOL,
     get_lighter_master_account_index,
@@ -78,6 +79,7 @@ from tradeexecutor.exchange_account.state import (
     create_exchange_account_transfer,
 )
 from tradeexecutor.exchange_account.sync_model import ExchangeAccountSyncModel
+from tradeexecutor.ethereum.lighter.lighter_routing import ensure_lighter_l1_withdrawal_mined
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
@@ -97,8 +99,6 @@ from tradeexecutor.strategy.strategy_module import read_strategy_module
 logger = logging.getLogger(__name__)
 
 
-#: Lighter USDC amounts use six decimal places.
-USDC_DECIMALS = Decimal("0.000001")
 
 
 class LighterMoveFundsError(RuntimeError):
@@ -119,7 +119,7 @@ def _parse_usdc_amount(value: str) -> Decimal:
         raise LighterMoveFundsError("Amount in USDC must be a decimal value") from error
     if amount <= 0 or not amount.is_finite():
         raise LighterMoveFundsError("Amount in USDC must be positive")
-    if amount.quantize(USDC_DECIMALS) != amount:
+    if amount.quantize(USDC_PRECISION) != amount:
         raise LighterMoveFundsError("Amount in USDC can have at most six decimal places")
     return amount
 
@@ -449,6 +449,8 @@ def _resume_withdrawal(
 
     logger.info("Resuming secure Lighter withdrawal of %s USDC from account %d", amount, account_index)
     if metadata.get("lighter_withdrawal_method") == "l1_withdraw":
+        if metadata.get("lighter_withdrawal_request_id"):
+            ensure_lighter_l1_withdrawal_mined(vault.web3, trade)
         pending_before = Decimal(str(metadata["lighter_pending_balance_before_usdc"]))
         wait_for_lighter_pending_balance(
             vault.web3,

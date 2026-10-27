@@ -27,6 +27,8 @@ from eth_defi.lighter.transfer import (
     wait_for_lighter_transfer,
 )
 
+from tradeexecutor.exchange_account.cash_manager import USDC_PRECISION
+
 logger = logging.getLogger(__name__)
 
 #: File mode required for records containing a delegated API private key.
@@ -35,8 +37,6 @@ OWNER_ONLY_FILE_MODE = 0o600
 UNSAFE_FILE_PERMISSION_MASK = 0o077
 #: Lighter history timestamps are allowed this much clock skew.
 WITHDRAWAL_HISTORY_CLOCK_SKEW_SECONDS = 60
-#: Lighter USDC precision used when matching withdrawal history amounts.
-USDC_PRECISION = Decimal("0.000001")
 
 
 @dataclass(slots=True)
@@ -122,6 +122,36 @@ def load_lighter_sub_account_operator_records(paths: str | None) -> dict[int, Li
             raise ValueError(f"Lighter account {record.account_index} has more than one operator record")
         records[record.account_index] = record
     return records
+
+
+def load_lighter_signers(master_path: Path | None, sub_account_paths: str | None) -> dict[int, LighterOperatorRecord]:
+    """Load every operator record the executor holds, keyed by account index.
+
+    :param master_path:
+        Owner-only master operator record, or ``None``.
+    :param sub_account_paths:
+        Comma-separated sub-account hand-over files, or ``None``.
+    :return:
+        Signers of the master and of the sub-accounts given.
+    """
+    signers = load_lighter_sub_account_operator_records(sub_account_paths)
+    if master_path is not None:
+        master = load_lighter_operator_record(master_path)
+        signers[master.account_index] = master
+    return signers
+
+
+def get_lighter_handover_path(record_json: Path, account_id: str) -> Path:
+    """Return the hand-over file of one sub-account next to the vault's private record.
+
+    :param record_json:
+        The vault's private JSON record written by ``lagoon-deploy-vault``.
+    :param account_id:
+        The id the strategy declared for the sub-account.
+    :return:
+        ``<record stem>.nautilus.<id>.json`` in the record's directory.
+    """
+    return record_json.with_name(f"{record_json.stem}.nautilus.{account_id}.json")
 
 
 def _public_sdk_error(operation: str, error: Exception) -> RuntimeError:
@@ -263,27 +293,27 @@ async def wait_for_lighter_withdrawal_claimable(
 
 @dataclass(slots=True, frozen=True)
 class LighterFundingRequest:
-    """Public result of submitting a master to sub-account transfer."""
+    """Public result of submitting a transfer between two accounts of one owner."""
 
     #: L2 transaction hash used to confirm the transfer from history.
     tx_hash: str
 
-    #: Fee charged to the master account on top of the amount.
+    #: Fee charged to the sending account on top of the amount.
     fee: Decimal
 
 
 @asynccontextmanager
-async def _open_master_transfer_client(
+async def _open_transfer_client(
     operator: LighterOperatorRecord,
     operation: str,
 ) -> AsyncIterator[tuple[object, LighterAuthTokenManager]]:
-    """Open a master-key signer and auth-token manager for transfer calls.
+    """Open the sending account's signer and auth-token manager for transfer calls.
 
     Lighter transfer and timeout errors pass through; any other SDK error is
     replaced by a secret-free :py:class:`RuntimeError`.
 
     :param operator:
-        Master account signer.
+        Signer of the account sending or reading transfers.
     :param operation:
         Operation name for the public error message.
     :return:
@@ -307,22 +337,22 @@ async def request_lighter_funding_transfer(
     to_account_index: int,
     amount: Decimal,
 ) -> LighterFundingRequest:
-    """Fund a sub-account from the master account with the master API key.
+    """Transfer USDC from the signer's account to another account of the same owner.
 
     The fee comes from Lighter's authenticated quote, which is zero for
     transfers between accounts of one owner. The submission is not
     idempotent: persist the returned hash before waiting for confirmation.
 
     :param operator:
-        Master account signer.
+        Signer of the sending account, the master or a sub-account.
     :param to_account_index:
-        Sub-account owned by the same Safe.
+        Destination account owned by the same Safe.
     :param amount:
-        USDC credited to the sub-account.
+        USDC credited to the destination.
     :return:
         Transaction hash and the fee charged on top of the amount.
     """
-    async with _open_master_transfer_client(operator, "account transfer") as (client, auth):
+    async with _open_transfer_client(operator, "account transfer") as (client, auth):
         fee = await fetch_lighter_transfer_fee(client, auth, to_account_index=to_account_index)
         tx_hash = await request_lighter_transfer(
             client,
@@ -339,10 +369,10 @@ async def wait_for_lighter_funding_transfer(
     tx_hash: str,
     timeout: int,
 ) -> LighterTransferRecord:
-    """Wait until a funding transfer appears in the master's transfer history.
+    """Wait until a funding transfer appears in the sending account's transfer history.
 
     :param operator:
-        Master account signer, used for the authenticated history read.
+        Signer of the sending account, used for the authenticated history read.
     :param tx_hash:
         Hash returned by :py:func:`request_lighter_funding_transfer`.
     :param timeout:
@@ -350,7 +380,7 @@ async def wait_for_lighter_funding_transfer(
     :return:
         Executed transfer record.
     """
-    async with _open_master_transfer_client(operator, "transfer history") as (client, auth):
+    async with _open_transfer_client(operator, "transfer history") as (client, auth):
         return await wait_for_lighter_transfer(client, auth, account_index=operator.account_index, tx_hash=tx_hash, timeout=timeout)
 
 
@@ -363,11 +393,11 @@ async def fetch_lighter_funding_transfer(
     Used by reconciliation after an interrupted run.
 
     :param operator:
-        Master account signer, used for the authenticated history read.
+        Signer of the sending account, used for the authenticated history read.
     :param tx_hash:
         Hash recorded when the transfer was submitted.
     :return:
         Executed transfer, or ``None`` if it is not in history.
     """
-    async with _open_master_transfer_client(operator, "transfer history") as (client, auth):
+    async with _open_transfer_client(operator, "transfer history") as (client, auth):
         return await fetch_lighter_transfer_record(client, auth, account_index=operator.account_index, tx_hash=tx_hash)

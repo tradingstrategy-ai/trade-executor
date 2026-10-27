@@ -21,7 +21,7 @@ orders are submitted by a separate execution tool, not by trade-executor.
 | Read-only accounting comparison | `check-accounts` |
 | Accounting correction, PnL and verified-transfer reconciliation | `correct-accounts` |
 | Interrupted-transfer reconciliation | `correct-accounts` or `repair` |
-| Sub-accounts with their own API keys | `lagoon-deploy-vault --lighter-sub-account-count` |
+| Sub-accounts with their own API keys | `lagoon-deploy-vault` with `STRATEGY_FILE` declaring `Parameters.lighter_sub_accounts` |
 | Automatic master to sub-account funding and rebalancing | `start` with a multi-account strategy |
 | Perpetual order execution inside trade-executor | No; use a separate execution tool |
 
@@ -65,9 +65,9 @@ Capital moves as follows:
 | Master to Safe | Secure withdrawal, then the Safe claim | Master API key, asset manager |
 | Master to sub-account | L2 same-owner transfer | Master API key |
 | Sub-account to Safe | L1 `withdraw(subAccountIndex)` through the guard, then the Safe claim | Asset manager only |
-| Sub-account to sub-account | L2 same-owner transfer | The sending sub-account's key, so only its trader |
+| Sub-account to sub-account or master | L2 same-owner transfer | The sending sub-account's key: its trader, or the executor when given the key with `LIGHTER_SUB_ACCOUNT_OPERATOR_RECORD_FILES` |
 
-The executor cannot move capital directly between sub-accounts. It
+The automatic cash policy never signs with a sub-account key. It
 rebalances by withdrawing an overweight sub-account to the Safe in one
 cycle, depositing it to the master in the next and then funding the
 underweight sub-account. A trader may transfer between sub-accounts with its
@@ -90,7 +90,8 @@ Mainnet observations from 2026-10-26:
 
 ### Deploy with sub-accounts
 
-Add the sub-account count to the normal API-key deployment:
+Deploy with `STRATEGY_FILE` instead of `DENOMINATION_ASSET`; one sub-account
+is created per `SubAccount` the strategy declares:
 
 ```shell
 export GENERATE_LIGHTER_API_KEY=true
@@ -114,9 +115,10 @@ Markdown report:
 |------|----------|----------|
 | `vault-record.txt` | Public metadata, including every sub-account index and public key | Operators |
 | `vault-record.json` | Master API key and public sub-account metadata, mode 0600 | The executor only |
-| `vault-record.nautilus.<index>.json` | One sub-account's API key, mode 0600 | The trader of that sub-account |
+| `vault-record.nautilus.<id>.json` | One sub-account's API key, mode 0600 | The trader of that sub-account |
 
-The executor never reads the hand-over files, and no sub-account key appears
+The executor reads a hand-over file only when an operator passes it in
+`LIGHTER_SUB_ACCOUNT_OPERATOR_RECORD_FILES`, and no sub-account key appears
 in any report.
 
 ### Known limitation: keys are saved only after deployment
@@ -124,20 +126,20 @@ in any report.
 `lagoon-deploy-vault` writes the master and sub-account private keys only
 after the whole deployment returns. If it fails after a key has been
 registered on Lighter, that key exists nowhere else and the account needs a
-new key through a Safe `changePubKey`. The sub-account tutorial works around
-this by saving each key to a mode-0600 temporary file as it is generated and
+new key through a Safe `changePubKey`. Both tutorials work around this by
+saving each key to a mode-0600 temporary file as it is generated and
 deleting the files after a successful deployment.
 
 ### Optional: let the executor sign for sub-accounts
 
 An operator may also give the executor a sub-account's hand-over file with
 `LIGHTER_SUB_ACCOUNT_OPERATOR_RECORD_FILES`, a comma-separated list of
-paths. The executor can then send a transfer from that sub-account directly,
-to the master or to another sub-account, instead of taking the Safe round
-trip. The strategy creates such a transfer with
-`create_exchange_account_funding()` using the sub-account position as the
-source; it is booked exactly like a master to sub-account funding, with the
-amount and fee as balance updates on the source position. Pass the same
+paths. A strategy can then send a transfer from that sub-account directly,
+to the master or to another sub-account, with
+`PositionManager.transfer_lighter_funds(source, destination, amount)`; it is
+booked exactly like a master to sub-account funding, with the amount and
+fee as balance updates on the source position. The automatic cash policy
+still rebalances through the Safe. Pass the same
 variable to `check-accounts`, `correct-accounts` and `repair`, which need the
 sending account's record to read its transfer history. Each hand-over file
 also carries the Safe module address, so it loads as an operator record.
@@ -175,12 +177,13 @@ artefact. `init` copies the master and sub-account indices into
 `state.sync.deployment.lighter_accounts`, and an id's index never changes
 afterwards. Universe construction receives the state and builds one
 exchange-account pair per account with the real indices; without a state,
-at deployment or in a universe check, it uses placeholders. Each account
-becomes its own trading position when funds first move into it, and
+at deployment or in a universe check, it uses placeholders. Each account is
+its own trading position, opened at zero by `correct-accounts` or by the
+first custody method that touches it, and
 `tradeexecutor.exchange_account.sub_account` maps positions to ids and ids
 to positions through the state. The single-account `strategies/lighter-ai.py`
 predates this and builds its one pair from `LIGHTER_ACCOUNT_INDEX`; it is
-unchanged.
+unchanged apart from its `ExchangeType.lighter`.
 
 `decide_trades()` moves funds between the accounts by id with the
 `PositionManager` custody methods.
@@ -249,12 +252,14 @@ sub-account transfer to appear in Lighter's transfer history.
 An interrupted transfer makes the state unclean, and `start` refuses to run.
 Inspect it with `check-accounts`, then:
 
-- **Master to sub-account transfer:** `correct-accounts` or `repair`
-  reconciles it from Lighter's transfer history; pass
-  `LIGHTER_OPERATOR_RECORD_FILE` so they can read it. A timeout alone never
-  releases a transfer, because it does not prove that no funds moved. If the
-  submission started but no transfer hash was saved, check the master's
-  transfer history manually.
+- **Transfer between accounts:** `correct-accounts` or `repair` reconciles
+  it from Lighter's transfer history; pass the sending account's record
+  (`LIGHTER_OPERATOR_RECORD_FILE` for the master,
+  `LIGHTER_SUB_ACCOUNT_OPERATOR_RECORD_FILES` for a sub-account) so they can
+  read it. A timeout alone never releases a transfer, because it does not
+  prove that no funds moved. A transfer interrupted before its submission
+  was checkpointed is expired; one whose submission started without a saved
+  hash stays pending until you check the sender's transfer history manually.
 - **Withdrawal waiting to become claimable:** run `lighter-move-funds
   --lighter-account-index <index>` for the account. It resumes the saved
   request, waits for it, claims it into the Safe and completes the
@@ -279,8 +284,9 @@ balances. The fork and fake sequencer live in
 [`lighter_simulation.py`](../testing/lighter_simulation.py), and both
 tutorials end with the trade table of
 [`lighter_report.py`](../testing/lighter_report.py): every trade with its
-description, status, notes and Ethereum and Lighter hashes. Both resume
-from `progress.json` in their run directory.
+description, status, notes and Ethereum and Lighter hashes. Live runs
+resume from `progress.json` in their run directory; simulated runs always
+start fresh.
 
 [`scripts/lagoon/manual-trade-executor-lighter-transfers.py`](../../scripts/lagoon/manual-trade-executor-lighter-transfers.py)
 is the executable specification of the transfer accounting. Its strategy,
@@ -297,9 +303,12 @@ USDC, and inflows, revaluations, outflows and fees add up. With
 `SIMULATE=true` it runs on an Anvil fork with the fake sequencer in about two
 minutes and with a transfer fee, so the fee accounting is checked;
 `tests/lagoon/test_lagoon_lighter_scripted_transfers_e2e.py` runs it that way
-in CI. Without it, it runs live for 10 USDC plus gas; the live run has not
-been done yet. The same strategy module deploys and runs on a fork or on
-mainnet, because the account indices come from the state.
+in CI. Without it, it runs live for 10 USDC plus gas. It passed live on
+2026-10-26: Lighter charged no transfer fee, the sub-account-signed transfers
+went through, every USDC came back to the deployer and the run took 66
+minutes, most of it the three withdrawals. The same strategy module deploys
+and runs on a fork or on mainnet, because the account indices come from the
+state.
 
 [`scripts/lagoon/manual-trade-executor-lighter-subaccounts.py`](../../scripts/lagoon/manual-trade-executor-lighter-subaccounts.py)
 is live only. It deploys a vault with two sub-accounts and funds them with
@@ -313,8 +322,8 @@ sub-account `changePubKey` through the Safe, master to sub-account transfer,
 the key-free L1 `withdraw(subIndex)`, master secure withdrawal, full drain
 and redemption. The deployer got every USDC back with no Lighter fees, for
 about 0.011 ETH of gas. Its trader step, a sub-account to sub-account
-transfer signed with the sub-account's own key, was added afterwards and has
-not yet run live.
+transfer signed with the sub-account's own key, was added afterwards; the
+transfer tutorial has since verified such transfers live.
 
 ## Deploy a Safe-owned Lighter account
 
@@ -425,18 +434,19 @@ for a small complete example.
 The relevant parameters are:
 
 ```python
-LIGHTER_ACCOUNT_INDEX = 123  # Public infrastructure identity
-
 class Parameters:
     lighter_cash_management = True
     lighter_safe_cash_buffer_usd = Decimal("20")
     lighter_free_collateral_buffer_usd = Decimal("0")
-    lighter_min_transfer_usd = Decimal("1")
 ```
 
-Keep the public account identity separate from behavioural strategy parameters,
-as shown above. Runtime secrets and withdrawal settings are parsed by the CLI
-and passed to routing explicitly.
+This single-account module keeps a module-level `LIGHTER_ACCOUNT_INDEX`, the
+layout `strategies/lighter-ai.py` uses. New strategies declare their
+sub-accounts in `Parameters` and take every account index from the state, as
+[Strategy setup for sub-accounts](#strategy-setup-for-sub-accounts) and
+[`docs/strategy-parameters.md`](../../docs/strategy-parameters.md) describe.
+Runtime secrets and withdrawal settings are parsed by the CLI and passed to
+routing explicitly.
 
 The manager deposits only Safe cash above the configured buffer. When Lagoon
 has pending redemptions and the Safe is short, it withdraws available Lighter
@@ -602,8 +612,10 @@ subscription settles, the Safe holds no cash to pay a Lagoon redemption.
 The Lighter AI Yubi deployment convention maps the protected host directory
 `~/secrets/lighter` to `/secure-lighter` in the manual-command container. Its
 delegated-key record is conventionally
-`~/secrets/lighter/lighter-ai-vault-info.json`. Only
-`lagoon-lighter-test-trade` and `lighter-move-funds` need this record:
+`~/secrets/lighter/lighter-ai-vault-info.json`. `lagoon-lighter-test-trade`,
+`lighter-move-funds` and a `start` with `lighter_cash_management` need this
+record; `check-accounts`, `correct-accounts` and `repair` take it only to
+reconcile an interrupted transfer between accounts:
 
 ```shell
 export LIGHTER_OPERATOR_RECORD_FILE="/secure-lighter/lighter-ai-vault-info.json"
@@ -693,8 +705,9 @@ trade-executor lighter-move-funds
 ```
 
 The command records a successful movement as one flagged synthetic trade on
-the `LIGHTER-ACCOUNT` position and changes the Safe reserve by the same USDC
-amount. `check-accounts` therefore verifies both sides of a completed movement,
+the moved account's position, `LIGHTER-ACCOUNT` for the master or
+`LIGHTER-<id>` for a sub-account, and changes the Safe reserve by the same
+USDC amount. `check-accounts` therefore verifies both sides of a completed movement,
 while `correct-accounts` repairs residual PnL or out-of-band drift without
 rewriting this transfer record.
 
@@ -746,9 +759,11 @@ Runtime commands need only public Lighter metadata:
 | `VAULT_ADDRESS` | Lagoon mode | Lagoon vault address |
 | `VAULT_ADAPTER_ADDRESS` | Lagoon mode | Trading strategy module address |
 
-Do not configure the generated Lighter private key for `init`,
-`check-accounts`, `correct-accounts`, `repair` or `lagoon-settle`. These
-commands either use public account equity or operate only on executor state.
+Do not configure the generated Lighter private key for `init` or
+`lagoon-settle`; they use public account equity or executor state only.
+`check-accounts`, `correct-accounts` and `repair` take the operator records
+only to read transfer history when reconciling an interrupted transfer
+between accounts.
 
 ## Accounting command lifecycle
 
@@ -847,8 +862,9 @@ The main integration points are deliberately small:
   phased cash policy for a master and its sub-accounts.
 - `lighter.py` creates the synthetic pairs, validates public equity and provides
   account, free-collateral and Lagoon NAV readers.
-- `lighter_routing.py` prepares Safe-owned deposits and withdrawal claims in
-  the normal execution pipeline.
+- `lighter_routing.py` prepares Safe-owned deposits and withdrawal claims,
+  submits L2 transfers between accounts and key-free sub-account withdrawals
+  in the normal execution pipeline.
 - `transfer_verification.py` checks public Ethereum and Lighter evidence before
   an interrupted custody transfer is reconciled.
 - `sync_model.py` converts a changed external-account value into a

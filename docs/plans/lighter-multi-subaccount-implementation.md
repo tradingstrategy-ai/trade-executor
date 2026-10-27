@@ -50,7 +50,12 @@ as its own trade, including sub-account to sub-account and sub-account to
 master transfers, and verifies the state afterwards. With `SIMULATE=true` it
 runs on an Anvil fork with the fake sequencer; it passed that way on
 2026-10-26 and is run by `tests/lagoon/test_lagoon_lighter_scripted_transfers_e2e.py`.
-It has not run live.
+It also passed live on Ethereum mainnet on 2026-10-26 (Safe `0xa7BE772B…`,
+master account 764217): the sub-account to sub-account and sub-account to
+master transfers signed with the sub-account keys went through, Lighter
+charged no transfer fee, the deployer's USDC balance was unchanged at the
+end and gas was 0.006 ETH. Deployment took 14 minutes and each withdrawal
+about 30 minutes; the whole run took 66 minutes.
 
 ### Mainnet run
 
@@ -77,9 +82,10 @@ redemption.
 The first attempt failed because the Lighter SDK client was built outside an
 asyncio event loop; eth-defi now builds it inside one.
 
-Not yet run live: the trader step added to the tutorial afterwards, a
-sub-account → sub-account transfer signed with the sending sub-account's own
-key, followed by a `start` cycle that revalues both positions.
+The trader step added to this tutorial afterwards, a sub-account →
+sub-account transfer signed with the sending sub-account's own key, has not
+run as part of this script; the transfer tutorial verified such transfers
+live on 2026-10-26.
 
 ### Fees and minimums
 
@@ -92,10 +98,10 @@ key, followed by a `start` cycle that revalues both positions.
 - A funding trade reads the authenticated fee quote when it submits and books
   the fee from transfer history. The strategy parameter
   `lighter_transfer_fee_usd` is only the fee the planner reserves on the
-  master; the tutorial sets it to the public 1 USDC quote so every movement
-  still reaches the minimum if a fee is charged.
+  master; it defaults to 0 and the tutorials do not set it.
 - A sub-account → sub-account transfer must be signed by the sending
-  sub-account's key, which only its trader holds. Lighter documents that a
+  sub-account's key, which its trader holds, or the executor when given the
+  hand-over file. Lighter documents that a
   transfer to a different owner also needs an L1 wallet signature, which a
   Safe cannot give; this was not tested.
 
@@ -124,8 +130,8 @@ key, followed by a `start` cycle that revalues both positions.
   Instead, the writers that use the portfolio counter skip past the
   position's existing ids, which removes the collision without changing the
   valuator's interface.
-- `lagoon-redeem` reads the accounts from the strategy's `Parameters`, or
-  from `LIGHTER_ACCOUNT_INDEXES` when given, rather than from state.
+- `lagoon-redeem` reads `LIGHTER_ACCOUNT_INDEX` when given, otherwise every
+  account in `state.sync.deployment.lighter_accounts`.
 - Accounts are classified by Lighter's required `account_type` field (0
   master, 1 sub-account, 2 and above pools), observed on mainnet, not by
   index range.
@@ -134,11 +140,12 @@ key, followed by a `start` cycle that revalues both positions.
   funding transfer.
 - `check-accounts` also fails when the Safe owns a Lighter account that has
   no position, because NAV would miss it.
-- The strategy parameters are `lighter_sub_account_weights` (a mapping by
-  account index or a sequence in sub-account order),
+- Weights are `SubAccount(id, name, weight)` values in
+  `Parameters.lighter_sub_accounts`; the other policy parameters are
   `lighter_rebalance_band_usd` and `lighter_transfer_fee_usd`.
-- The tutorial is smaller than planned; see
-  [Manual mainnet tutorial](#manual-mainnet-tutorial).
+- The tutorial is smaller than planned and differs from the
+  [Manual mainnet tutorial](#manual-mainnet-tutorial) section below, which
+  describes the original plan; the script docstring has the current steps.
 
 ### Open limitation
 
@@ -227,7 +234,7 @@ one protocol in one portfolio. The rules are:
   `Lighter sub-account 281474976710600 (trend)`, so `show-positions`,
   `check-accounts` rows and logs are distinguishable.
 - `other_data` gains `lighter_account_role` (`master` or `sub_account`),
-  `lighter_master_account_index` and an optional `lighter_strategy_label`.
+  `lighter_master_account_index` and, for a sub-account, `lighter_sub_account_id`.
   `exchange_subaccount_id` keeps the account index for
   `get_exchange_account_id()`.
 - Position creation is per pair: `open_exchange_account_position()` is called
@@ -403,11 +410,11 @@ master keeps `lighter_free_collateral_buffer_usd` as its own minimum.
 
 | Variable | Command | Meaning |
 |----------|---------|---------|
-| `LIGHTER_SUB_ACCOUNT_COUNT` | `lagoon-deploy-vault` | Number of sub-accounts to create, default 0 |
+| `LIGHTER_SUB_ACCOUNT_COUNT` | `lagoon-deploy-vault` | Superseded: the count comes from the strategy's `Parameters.lighter_sub_accounts` |
 | `LIGHTER_SUB_ACCOUNT_API_KEY_INDEX` | `lagoon-deploy-vault` | Nautilus key slot, default 4 |
-| `LIGHTER_ACCOUNT_INDEXES` | test-only strategies and tutorials | Superseded: strategies declare `Parameters.lighter_account_index` and `lighter_sub_accounts` (index to label). Only the test-only strategies accept this override, so a live tutorial can pass the indices Lighter assigned at deployment |
-| `LIGHTER_SUB_ACCOUNT_WEIGHTS` | test strategy | Comma-separated weights in sub-account order |
-| `LIGHTER_SAFE_CASH_BUFFER_USD`, `LIGHTER_TRANSFER_FEE_USD` | test strategy | Safe buffer and the fee budget per funding transfer |
+| `LIGHTER_ACCOUNT_INDEXES` | test-only strategies and tutorials | Superseded: `init` records every account index in `state.sync.deployment.lighter_accounts` and universe construction reads the state |
+| `LIGHTER_SUB_ACCOUNT_WEIGHTS` | test strategy | Superseded: `SubAccount.weight` in `Parameters.lighter_sub_accounts` |
+| `LIGHTER_SAFE_CASH_BUFFER_USD`, `LIGHTER_TRANSFER_FEE_USD` | test strategy | Superseded: `Parameters.lighter_safe_cash_buffer_usd` and `lighter_transfer_fee_usd` |
 | `LIGHTER_TRANSFER_TIMEOUT` | `start` | Seconds to wait for an L2 funding transfer, default 300 |
 | `LIGHTER_WITHDRAWAL_TIMEOUT` | `start` | Default raised from 1800 to 3600, because it also bounds the on-chain pending-balance wait for a sub-account withdrawal, which took about 29 minutes on mainnet. `lighter-move-funds` uses `LIGHTER_WITHDRAW_TIMEOUT`. |
 
@@ -434,7 +441,7 @@ sequence in sub-account order), `lighter_rebalance_band_usd` and
 
 | Item | File | Notes |
 |------|------|-------|
-| Pair identity and positions | `tradeexecutor/exchange_account/lighter.py`, `tradeexecutor/state/identifier.py` | `create_lighter_exchange_account_pair(quote, account_index, role, master_account_index, strategy_label)`; `create_lighter_exchange_account_pairs(quote, master_index, sub_indices)`; ticker and description per account; validator changes. |
+| Pair identity and positions | `tradeexecutor/exchange_account/lighter.py`, `tradeexecutor/state/identifier.py` | `create_lighter_exchange_account_pair(quote, account_index, role, master_account_index, sub_account_id)`; `create_lighter_exchange_account_pairs(quote, master_index, sub_accounts)` with sub-account index to id; ticker and description per account; validator changes. |
 | NAV | `lighter.py`, `ethereum_protocol_adapters.py` | `create_lighter_vault_valuation_func(web3, safe_address, reserve_asset, account_indices, session)`; `_auto_discover_lighter` passes all indices. |
 | Operator record | `tradeexecutor/exchange_account/lighter_operator.py` | Consolidate the duplicate class and wrappers; no shape change. |
 | Funding trade | `tradeexecutor/exchange_account/state.py`, `tradeexecutor/state/trade.py` | `TradeFlag.internal_account_transfer`, `create_exchange_account_funding(state, master_position, sub_position, amount, fee, ...)`, `complete_exchange_account_funding()` booking the master balance update, `is_internal_account_transfer_pending()`, sort key, `transfer_rejected` outcome. |
@@ -451,7 +458,7 @@ sequence in sub-account order), `lighter_rebalance_band_usd` and
 | Docs | `tradeexecutor/exchange_account/README-Lighter.md`, `docs/lagoon-lighter-deployment.md` | Multi-account custody model, deployment, hand-over, env vars, recovery. |
 | Changelog | `CHANGELOG.md` | One line, dated. |
 
-## Fake Lighter Core
+## Fake Lighter core
 
 Lighter's sequencer cannot run on an Anvil fork. The existing tests patch the
 eth_defi functions imported into trade-executor modules with `mocker.patch`
@@ -632,8 +639,11 @@ through `run_cli()`, secrets excluded from every representation, public
 assertions at every step, mainnet only. The vault is deployed with zero
 management and performance fees, so the deployer holds the whole share
 supply. Every executor custody movement is a real `start` single cycle with
-`strategies/test_only/lighter_multi_subaccount_strategy.py`, no Safe cash
-buffer and `LIGHTER_SUB_ACCOUNT_WEIGHTS` set per step.
+`strategies/test_only/lighter_multi_subaccount_strategy.py` with no Safe cash
+buffer and fixed 50/50 weights. (This section describes the original plan;
+the script has 11 phases, its trader transfer at phase 5 and a 4 USDC
+subscription constant, and never changes the strategy. Its docstring is the
+current reference.)
 
 The run directory holds `progress.json` with the public deployment details,
 the starting balances and the last completed step, so a rerun never

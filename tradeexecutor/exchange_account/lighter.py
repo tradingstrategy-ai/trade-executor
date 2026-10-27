@@ -35,10 +35,9 @@ LIGHTER_ACCOUNT_SYMBOL = "LIGHTER-ACCOUNT"
 LIGHTER_PROTOCOL = "lighter"
 #: Only Lighter deployment supported by the initial integration.
 LIGHTER_DEPLOYMENT = "ethereum"
+#: Id a strategy uses for the Safe-owned master account; never a sub-account id.
+LIGHTER_MASTER_ACCOUNT_ID = "master"
 #: ``other_data`` role of the Safe-owned master account pair.
-#: Id a strategy uses for the Safe-owned master account.
-LIGHTER_MASTER_LABEL = "master"
-
 LIGHTER_ROLE_MASTER = "master"
 #: ``other_data`` role of a sub-account pair.
 LIGHTER_ROLE_SUB_ACCOUNT = "sub_account"
@@ -146,15 +145,19 @@ def format_lighter_sub_account_lines(
     """
     lines = []
     for sub in (metadata or {}).get("sub_accounts") or []:
-        description = f"account {sub.get('account_index')}, API-key index {sub.get('api_key_index')}, public key {sub.get('public_key')}, change public-key transaction {sub.get('change_pubkey_tx_hash')}"
+        description = f"id {sub.get('label')}, account {sub.get('account_index')}, API-key index {sub.get('api_key_index')}, public key {sub.get('public_key')}, change public-key transaction {sub.get('change_pubkey_tx_hash')}"
         lines.append(f"- **Sub-account**: `{description}`" if markdown else f"{indent}Sub-account: {description}")
     return lines
 
 
 class LighterEquityInvariantError(ValueError):
     """Raised when the public Lighter API reports an invalid equity value."""
+
+
 class NegativeLighterEquityError(LighterEquityInvariantError):
     """Raised when the public Lighter API reports impossible negative equity."""
+
+
 def get_lighter_sub_account_address(account_index: int) -> str:
     """Return the synthetic address identifying one Lighter sub-account pair.
 
@@ -172,7 +175,7 @@ def create_lighter_exchange_account_pair(
     is_testnet: bool = False,
     role: str = LIGHTER_ROLE_MASTER,
     master_account_index: int | None = None,
-    strategy_label: str | None = None,
+    sub_account_id: str | None = None,
 ) -> TradingPairIdentifier:
     """Create a synthetic pair representing one Lighter account.
 
@@ -193,8 +196,8 @@ def create_lighter_exchange_account_pair(
     :param master_account_index:
         Master account owning a sub-account. Defaults to ``account_index``
         for the master itself and is required for a sub-account.
-    :param strategy_label:
-        Optional name of the external strategy trading a sub-account.
+    :param sub_account_id:
+        The id the strategy declared for a sub-account; required for one.
     :return:
         Exchange-account pair with public Lighter metadata only.
     """
@@ -206,6 +209,8 @@ def create_lighter_exchange_account_pair(
         master_account_index = account_index
     elif type(master_account_index) is not int or master_account_index < 0 or master_account_index == account_index:
         raise ValueError("A Lighter sub-account pair needs its master account index")
+    elif not sub_account_id:
+        raise ValueError("A Lighter sub-account pair needs the id the strategy declared for it")
 
     other_data = {
         "exchange_protocol": LIGHTER_PROTOCOL,
@@ -215,9 +220,6 @@ def create_lighter_exchange_account_pair(
         "lighter_account_role": role,
         "lighter_master_account_index": master_account_index,
     }
-    if strategy_label:
-        other_data["lighter_sub_account_id"] = strategy_label
-
     if role == LIGHTER_ROLE_MASTER:
         # Lighter's L1 contract is the stable, canonical identity for the
         # master account. It is not used as an ERC-20 contract by the reader.
@@ -225,8 +227,9 @@ def create_lighter_exchange_account_pair(
         symbol = LIGHTER_ACCOUNT_SYMBOL
         internal_id = 1
     else:
+        other_data["lighter_sub_account_id"] = sub_account_id
         address = get_lighter_sub_account_address(account_index)
-        symbol = f"LIGHTER-{strategy_label or account_index}"
+        symbol = f"LIGHTER-{sub_account_id}"
         internal_id = LIGHTER_SUB_ACCOUNT_INTERNAL_ID_OFFSET + account_index
 
     base = AssetIdentifier(
@@ -252,7 +255,7 @@ def create_lighter_exchange_account_pair(
 def create_lighter_exchange_account_pairs(
     quote: AssetIdentifier,
     master_account_index: int,
-    sub_accounts: Mapping[int, str | None] | None = None,
+    sub_accounts: Mapping[int, str] | None = None,
 ) -> list[TradingPairIdentifier]:
     """Create pairs for a master account and its sub-accounts.
 
@@ -261,14 +264,11 @@ def create_lighter_exchange_account_pairs(
     :param master_account_index:
         Safe-owned master account.
     :param sub_accounts:
-        Sub-account index to the id the strategy declared for it, in creation order.
+        Sub-account index to the id the strategy declared for it, in creation
+        order; the ids were validated when the strategy declared them.
     :return:
         Master pair followed by one pair per sub-account.
     """
-    sub_accounts = dict(sub_accounts or {})
-    ids = [account_id for account_id in sub_accounts.values() if account_id]
-    if len(set(ids)) != len(ids) or LIGHTER_MASTER_LABEL in ids:
-        raise ValueError(f"Lighter sub-account ids must be unique and not {LIGHTER_MASTER_LABEL!r}: {sub_accounts}")
     pairs = [create_lighter_exchange_account_pair(quote, master_account_index)]
     pairs += [
         create_lighter_exchange_account_pair(
@@ -276,9 +276,9 @@ def create_lighter_exchange_account_pairs(
             index,
             role=LIGHTER_ROLE_SUB_ACCOUNT,
             master_account_index=master_account_index,
-            strategy_label=account_id,
+            sub_account_id=account_id,
         )
-        for index, account_id in sub_accounts.items()
+        for index, account_id in (sub_accounts or {}).items()
     ]
     return pairs
 
@@ -289,12 +289,11 @@ def get_lighter_account_id(pair: TradingPairIdentifier) -> str:
     :param pair:
         Lighter exchange-account pair.
     :return:
-        ``master`` for the master account, otherwise the sub-account's id or
-        its index when it has no id.
+        ``master`` for the master account, otherwise the sub-account's id.
     """
     if get_lighter_account_role(pair) == LIGHTER_ROLE_MASTER:
-        return LIGHTER_MASTER_LABEL
-    return str((pair.other_data or {}).get("lighter_sub_account_id") or pair.get_exchange_account_id())
+        return LIGHTER_MASTER_ACCOUNT_ID
+    return pair.other_data["lighter_sub_account_id"]
 
 
 def find_lighter_account_pair(pairs: Iterable[TradingPairIdentifier], account: str) -> TradingPairIdentifier:
@@ -313,22 +312,6 @@ def find_lighter_account_pair(pairs: Iterable[TradingPairIdentifier], account: s
         if is_lighter_exchange_account_pair(pair) and get_lighter_account_id(pair) == account:
             return pair
     raise ValueError(f"No Lighter account {account!r} in the strategy universe; declare it in Parameters.lighter_sub_accounts")
-
-
-def parse_lighter_account_indices(raw: str) -> list[int]:
-    """Parse comma-separated Lighter account indices, the master account first.
-
-    :param raw:
-        For example ``"700,281474976709656"``; an empty string means no accounts.
-    :return:
-        Account indices in the given order.
-    :raise ValueError:
-        If a part is not a non-negative integer.
-    """
-    parts = [part.strip() for part in raw.split(",") if part.strip()]
-    if not all(part.isascii() and part.isdecimal() for part in parts):
-        raise ValueError(f"Lighter account indices must be comma-separated non-negative integers: {raw!r}")
-    return [int(part) for part in parts]
 
 
 def is_lighter_exchange_account_pair(pair: TradingPairIdentifier) -> bool:
@@ -406,12 +389,7 @@ def validate_lighter_exchange_account_pairs(
     ]
     if not lighter_pairs:
         return []
-    masters = [pair for pair in lighter_pairs if get_lighter_account_role(pair) == LIGHTER_ROLE_MASTER]
-    if len(masters) != 1:
-        raise ValueError(
-            "Lighter strategies must contain exactly one master account pair"
-        )
-    master_index = get_lighter_master_account_index(masters[0])
+    master_index = get_lighter_master_account_index(get_lighter_master_pair(lighter_pairs))
     account_indices = [pair.get_exchange_account_id() for pair in lighter_pairs]
     if None in account_indices or len(set(account_indices)) != len(account_indices):
         raise ValueError("Lighter account pairs must have unique account indices")

@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 
-from tradeexecutor.exchange_account.lighter import LIGHTER_MASTER_LABEL
+from tradeexecutor.exchange_account.lighter import LIGHTER_MASTER_ACCOUNT_ID
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution, TradeFlag
@@ -42,7 +42,7 @@ SCRIPTED_TRANSFER_STEPS = 5
 class ScriptedTransfer:
     """One expected custody movement."""
 
-    #: Account the value leaves: ``safe``, ``master`` or a sub-account label.
+    #: Account the value leaves: ``safe``, ``master`` or a sub-account id.
     source: str
 
     #: Account the value arrives at.
@@ -56,7 +56,7 @@ class ScriptedTransfer:
         return ROLE_SAFE not in (self.source, self.destination)
 
 
-def build_lighter_transfer_schedule(sub_labels: list[str], unit: Decimal = SCRIPTED_TRANSFER_UNIT_USDC) -> list[list[ScriptedTransfer]]:
+def build_lighter_transfer_schedule(sub_account_ids: list[str]) -> list[list[ScriptedTransfer]]:
     """Return the movements the example strategy makes, one list per cycle.
 
     With the 1 USDC activation deposit and a ``5 * unit - 1`` USDC
@@ -70,17 +70,14 @@ def build_lighter_transfer_schedule(sub_labels: list[str], unit: Decimal = SCRIP
     4. Move ``unit`` from the second sub-account back to the master, signed by the second.
     5. Withdraw everything from both sub-accounts and the master to the Safe.
 
-    :param sub_labels:
-        The two sub-account labels in declaration order.
-    :param unit:
-        Base amount of the fixed movements.
+    :param sub_account_ids:
+        The two sub-account ids in declaration order.
     :return:
         Schedule steps in execution order.
     """
-    if unit <= 0:
-        raise ValueError("The schedule unit must be positive")
-    first, second = sub_labels
-    master = LIGHTER_MASTER_LABEL
+    unit = SCRIPTED_TRANSFER_UNIT_USDC
+    first, second = sub_account_ids
+    master = LIGHTER_MASTER_ACCOUNT_ID
     return [
         [ScriptedTransfer(ROLE_SAFE, master, None)],
         [ScriptedTransfer(master, first, 2 * unit), ScriptedTransfer(master, second, 2 * unit)],
@@ -165,7 +162,7 @@ def verify_lighter_scripted_transfers(
     :param schedule:
         Movements the strategy was expected to make.
     :param accounts:
-        Account label to Lighter account index, including ``master``.
+        Account id to Lighter account index, including ``master``.
     :return:
         One row per movement for reporting.
     :raise AssertionError:
@@ -208,7 +205,7 @@ def _matches(trade: TradeExecution, transfer: ScriptedTransfer, accounts: dict[s
     account = int(trade.pair.get_exchange_account_id())
     if trade.is_internal_account_transfer():
         return transfer.is_funding() and account == accounts[transfer.destination] and int(trade.other_data.get("funding_source_account_id", -1)) == accounts[transfer.source]
-    if TradeFlag.external_account_transfer not in (trade.flags or set()):
+    if not trade.is_external_account_transfer():
         return False
     if trade.is_buy():
         return transfer.source == ROLE_SAFE and account == accounts[transfer.destination]

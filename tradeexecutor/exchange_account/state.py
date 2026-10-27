@@ -45,8 +45,30 @@ def create_exchange_account_transfer(
         raise ExchangeAccountTransferError("Expected an exchange-account position")
     if amount <= 0:
         raise ExchangeAccountTransferError("Exchange-account transfer amount must be positive")
+    trade = _create_custody_trade(
+        state=state,
+        position=position,
+        quantity=amount if deposit else -amount,
+        strategy_cycle_at=strategy_cycle_at,
+        reserve_currency=reserve_currency,
+        notes=notes,
+        flag=TradeFlag.external_account_transfer,
+    )
+    trade.other_data = metadata
+    return trade
 
-    quantity = amount if deposit else -amount
+
+def _create_custody_trade(
+    *,
+    state: State,
+    position: TradingPosition,
+    quantity: Decimal,
+    strategy_cycle_at: datetime.datetime,
+    reserve_currency: AssetIdentifier,
+    notes: str,
+    flag: TradeFlag,
+) -> TradeExecution:
+    """Create the planned 1:1 USD trade that books a custody movement on an exchange-account position."""
     _position, trade, _created = state.create_trade(
         strategy_cycle_at=strategy_cycle_at,
         pair=position.pair,
@@ -60,12 +82,18 @@ def create_exchange_account_transfer(
         pair_fee=0.0,
         lp_fees_estimated=0,
         position=position,
-        flags={
-            TradeFlag.external_account_transfer,
-        },
+        flags={flag},
     )
-    trade.other_data = metadata
     return trade
+
+
+def _check_custody_trade_completable(trade: TradeExecution, recovery: bool, what: str) -> None:
+    """Reject completing a custody trade that was never broadcast, unless a recovery proved it."""
+    allowed_statuses = {TradeStatus.broadcasted}
+    if recovery:
+        allowed_statuses.update({TradeStatus.started, TradeStatus.failed})
+    if trade.get_status() not in allowed_statuses:
+        raise ExchangeAccountTransferError(f"{what} has an invalid lifecycle state")
 
 
 def complete_exchange_account_transfer(
@@ -99,11 +127,7 @@ def complete_exchange_account_transfer(
     """
     if executed_reserve <= 0:
         raise ExchangeAccountTransferError("Exchange-account reserve amount must be positive")
-    allowed_statuses = {TradeStatus.broadcasted}
-    if recovery:
-        allowed_statuses.update({TradeStatus.started, TradeStatus.failed})
-    if trade.get_status() not in allowed_statuses:
-        raise ExchangeAccountTransferError("External-account transfer has an invalid lifecycle state")
+    _check_custody_trade_completable(trade, recovery, "External-account transfer")
     if trade.position_id != position.position_id:
         raise ExchangeAccountTransferError("Transfer does not belong to the exchange-account position")
     if trade.is_buy() != (executed_amount > 0):
@@ -178,28 +202,19 @@ def create_exchange_account_funding(
         raise ExchangeAccountTransferError("Funding source and destination must differ")
     if amount <= 0:
         raise ExchangeAccountTransferError("Exchange-account funding amount must be positive")
-    _position, trade, _created = state.create_trade(
-        strategy_cycle_at=strategy_cycle_at,
-        pair=destination_position.pair,
-        quantity=amount,
-        reserve=None,
-        assumed_price=1.0,
-        trade_type=TradeType.rebalance,
-        reserve_currency=reserve_currency,
-        reserve_currency_price=1.0,
-        notes=notes,
-        pair_fee=0.0,
-        lp_fees_estimated=0,
+    trade = _create_custody_trade(
+        state=state,
         position=destination_position,
-        flags={
-            TradeFlag.internal_account_transfer,
-        },
+        quantity=amount,
+        strategy_cycle_at=strategy_cycle_at,
+        reserve_currency=reserve_currency,
+        notes=notes,
+        flag=TradeFlag.internal_account_transfer,
     )
     trade.other_data = {
         **(metadata or {}),
         "funding_source_position_id": source_position.position_id,
         "funding_source_account_id": source_position.pair.get_exchange_account_id(),
-        "funding_destination_account_id": destination_position.pair.get_exchange_account_id(),
     }
     return trade
 
@@ -307,11 +322,7 @@ def complete_exchange_account_funding(
         raise ExchangeAccountTransferError("Expected an exchange-account funding trade")
     if executed_amount <= 0 or fee < 0:
         raise ExchangeAccountTransferError("Funding amounts must be positive and the fee non-negative")
-    allowed_statuses = {TradeStatus.broadcasted}
-    if recovery:
-        allowed_statuses.update({TradeStatus.started, TradeStatus.failed})
-    if trade.get_status() not in allowed_statuses:
-        raise ExchangeAccountTransferError("Exchange-account funding has an invalid lifecycle state")
+    _check_custody_trade_completable(trade, recovery, "Exchange-account funding")
     source_position = state.portfolio.get_position_by_id(int(trade.other_data["funding_source_position_id"]))
     if not source_position.is_exchange_account():
         raise ExchangeAccountTransferError("Funding source is not an exchange-account position")
@@ -335,7 +346,7 @@ def complete_exchange_account_funding(
 
     if "funding_source_balance_update_ids" in trade.other_data:
         return trade
-    label = f"Exchange-account funding trade #{trade.trade_id} to account {trade.other_data.get('funding_destination_account_id')}"
+    label = f"Exchange-account funding trade #{trade.trade_id} to account {trade.pair.get_exchange_account_id()}"
     booked = []
     # Book the fee before the principal. The fee lowers the share price; the
     # principal then burns shares at that price. In the other order, a

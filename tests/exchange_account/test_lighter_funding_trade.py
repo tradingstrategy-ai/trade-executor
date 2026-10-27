@@ -144,8 +144,8 @@ def test_lighter_funding_trade_recovery(mocker: MockerFixture) -> None:
     record = LighterTransferRecord("0xtransfer", MASTER_INDEX, SUB_INDEX, Decimal(40), Decimal(0), 1)
     fetch = mocker.patch("tradeexecutor.ethereum.lighter.transfer_verification.fetch_lighter_funding_transfer", return_value=record)
     operator = SimpleNamespace(account_index=MASTER_INDEX)
-    assert reconcile_verified_lighter_transfers(state, web3=None, mutate=True, operator_record=operator) == [trade]
-    assert reconcile_verified_lighter_transfers(state, web3=None, mutate=True, operator_record=operator) == []
+    assert reconcile_verified_lighter_transfers(state, web3=None, mutate=True, signers={MASTER_INDEX: operator}) == [trade]
+    assert reconcile_verified_lighter_transfers(state, web3=None, mutate=True, signers={MASTER_INDEX: operator}) == []
     assert fetch.call_count == 1
 
     assert (master.get_quantity(), sub.get_quantity()) == (MASTER_USDC - 40, Decimal(40))
@@ -155,7 +155,6 @@ def test_lighter_funding_trade_recovery(mocker: MockerFixture) -> None:
     unsubmitted = create_exchange_account_funding(state=state, source_position=master, destination_position=sub, strategy_cycle_at=native_datetime_utc_now(), reserve_currency=usdc, amount=Decimal(5), notes="Never reached")
     lost_response = create_exchange_account_funding(state=state, source_position=master, destination_position=sub, strategy_cycle_at=native_datetime_utc_now(), reserve_currency=usdc, amount=Decimal(5), notes="Response lost")
     state.start_execution(native_datetime_utc_now(), lost_response)
-    lost_response.other_data["lighter_transfer_submitting"] = True
     assert reconcile_verified_lighter_transfers(state, web3=None, mutate=True) == [unsubmitted]
     assert unsubmitted.get_status() == TradeStatus.expired
     assert not unsubmitted.is_internal_account_transfer_pending()

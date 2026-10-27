@@ -133,12 +133,12 @@ def verify_lighter_transfer(
 
 @dataclass(frozen=True, slots=True)
 class LighterFundingVerification:
-    """Verified result of one master to sub-account transfer."""
+    """Verified result of one transfer between two accounts of the Safe."""
 
-    #: USDC credited to the destination sub-account.
+    #: USDC credited to the destination account.
     amount: Decimal
 
-    #: Fee charged to the master account on top of the amount.
+    #: Fee charged to the sending account on top of the amount.
     fee: Decimal
 
 
@@ -146,7 +146,7 @@ def get_lighter_funding_evidence(record: LighterTransferRecord) -> dict[str, int
     """Convert a transfer-history row to the evidence stored on a funding trade.
 
     :param record:
-        Executed transfer read from the master's transfer history.
+        Executed transfer read from the sending account's transfer history.
     :return:
         Public ``other_data`` fields read by :py:func:`verify_lighter_funding`.
     """
@@ -168,7 +168,7 @@ def verify_lighter_funding(
     the external trader can change either account while the transfer settles.
 
     :param trade:
-        Funding trade on the destination sub-account position.
+        Funding trade on the destination account's position.
     :param record:
         History row fetched during reconciliation; otherwise the evidence
         stored on the trade is used.
@@ -196,15 +196,15 @@ def reconcile_verified_lighter_transfers(
     web3: Web3,
     *,
     mutate: bool,
-    operator_record: LighterOperatorRecord | None = None,
-    sub_account_operator_records: dict[int, LighterOperatorRecord] | None = None,
+    signers: dict[int, LighterOperatorRecord] | None = None,
 ) -> list[TradeExecution]:
     """Inspect or apply verified unfinished Lighter transfers.
 
     Reserve transfers are verified from Ethereum receipts and public Lighter
-    data. A master to sub-account transfer interrupted before its history row
-    was stored needs the master operator record to read authenticated
-    transfer history; without it the transfer stays pending.
+    data. A transfer between accounts interrupted before its history row was
+    stored needs the sending account's operator record to read authenticated
+    transfer history; without it the transfer stays pending. A funding still
+    planned after a halted cycle was never submitted and is expired.
 
     :param state:
         State containing the transfers to inspect.
@@ -212,17 +212,14 @@ def reconcile_verified_lighter_transfers(
         Chain reader used for the verification evidence.
     :param mutate:
         Apply verified results when ``True``; otherwise only return them.
-    :param operator_record:
-        Optional master signer for transfer-history reads.
-    :param sub_account_operator_records:
-        Optional sub-account signers, keyed by account index, for transfers
-        sent from a sub-account.
+    :param signers:
+        Operator records the executor holds, keyed by account index, for
+        the authenticated transfer-history reads; see
+        :py:func:`~tradeexecutor.exchange_account.lighter_operator.load_lighter_signers`.
     :return:
         Transfers whose evidence is complete.
     """
-    signers = dict(sub_account_operator_records or {})
-    if operator_record is not None:
-        signers[operator_record.account_index] = operator_record
+    signers = signers or {}
     pending_transfers = [
         (position, trade)
         for position in state.portfolio.get_open_and_frozen_positions()
@@ -257,7 +254,7 @@ def reconcile_verified_lighter_transfers(
         if "lighter_transfer_amount_usdc" not in trade.other_data:
             if not tx_hash:
                 logger.warning(
-                    "Lighter funding trade #%d was submitted but its hash was not recorded; check the master's transfer history manually",
+                    "Lighter funding trade #%d may have been submitted but its hash was not recorded; check the sending account's transfer history manually",
                     trade.trade_id,
                 )
                 continue

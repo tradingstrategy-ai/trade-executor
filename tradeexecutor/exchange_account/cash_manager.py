@@ -101,12 +101,12 @@ class ExchangeCashManager:
                 Decimal(0),
                 snapshot.exchange_available_usdc - self.free_collateral_buffer_usdc,
             )
-            amount = min(shortfall, withdrawable)
+            amount = round_down_to_usdc(min(shortfall, withdrawable))
             if amount >= self.minimum_transfer_usdc:
                 return ExchangeCashManagementDecision("withdraw", amount)
             return ExchangeCashManagementDecision(None, Decimal(0))
 
-        amount = snapshot.safe_usdc - desired_safe_usdc
+        amount = round_down_to_usdc(snapshot.safe_usdc - desired_safe_usdc)
         if amount >= self.minimum_transfer_usdc:
             return ExchangeCashManagementDecision("deposit", amount)
         return ExchangeCashManagementDecision(None, Decimal(0))
@@ -132,28 +132,30 @@ class SubAccountBalance:
 
 
 #: Smallest USDC unit Lighter and Ethereum USDC can move.
-USDC_QUANTUM = Decimal("0.000001")
+USDC_PRECISION = Decimal("0.000001")
 
 
-def _round_down_to_usdc(amount: Decimal) -> Decimal:
-    """Round a weighted amount down to whole USDC units, so it can be submitted exactly."""
-    return amount.quantize(USDC_QUANTUM, rounding=ROUND_DOWN)
+def round_down_to_usdc(amount: Decimal) -> Decimal:
+    """Round an amount down to whole USDC units, so it can be submitted and waited for exactly."""
+    return amount.quantize(USDC_PRECISION, rounding=ROUND_DOWN)
 
 
 def plan_sub_account_rebalance(
     *,
     master_free_usdc: Decimal,
-    sub_accounts: dict[int, SubAccountBalance],
-    target_weights: dict[int, Decimal],
+    sub_accounts: dict[str, SubAccountBalance],
+    target_weights: dict[str, Decimal],
     minimum_transfer_usdc: Decimal,
     rebalance_band_usdc: Decimal,
     transfer_fee_usdc: Decimal = Decimal(0),
-) -> list[tuple[int, Decimal]]:
+) -> list[tuple[str, Decimal]]:
     """Plan one kind of capital movement towards sub-account target weights.
 
     Capital is split between sub-accounts by ``target_weights`` of the
-    investable capital: the master's free collateral plus every
+    investable capital: the master's free collateral plus every managed
     sub-account's equity. Any weight left unassigned stays on the master.
+    Pass only the sub-accounts that have a target weight: an account without
+    one is unmanaged, and its capital is neither counted nor moved.
 
     The plan contains either withdrawals or fundings, never both, so no
     movement in a cycle depends on another one in the same cycle:
@@ -173,9 +175,9 @@ def plan_sub_account_rebalance(
         Master account free collateral available for funding, net of any
         buffer the caller keeps on the master.
     :param sub_accounts:
-        Balances keyed by sub-account index, in creation order.
+        Balances keyed by sub-account id, in declaration order.
     :param target_weights:
-        Target share of investable capital per sub-account index.
+        Target share of investable capital per sub-account id.
     :param minimum_transfer_usdc:
         Smallest movement worth submitting.
     :param rebalance_band_usdc:
@@ -183,7 +185,7 @@ def plan_sub_account_rebalance(
     :param transfer_fee_usdc:
         Fee charged on top of each funding transfer.
     :return:
-        ``(account_index, amount)`` pairs. A negative amount withdraws from
+        ``(sub_account_id, amount)`` pairs. A negative amount withdraws from
         the sub-account to the Safe; a positive amount funds it from the
         master.
     """
@@ -201,29 +203,29 @@ def plan_sub_account_rebalance(
         raise ExchangeCashManagementError("Sub-account target weights must be non-negative and sum to at most one")
 
     investable = master_free_usdc + sum((balance.equity for balance in sub_accounts.values()), Decimal(0))
-    targets = {index: target_weights.get(index, Decimal(0)) * investable for index in sub_accounts}
+    targets = {account_id: target_weights.get(account_id, Decimal(0)) * investable for account_id in sub_accounts}
 
     withdrawals = []
-    for index, balance in sub_accounts.items():
-        excess = balance.equity - targets[index]
+    for account_id, balance in sub_accounts.items():
+        excess = balance.equity - targets[account_id]
         if excess > rebalance_band_usdc:
-            amount = _round_down_to_usdc(min(excess, balance.free))
+            amount = round_down_to_usdc(min(excess, balance.free))
             if amount >= minimum_transfer_usdc and amount > 0:
-                withdrawals.append((index, -amount))
+                withdrawals.append((account_id, -amount))
     if withdrawals:
         return withdrawals
 
     fundings = []
     budget = master_free_usdc
-    deficits = {index: targets[index] - balance.equity for index, balance in sub_accounts.items()}
-    # Most underweight first; the stable sort keeps creation order for ties.
-    for index in sorted(deficits, key=lambda index: -deficits[index]):
-        deficit = deficits[index]
+    deficits = {account_id: targets[account_id] - balance.equity for account_id, balance in sub_accounts.items()}
+    # Most underweight first; the stable sort keeps declaration order for ties.
+    for account_id in sorted(deficits, key=lambda account_id: -deficits[account_id]):
+        deficit = deficits[account_id]
         if deficit <= rebalance_band_usdc:
             continue
-        amount = _round_down_to_usdc(min(deficit, budget - transfer_fee_usdc))
+        amount = round_down_to_usdc(min(deficit, budget - transfer_fee_usdc))
         if amount < minimum_transfer_usdc or amount <= 0:
             continue
-        fundings.append((index, amount))
+        fundings.append((account_id, amount))
         budget -= amount + transfer_fee_usdc
     return fundings

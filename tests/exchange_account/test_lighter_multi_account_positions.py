@@ -49,7 +49,7 @@ def test_lighter_accounts_are_separate_positions() -> None:
     usdc = _usdc()
 
     # 1. Create the master and two sub-account pairs.
-    master, sub_1, sub_2 = create_lighter_exchange_account_pairs(usdc, MASTER_INDEX, {SUB_INDICES[0]: "trend", SUB_INDICES[1]: None})
+    master, sub_1, sub_2 = create_lighter_exchange_account_pairs(usdc, MASTER_INDEX, {SUB_INDICES[0]: "trend", SUB_INDICES[1]: "arb"})
 
     # 2. Check the pairs are distinct by equality, hash, identifier, internal id and ticker, and the master is unchanged.
     assert master == create_lighter_exchange_account_pair(usdc, MASTER_INDEX)
@@ -58,7 +58,7 @@ def test_lighter_accounts_are_separate_positions() -> None:
     assert len({hash(master), hash(sub_1), hash(sub_2)}) == 3
     assert len({master.get_identifier(), sub_1.get_identifier(), sub_2.get_identifier()}) == 3
     assert len({master.internal_id, sub_1.internal_id, sub_2.internal_id}) == 3
-    assert [pair.get_ticker() for pair in (master, sub_1, sub_2)] == ["LIGHTER-ACCOUNT-USDC", "LIGHTER-trend-USDC", f"LIGHTER-{SUB_INDICES[1]}-USDC"]
+    assert [pair.get_ticker() for pair in (master, sub_1, sub_2)] == ["LIGHTER-ACCOUNT-USDC", "LIGHTER-trend-USDC", "LIGHTER-arb-USDC"]
     assert sub_1.other_data["lighter_sub_account_id"] == "trend"
     assert [is_lighter_sub_account_pair(pair) for pair in (master, sub_1, sub_2)] == [False, True, True]
     assert validate_lighter_exchange_account_pairs([master, sub_1, sub_2]) == [master, sub_1, sub_2]
@@ -78,8 +78,8 @@ def test_lighter_accounts_are_separate_positions() -> None:
     assert len(list(state.portfolio.get_all_traded_pairs())) == 3
 
     # 4. Reject universes with two masters or a sub-account of another master.
-    with pytest.raises(ValueError, match="exactly one master"):
+    with pytest.raises(ValueError, match="one Lighter master account pair"):
         validate_lighter_exchange_account_pairs([master, create_lighter_exchange_account_pair(usdc, MASTER_INDEX + 1)])
-    foreign_sub = create_lighter_exchange_account_pair(usdc, SUB_INDICES[0] - 5, role=LIGHTER_ROLE_SUB_ACCOUNT, master_account_index=MASTER_INDEX + 1)
+    foreign_sub = create_lighter_exchange_account_pair(usdc, SUB_INDICES[0] - 5, role=LIGHTER_ROLE_SUB_ACCOUNT, master_account_index=MASTER_INDEX + 1, sub_account_id="foreign")
     with pytest.raises(ValueError, match="belong to the strategy's master"):
         validate_lighter_exchange_account_pairs([master, foreign_sub])

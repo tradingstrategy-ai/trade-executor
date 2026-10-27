@@ -54,7 +54,9 @@ from web3 import Web3
 from web3.contract.contract import ContractFunction
 
 from tradeexecutor.cli.main import app
+from tradeexecutor.ethereum.lighter.lighter_routing import DEFAULT_LIGHTER_TRANSFER_TIMEOUT_SECONDS, DEFAULT_LIGHTER_WITHDRAWAL_TIMEOUT_SECONDS
 from tradeexecutor.exchange_account import lighter as lighter_reads
+from tradeexecutor.exchange_account.lighter_operator import get_lighter_handover_path
 from tradeexecutor.exchange_account.sub_account import get_lighter_account_resolution
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.strategy_module import read_strategy_module
@@ -72,11 +74,11 @@ MAX_UNEXPLAINED_RAW = 2
 #: API-key slot registered on the master and on every sub-account.
 API_KEY_INDEX = MIN_API_KEY_INDEX
 
-#: Maximum wait for a withdrawal to become claimable: a live sub-account withdrawal took about 29 minutes.
-WITHDRAW_TIMEOUT_SECONDS = {True: 60, False: 3600}
+#: Maximum wait for a simulated withdrawal to become claimable; live runs use the executor default of an hour.
+SIMULATED_WITHDRAW_TIMEOUT_SECONDS = 60
 
-#: Maximum wait for a transfer between accounts to appear in history.
-TRANSFER_TIMEOUT_SECONDS = {True: 5, False: 300}
+#: Maximum wait for a simulated transfer to appear in history; live runs use the executor default.
+SIMULATED_TRANSFER_TIMEOUT_SECONDS = 5
 
 #: Fee the fake sequencer charges per transfer, so simulated runs exercise the fee accounting.
 SIMULATED_TRANSFER_FEE_USDC = Decimal("0.5")
@@ -111,12 +113,12 @@ class TutorialConfig:
     @property
     def withdraw_timeout(self) -> int:
         """Return the maximum wait for a withdrawal to become claimable."""
-        return WITHDRAW_TIMEOUT_SECONDS[self.simulate]
+        return SIMULATED_WITHDRAW_TIMEOUT_SECONDS if self.simulate else DEFAULT_LIGHTER_WITHDRAWAL_TIMEOUT_SECONDS
 
     @property
     def transfer_timeout(self) -> int:
         """Return the maximum wait for a transfer between accounts to appear in history."""
-        return TRANSFER_TIMEOUT_SECONDS[self.simulate]
+        return SIMULATED_TRANSFER_TIMEOUT_SECONDS if self.simulate else DEFAULT_LIGHTER_TRANSFER_TIMEOUT_SECONDS
 
 
 @dataclass(slots=True)
@@ -179,7 +181,7 @@ class Tutorial:
 
     def get_handover_file(self, account_id: str) -> Path:
         """Return the mode-0600 hand-over file holding one sub-account's key."""
-        return self.record_file.with_name(f"{self.record_file.stem}.nautilus.{account_id}.json")
+        return get_lighter_handover_path(self.record_file, account_id)
 
     def write_progress(self) -> None:
         """Persist progress, including values saved within a phase."""
@@ -339,15 +341,24 @@ def get_vault(tutorial: Tutorial) -> LagoonVault:
     )
 
 
-def get_cli_environment(tutorial: Tutorial, **overrides: str) -> dict[str, str]:
-    """Return the executor environment used for every post-deployment command."""
-    environment = {
+def get_base_environment(tutorial: Tutorial) -> dict[str, str]:
+    """Return the executor environment shared by deployment and every later command."""
+    return {
         "EXECUTOR_ID": tutorial.config.executor_id,
-        "NAME": f"{tutorial.config.executor_id} tutorial",
         "STRATEGY_FILE": str(tutorial.config.strategy_file),
         "STATE_FILE": str(tutorial.state_file),
         "PRIVATE_KEY": tutorial.config.deployer_private_key,
         "JSON_RPC_ETHEREUM": tutorial.rpc_url,
+        "UNIT_TESTING": "true",
+        "LOG_LEVEL": "warning",
+    }
+
+
+def get_cli_environment(tutorial: Tutorial, **overrides: str) -> dict[str, str]:
+    """Return the executor environment used for every post-deployment command."""
+    environment = {
+        **get_base_environment(tutorial),
+        "NAME": f"{tutorial.config.executor_id} tutorial",
         "ASSET_MANAGEMENT_MODE": "lagoon",
         "VAULT_ADDRESS": tutorial.progress["vault_address"],
         "VAULT_ADAPTER_ADDRESS": tutorial.progress["module_address"],
@@ -355,10 +366,8 @@ def get_cli_environment(tutorial: Tutorial, **overrides: str) -> dict[str, str]:
         "LIGHTER_WITHDRAWAL_TIMEOUT": str(tutorial.config.withdraw_timeout),
         "LIGHTER_TRANSFER_TIMEOUT": str(tutorial.config.transfer_timeout),
         "RUN_SINGLE_CYCLE": "true",
-        "UNIT_TESTING": "true",
         "CACHE_PATH": str(tutorial.config.run_dir / "cache"),
         "MIN_GAS_BALANCE": "0",
-        "LOG_LEVEL": "warning",
     }
     if trading_strategy_api_key := os.environ.get("TRADING_STRATEGY_API_KEY"):
         environment["TRADING_STRATEGY_API_KEY"] = trading_strategy_api_key
@@ -447,11 +456,7 @@ def backup_generated_keys(deployer: str) -> Iterator[list[Path]]:
 def deploy(tutorial: Tutorial, fund_name: str, fund_symbol: str) -> None:
     """Deploy the vault with keyed sub-accounts and record its public details."""
     environment = {
-        "EXECUTOR_ID": tutorial.config.executor_id,
-        "STRATEGY_FILE": str(tutorial.config.strategy_file),
-        "STATE_FILE": str(tutorial.state_file),
-        "PRIVATE_KEY": tutorial.config.deployer_private_key,
-        "JSON_RPC_ETHEREUM": tutorial.rpc_url,
+        **get_base_environment(tutorial),
         "VAULT_RECORD_FILE": str(tutorial.record_file),
         "FUND_NAME": fund_name,
         "FUND_SYMBOL": fund_symbol,
@@ -459,11 +464,9 @@ def deploy(tutorial: Tutorial, fund_name: str, fund_symbol: str) -> None:
         "ANY_ASSET": "true",
         "PERFORMANCE_FEE": "0",
         "MANAGEMENT_FEE": "0",
-        "UNIT_TESTING": "true",
         "GENERATE_LIGHTER_API_KEY": "true",
         "LIGHTER_API_KEY_INDEX": str(API_KEY_INDEX),
         "LIGHTER_SUB_ACCOUNT_API_KEY_INDEX": str(API_KEY_INDEX),
-        "LOG_LEVEL": "warning",
     }
     with backup_generated_keys(tutorial.deployer.address):
         run_cli(["lagoon-deploy-vault"], environment)
@@ -541,6 +544,8 @@ def redeem_all_shares(tutorial: Tutorial, drain_cycles: int, **start_overrides: 
     :param drain_cycles:
         ``start`` cycles to run after the request; the strategy drains the
         Lighter accounts and Lagoon settles the redemption during them.
+    :param start_overrides:
+        Extra environment for the ``start`` cycles, such as sub-account signer files.
     """
     vault = get_vault(tutorial)
     deployer = tutorial.deployer.address

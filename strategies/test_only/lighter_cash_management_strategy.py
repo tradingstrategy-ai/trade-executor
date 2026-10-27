@@ -3,6 +3,7 @@
 import datetime
 from decimal import Decimal
 
+from eth_defi.lighter.api import LIGHTER_MIN_MAINNET_USDC
 from eth_defi.lighter.constants import LIGHTER_L1_CONTRACT
 from eth_defi.token import USDC_NATIVE_TOKEN
 from tradingstrategy.chain import ChainId
@@ -50,7 +51,6 @@ class Parameters:
     lighter_cash_management = True
     lighter_safe_cash_buffer_usd = Decimal("20")
     lighter_free_collateral_buffer_usd = Decimal("0")
-    lighter_min_transfer_usd = Decimal("1")
 
 
 def create_trading_universe(input: CreateTradingUniverseInput) -> TradingStrategyUniverse:
@@ -151,7 +151,7 @@ def decide_trades(input: StrategyInput) -> list[TradeExecution]:
     manager = ExchangeCashManager(
         safe_cash_buffer_usdc=Decimal(str(input.parameters.lighter_safe_cash_buffer_usd)),
         free_collateral_buffer_usdc=Decimal(str(input.parameters.lighter_free_collateral_buffer_usd)),
-        minimum_transfer_usdc=Decimal(str(input.parameters.lighter_min_transfer_usd)),
+        minimum_transfer_usdc=Decimal(str(input.parameters.get("lighter_min_transfer_usd") or LIGHTER_MIN_MAINNET_USDC)),
     )
     transfer_pending = any(
         trade.is_external_account_transfer_pending()

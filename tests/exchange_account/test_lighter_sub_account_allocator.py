@@ -15,7 +15,7 @@ from tradeexecutor.exchange_account.cash_manager import (
 )
 
 #: Sub-account indices in creation order.
-SUB_1, SUB_2 = 2**48 - 1000, 2**48 - 1001
+SUB_1, SUB_2 = "trend", "arb"
 
 
 def test_plan_sub_account_rebalance_converges() -> None:

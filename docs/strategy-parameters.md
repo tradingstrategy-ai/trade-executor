@@ -5,7 +5,7 @@ engine version `0.5`.
 
 ## One module-level variable
 
-A strategy module declares exactly one module-level variable:
+A strategy module declares exactly one module-level engine variable:
 
 ```python
 trading_strategy_engine_version = "0.5"
@@ -21,8 +21,11 @@ variables are redundant for `0.5` and should not be declared:
 | `trading_strategy_type` | Defaults to `managed_positions`, the only supported type |
 | `reserve_currency` | Live strategies name their reserve asset in `create_trading_universe()`; only the backtest runner reads this variable |
 
-`strategies/xchain-master-vault.py` is the reference for this layout. The
-production `strategies/lighter-ai.py` predates it and is left as it is.
+Module-level constants a strategy uses for its own universe, such as pair
+lists, are fine. `strategies/xchain-master-vault.py` is the reference for
+this layout. The production `strategies/lighter-ai.py` and the single-account
+`strategies/test_only/minimal_lighter_strategy.py` predate it, read
+`LIGHTER_ACCOUNT_INDEX` from the environment, and are left as they are.
 
 ## The `Parameters` class
 
@@ -47,7 +50,7 @@ behaviour. It is not:
   fee or a timeout for a test fork belong in the test support code, next to
   the schedule that uses them.
 - **Environment variables.** The executor's commands read the environment at
-  their Typer entry points and pass settings down explicitly. A strategy
+  their Typer entry points and pass settings down explicitly. A new strategy
   module must not read `os.environ`; a module that needs different values in
   different deployments declares them once and is deployed as different
   modules, or receives them from the state.

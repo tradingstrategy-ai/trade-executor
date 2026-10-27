@@ -22,8 +22,8 @@ from eth_defi.testing.evm_snapshot_fixture import evm_snapshot_revert
 from eth_defi.testing.fork_blocks import ETHEREUM_MIDNIGHT_BLOCK
 from eth_defi.token import USDC_WHALE
 
-from tradeexecutor.exchange_account.lighter import LIGHTER_MASTER_LABEL
-from tradeexecutor.exchange_account.sub_account import get_lighter_account_resolution, get_sub_account_id_for_position
+from tradeexecutor.exchange_account.lighter import LIGHTER_MASTER_ACCOUNT_ID
+from tradeexecutor.exchange_account.sub_account import get_lighter_account_resolution, get_position_for_sub_account, get_sub_account_id_for_position
 from tradeexecutor.state.state import State
 from tradeexecutor.testing.lighter_scripted_transfers import SCRIPTED_TRANSFER_UNIT_USDC, build_lighter_transfer_schedule, verify_lighter_scripted_transfers
 from tradeexecutor.testing.lighter_tutorial import SIMULATED_TRANSFER_FEE_USDC
@@ -47,7 +47,7 @@ TUTORIAL = Path(__file__).resolve().parents[2] / "scripts" / "lagoon" / "manual-
 #: Base amount of the scripted movements.
 UNIT_USDC = SCRIPTED_TRANSFER_UNIT_USDC
 #: Sub-account labels declared by the strategy, in order.
-SUB_LABELS = ["trend", "arb"]
+SUB_ACCOUNT_IDS = ["trend", "arb"]
 #: Fee the fake sequencer charges per transfer, exercising the fee accounting.
 TRANSFER_FEE_USDC = SIMULATED_TRANSFER_FEE_USDC
 
@@ -101,7 +101,7 @@ def test_lighter_transfer_tutorial_simulated(anvil_ethereum: AnvilLaunch, tmp_pa
     master_key = operator_record["deployments"]["ethereum"]["lighter_account_setup"]["private_key"]
     output = result.stdout + result.stderr
     assert master_key not in output
-    for account_id, index in zip(SUB_LABELS, progress["account_indices"][1:]):
+    for account_id, index in zip(SUB_ACCOUNT_IDS, progress["account_indices"][1:]):
         handover = json.loads((run_dir / f"vault-record.nautilus.{account_id}.json").read_text())
         assert handover["private_key"] not in output
         assert (handover["account_index"], handover["label"], handover["module_address"]) == (index, account_id, progress["module_address"])
@@ -110,9 +110,11 @@ def test_lighter_transfer_tutorial_simulated(anvil_ethereum: AnvilLaunch, tmp_pa
     # 3. Verify the saved state independently, check the state maps ids to accounts and positions, and check the eight movements and their fees.
     state = State.read_json_file(run_dir / "state.json")
     accounts = get_lighter_account_resolution(state)
-    assert accounts == {LIGHTER_MASTER_LABEL: progress["account_indices"][0], **dict(zip(SUB_LABELS, progress["account_indices"][1:]))}
-    assert get_sub_account_id_for_position(state, next(position for position in state.portfolio.get_all_positions() if position.pair.get_ticker() == "LIGHTER-arb-USDC")) == "arb"
-    rows = verify_lighter_scripted_transfers(state, build_lighter_transfer_schedule(SUB_LABELS, UNIT_USDC), accounts)
+    assert accounts == {LIGHTER_MASTER_ACCOUNT_ID: progress["account_indices"][0], **dict(zip(SUB_ACCOUNT_IDS, progress["account_indices"][1:]))}
+    arb_position = get_position_for_sub_account(state, "arb")
+    assert arb_position.pair.get_ticker() == "LIGHTER-arb-USDC"
+    assert get_sub_account_id_for_position(state, arb_position) == "arb"
+    rows = verify_lighter_scripted_transfers(state, build_lighter_transfer_schedule(SUB_ACCOUNT_IDS), accounts)
     assert [(row["kind"], row["source"], row["destination"]) for row in rows] == [
         ("deposit", "safe", "master"),
         ("funding", "master", "trend"),

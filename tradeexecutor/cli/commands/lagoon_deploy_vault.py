@@ -60,7 +60,11 @@ To activate a Safe-owned Lighter account during a fresh Ethereum deployment,
 use ``--generate-lighter-api-key`` (optionally with
 ``--lighter-api-key-index``). This subscribes 1 USDC through Lagoon, deposits
 all of it to activate Lighter and registers the public key before the Safe
-ownership ceremony is finished. The human text record, Markdown report and runtime state artefact
+ownership ceremony is finished. Sub-accounts need ``--strategy-file`` naming a
+module whose ``Parameters.lighter_sub_accounts`` declares them (optionally
+with ``--lighter-sub-account-api-key-index``); one Lighter sub-account with
+its own key is created per declaration and its key is written to a private
+hand-over file named after the sub-account id. The human text record, Markdown report and runtime state artefact
 contain public account metadata only. The paired JSON record is the sole
 secret-bearing output; back it up in a secret store immediately, never paste
 it into tickets or chat, and use the text/Markdown artefacts for support.
@@ -138,6 +142,7 @@ from tradeexecutor.monkeypatch.web3 import \
 from tradeexecutor.strategy.execution_context import one_off_execution_context
 from tradeexecutor.strategy.pandas_trader.create_universe_wrapper import \
     call_create_trading_universe
+from tradeexecutor.exchange_account.lighter_operator import get_lighter_handover_path
 from tradeexecutor.exchange_account.sub_account import get_sub_account_ids
 from tradeexecutor.strategy.strategy_module import read_strategy_module
 
@@ -441,7 +446,7 @@ def _write_lighter_handover_records(
     assert json_path is not None
     paths = []
     for sub in lighter_setup.sub_accounts:
-        path = json_path.with_name(f"{json_path.stem}.nautilus.{sub.label or sub.account_index}.json")
+        path = get_lighter_handover_path(json_path, str(sub.label or sub.account_index))
         _write_private_json_file(
             path,
             {**sub.as_handover_dict(safe_address=safe_address, vault_address=vault_address), "module_address": module_address},

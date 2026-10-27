@@ -235,7 +235,7 @@ def lagoon_redeem(
     lighter_account_index: int | None = Option(
         None,
         envvar="LIGHTER_ACCOUNT_INDEX",
-        help="Lighter account index: exclude equity below 5 USDC from a full redemption settlement.",
+        help="Lighter master account index of a deployment whose state does not record its accounts; otherwise every account in the state is valued and this must be one of them.",
     ),
 
     unit_testing: bool = shared_options.unit_testing,
@@ -258,11 +258,15 @@ def lagoon_redeem(
     assert vault_adapter_address, "VAULT_ADAPTER_ADDRESS is required"
 
     mod = read_strategy_module(strategy_file)
-    if lighter_account_index is not None:
+    # The state records which Lighter accounts the deployment owns; a single
+    # account deployment without that record names its master explicitly.
+    resolved_accounts = get_lighter_account_resolution(State.read_json_file(Path(state_file))) if state_file and Path(state_file).exists() else {}
+    if resolved_accounts:
+        lighter_account_indices = list(resolved_accounts.values())
+        if lighter_account_index is not None and lighter_account_index not in lighter_account_indices:
+            raise ValueError(f"LIGHTER_ACCOUNT_INDEX {lighter_account_index} is not one of the deployment's accounts {lighter_account_indices}")
+    elif lighter_account_index is not None:
         lighter_account_indices = [lighter_account_index]
-    elif state_file and Path(state_file).exists():
-        # The state records which Lighter accounts the deployment owns.
-        lighter_account_indices = list(get_lighter_account_resolution(State.read_json_file(Path(state_file))).values()) or None
     else:
         lighter_account_indices = None
 

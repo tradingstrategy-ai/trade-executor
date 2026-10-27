@@ -355,8 +355,8 @@ def test_lighter_vault_valuation_adds_safe_balance_and_external_equity(
     3. Verify Decimal components are summed before the float boundary.
     """
     # 1. Mock the ERC-20 Safe balance and public Lighter account response.
-    # Both reads are mocked because this unit test isolates the NAV formula;
-    # the Anvil test covers the real ERC-20 read.
+    # The ERC-20, equity and account-list reads are mocked because this unit
+    # test isolates the NAV formula; the Anvil test covers the real reads.
     token = SimpleNamespace(fetch_balance_of=mocker.Mock(return_value=Decimal("3.25")))
     mocker.patch("tradeexecutor.exchange_account.lighter.fetch_erc20_details", return_value=token)
     mocker.patch(

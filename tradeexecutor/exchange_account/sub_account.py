@@ -18,7 +18,7 @@ from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
 
 #: Id of the Safe-owned master account; never a sub-account id.
-MASTER_ACCOUNT_ID = "master"
+LIGHTER_MASTER_ACCOUNT_ID = "master"
 
 #: Sub-account ids are short identifiers usable in file names and tickers.
 SUB_ACCOUNT_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")
@@ -39,15 +39,15 @@ class SubAccount:
     #: Human-readable name of the sub-strategy run in this account.
     name: str
 
-    #: Target share of the capital allocated to this account; not used yet.
+    #: Target share of the investable capital for the automatic cash policy; ``None`` leaves the account unmanaged.
     weight: float | None = None
 
     def __post_init__(self) -> None:
         """Reject ids that cannot serve as stable keys."""
         if not SUB_ACCOUNT_ID_PATTERN.match(self.id):
             raise ValueError(f"Sub-account id must match {SUB_ACCOUNT_ID_PATTERN.pattern}: {self.id!r}")
-        if self.id == MASTER_ACCOUNT_ID:
-            raise ValueError(f"{MASTER_ACCOUNT_ID!r} is the master account, not a sub-account id")
+        if self.id == LIGHTER_MASTER_ACCOUNT_ID:
+            raise ValueError(f"{LIGHTER_MASTER_ACCOUNT_ID!r} is the master account, not a sub-account id")
 
 
 def get_sub_account_ids(sub_accounts: Iterable[SubAccount] | None) -> list[str]:
@@ -116,7 +116,7 @@ def read_lighter_account_resolution(payload: dict[str, Any], vault_address: str 
         setup = deployment.get("lighter_account_setup")
         if not isinstance(setup, dict) or setup.get("account_index") is None:
             continue
-        resolution = {MASTER_ACCOUNT_ID: int(setup["account_index"])}
+        resolution = {LIGHTER_MASTER_ACCOUNT_ID: int(setup["account_index"])}
         for sub in setup.get("sub_accounts") or []:
             label = sub.get("label")
             if not label:

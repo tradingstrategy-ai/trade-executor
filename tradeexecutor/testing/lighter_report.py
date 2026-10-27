@@ -6,7 +6,7 @@ from typing import Any
 from tabulate import tabulate
 
 from tradeexecutor.state.state import State
-from tradeexecutor.state.trade import TradeExecution, TradeFlag
+from tradeexecutor.state.trade import TradeExecution
 
 
 def describe_lighter_trade(trade: TradeExecution) -> str:
@@ -22,7 +22,7 @@ def describe_lighter_trade(trade: TradeExecution) -> str:
     if trade.is_internal_account_transfer():
         source = trade.other_data.get("funding_source_account_id")
         return f"Transfer {amount} USDC from Lighter account {source} to account {account}"
-    if TradeFlag.external_account_transfer in (trade.flags or set()):
+    if trade.is_external_account_transfer():
         if trade.is_buy():
             return f"Deposit {amount} USDC from the Safe to Lighter account {account}"
         return f"Withdraw {amount} USDC from Lighter account {account} to the Safe"

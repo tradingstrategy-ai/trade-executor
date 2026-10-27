@@ -25,7 +25,7 @@ See ``tradeexecutor/exchange_account/README-Lighter.md``.
 """
 
 import logging
-from collections.abc import Iterable, Sequence
+from collections.abc import Collection, Iterable, Sequence
 from decimal import Decimal
 
 from eth_defi.lighter.api import LIGHTER_MIN_MAINNET_USDC
@@ -41,23 +41,19 @@ from tradeexecutor.exchange_account.cash_manager import (
     ExchangeCashSnapshot,
     SubAccountBalance,
     plan_sub_account_rebalance,
+    round_down_to_usdc,
 )
 from tradeexecutor.exchange_account.lighter import (
-    LIGHTER_PROTOCOL,
     create_lighter_exchange_account_pairs,
     get_lighter_account_id,
     get_lighter_master_pair,
     is_lighter_sub_account_pair,
 )
-from tradeexecutor.exchange_account.state import (
-    create_exchange_account_funding,
-    create_exchange_account_transfer,
-    open_exchange_account_position,
-)
-from tradeexecutor.exchange_account.sub_account import MASTER_ACCOUNT_ID, SubAccount, get_lighter_account_resolution, get_sub_account_ids
+from tradeexecutor.exchange_account.state import open_exchange_account_position
+from tradeexecutor.exchange_account.sub_account import LIGHTER_MASTER_ACCOUNT_ID, SubAccount, get_lighter_account_resolution, get_sub_account_ids
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
-from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
 from tradeexecutor.strategy.pandas_trader.trading_universe_input import CreateTradingUniverseInput
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, create_pair_universe_from_code
@@ -87,11 +83,11 @@ def resolve_lighter_accounts(input: CreateTradingUniverseInput, sub_accounts: It
     """
     sub_account_ids = get_sub_account_ids(sub_accounts)
     resolution = get_lighter_account_resolution(input.state) if input.state is not None else {}
-    if MASTER_ACCOUNT_ID in resolution:
+    if LIGHTER_MASTER_ACCOUNT_ID in resolution:
         missing = [account_id for account_id in sub_account_ids if account_id not in resolution]
         if missing:
             raise ValueError(f"Sub-accounts {missing} are declared in Parameters but not resolved in the state; deploy them and run init")
-        return resolution[MASTER_ACCOUNT_ID], {resolution[account_id]: account_id for account_id in sub_account_ids}
+        return resolution[LIGHTER_MASTER_ACCOUNT_ID], {resolution[account_id]: account_id for account_id in sub_account_ids}
     if input.state is not None:
         raise ValueError("The state does not record the Lighter accounts of this deployment; run init with the deployment artefact")
     # No state: placeholders keep the universe constructible for deployment and checks.
@@ -149,7 +145,7 @@ def ensure_lighter_positions(input: StrategyInput) -> bool:
     :param input:
         Strategy cycle input.
     :return:
-        ``True`` when every position already existed and the cycle may trade.
+        ``True`` when a position was opened in this cycle.
     """
     state = input.state
     universe = input.strategy_universe
@@ -164,7 +160,7 @@ def ensure_lighter_positions(input: StrategyInput) -> bool:
             reserve_amount=Decimal(0),
             notes=f"Initialise Lighter account {pair.get_exchange_account_id()} position",
         )
-    return not missing and not input.execution_context.mode.is_backtesting()
+    return bool(missing)
 
 
 def get_lighter_account_pairs(pairs: Sequence[TradingPairIdentifier]) -> tuple[TradingPairIdentifier, list[TradingPairIdentifier]]:
@@ -178,26 +174,55 @@ def get_lighter_account_pairs(pairs: Sequence[TradingPairIdentifier]) -> tuple[T
     return get_lighter_master_pair(pairs), [pair for pair in pairs if is_lighter_sub_account_pair(pair)]
 
 
-def get_sub_account_weights(sub_accounts: Iterable[SubAccount] | None, sub_pairs: Sequence[TradingPairIdentifier]) -> dict[int, Decimal]:
-    """Map the declared sub-account weights to Lighter account indices.
+def get_sub_account_weights(sub_accounts: Iterable[SubAccount] | None, sub_account_ids: Collection[str]) -> dict[str, Decimal]:
+    """Return the target weight of every declared sub-account that has one.
 
     :param sub_accounts:
         ``Parameters.lighter_sub_accounts``.
-    :param sub_pairs:
-        Sub-account pairs of the universe.
+    :param sub_account_ids:
+        Ids of the sub-account pairs in the universe.
     :return:
-        Target weight per sub-account index, for the sub-accounts that declare one.
+        Target weight per sub-account id.
+    :raise ValueError:
+        If a weighted sub-account has no pair in the universe.
     """
-    pairs_by_id = {get_lighter_account_id(pair): pair for pair in sub_pairs}
     weights = {}
     for sub_account in sub_accounts or ():
         if sub_account.weight is None:
             continue
-        pair = pairs_by_id.get(sub_account.id)
-        if pair is None:
+        if sub_account.id not in sub_account_ids:
             raise ValueError(f"Sub-account {sub_account.id!r} is not in the strategy universe")
-        weights[int(pair.get_exchange_account_id())] = Decimal(str(sub_account.weight))
+        weights[sub_account.id] = Decimal(str(sub_account.weight))
     return weights
+
+
+def _policy_trade(trade: TradeExecution, policy: str) -> TradeExecution:
+    """Tag a custody trade with the cash-policy rule that created it."""
+    trade.other_data["policy"] = policy
+    return trade
+
+
+def _withdraw_for_safe_liquidity(
+    position_manager: PositionManager,
+    amount: Decimal,
+    master_free: Decimal,
+    sub_balances: dict[str, SubAccountBalance],
+    minimum: Decimal,
+) -> list[TradeExecution]:
+    """Withdraw ``amount`` to the Safe from the master first, then from the sub-accounts with the most free collateral."""
+    sources = [(LIGHTER_MASTER_ACCOUNT_ID, master_free)]
+    sources += sorted(((account_id, balance.free) for account_id, balance in sub_balances.items()), key=lambda item: -item[1])
+    trades = []
+    remaining = amount
+    for account_id, available in sources:
+        withdrawal = round_down_to_usdc(min(remaining, available))
+        if withdrawal < minimum:
+            continue
+        trades.append(_policy_trade(position_manager.withdraw_from_lighter(account_id, withdrawal, notes="Automatic Lighter cash management: safe_liquidity"), "safe_liquidity"))
+        remaining -= withdrawal
+        if remaining < minimum:
+            break
+    return trades
 
 
 def decide_lighter_cash_management(input: StrategyInput) -> list[TradeExecution]:
@@ -214,52 +239,39 @@ def decide_lighter_cash_management(input: StrategyInput) -> list[TradeExecution]
     - ``lighter_transfer_fee_usd``: fee budgeted per funding transfer, default
       zero, as Lighter charges nothing for same-owner transfers
 
+    Every movement is one trade made with the
+    :py:class:`~tradeexecutor.strategy.pandas_trader.position_manager.PositionManager`
+    custody methods and tagged with the rule that created it in
+    ``other_data["policy"]``. Sub-accounts are rebalanced through the Safe:
+    an overweight sub-account is withdrawn, and the proceeds are deposited
+    to the master and sent on in later cycles.
+
     :param input:
         Strategy cycle input.
     :return:
         Trades of at most one movement kind.
     """
-    if not ensure_lighter_positions(input):
+    if input.execution_context.mode.is_backtesting() or ensure_lighter_positions(input):
         return []
-    state = input.state
-    universe = input.strategy_universe
-    portfolio = state.portfolio
-    reserve_asset = universe.get_reserve_asset()
-    timestamp = input.timestamp.to_pydatetime()
-    master_pair, sub_pairs = get_lighter_account_pairs(list(universe.iterate_pairs()))
-
-    if any(trade.is_exchange_account_transfer_pending() for position in portfolio.get_open_and_frozen_positions() for trade in position.trades.values()):
+    position_manager = input.get_position_manager()
+    if position_manager.is_lighter_transfer_pending():
         return []
 
     parameters = input.parameters
     minimum = Decimal(str(parameters.get("lighter_min_transfer_usd") or LIGHTER_MIN_MAINNET_USDC))
     master_buffer = Decimal(str(parameters.lighter_free_collateral_buffer_usd))
-    position_manager = input.get_position_manager()
-    master_position = portfolio.get_open_position_for_pair(master_pair)
-    sub_positions = {int(pair.get_exchange_account_id()): portfolio.get_open_position_for_pair(pair) for pair in sub_pairs}
-    master_free = Decimal(str(position_manager.get_exchange_account_available_balance(master_pair)))
+    _master_pair, sub_pairs = get_lighter_account_pairs(list(input.strategy_universe.iterate_pairs()))
+    sub_account_ids = [get_lighter_account_id(pair) for pair in sub_pairs]
+    master_free = position_manager.get_lighter_free_collateral()
+    master_spendable = max(Decimal(0), master_free - master_buffer)
     sub_balances = {
-        int(pair.get_exchange_account_id()): SubAccountBalance(
-            equity=Decimal(str(sub_positions[int(pair.get_exchange_account_id())].get_quantity())),
-            free=Decimal(str(position_manager.get_exchange_account_available_balance(pair))),
-        )
-        for pair in sub_pairs
+        account_id: SubAccountBalance(equity=position_manager.get_lighter_balance(account_id), free=position_manager.get_lighter_free_collateral(account_id))
+        for account_id in sub_account_ids
     }
-
-    def transfer(position: TradingPosition, amount: Decimal, deposit: bool, reason: str) -> TradeExecution:
-        return create_exchange_account_transfer(
-            state=state,
-            position=position,
-            strategy_cycle_at=timestamp,
-            reserve_currency=reserve_asset,
-            amount=amount,
-            deposit=deposit,
-            notes=f"Automatic Lighter cash management: {reason}",
-            metadata={"direction": "deposit" if deposit else "withdraw", "protocol": LIGHTER_PROTOCOL, "policy": reason},
-        )
 
     # 1. Safe liquidity, and 2. idle Safe cash, decided by the single-account manager
     # over the aggregate free collateral of all accounts.
+    state = input.state
     snapshot = ExchangeCashSnapshot(
         safe_usdc=Decimal(str(position_manager.get_current_cash())),
         exchange_available_usdc=master_free + sum((balance.free for balance in sub_balances.values()), Decimal(0)),
@@ -273,54 +285,28 @@ def decide_lighter_cash_management(input: StrategyInput) -> list[TradeExecution]
     )
     decision = manager.decide(snapshot)
     if decision.direction == "withdraw":
-        trades = []
-        remaining = decision.amount_usdc
-        sources = [(master_position, max(Decimal(0), master_free - master_buffer))]
-        sources += sorted(
-            ((sub_positions[index], balance.free) for index, balance in sub_balances.items()),
-            key=lambda item: -item[1],
-        )
-        for position, available in sources:
-            amount = min(remaining, available)
-            if amount < minimum:
-                continue
-            trades.append(transfer(position, amount, deposit=False, reason="safe_liquidity"))
-            remaining -= amount
-            if remaining < minimum:
-                break
-        return trades
+        return _withdraw_for_safe_liquidity(position_manager, decision.amount_usdc, master_spendable, sub_balances, minimum)
     if decision.direction == "deposit":
-        return [transfer(master_position, decision.amount_usdc, deposit=True, reason="idle_safe_cash")]
+        return [_policy_trade(position_manager.deposit_to_lighter(decision.amount_usdc, notes="Automatic Lighter cash management: idle_safe_cash"), "idle_safe_cash")]
 
-    # 3. and 4. Sub-account target weights.
-    weights = get_sub_account_weights(parameters.get("lighter_sub_accounts"), sub_pairs)
-    if not sub_pairs or not weights:
+    # 3. and 4. Sub-account target weights; a sub-account without a weight is unmanaged and left alone.
+    weights = get_sub_account_weights(parameters.get("lighter_sub_accounts"), sub_account_ids)
+    if not weights:
         return []
     movements = plan_sub_account_rebalance(
-        master_free_usdc=max(Decimal(0), master_free - master_buffer),
-        sub_accounts=sub_balances,
+        master_free_usdc=master_spendable,
+        sub_accounts={account_id: sub_balances[account_id] for account_id in weights},
         target_weights=weights,
         minimum_transfer_usdc=minimum,
         rebalance_band_usdc=Decimal(str(parameters.get("lighter_rebalance_band_usd") or 0)),
         transfer_fee_usdc=Decimal(str(parameters.get("lighter_transfer_fee_usd") or 0)),
     )
     trades = []
-    for index, amount in movements:
+    for account_id, amount in movements:
         if amount < 0:
-            trades.append(transfer(sub_positions[index], -amount, deposit=False, reason="sub_account_overweight"))
+            trades.append(_policy_trade(position_manager.withdraw_from_lighter(account_id, -amount, notes="Automatic Lighter cash management: sub_account_overweight"), "sub_account_overweight"))
         else:
-            trades.append(
-                create_exchange_account_funding(
-                    state=state,
-                    source_position=master_position,
-                    destination_position=sub_positions[index],
-                    strategy_cycle_at=timestamp,
-                    reserve_currency=reserve_asset,
-                    amount=amount,
-                    notes="Automatic Lighter cash management: sub_account_underweight",
-                    metadata={"protocol": LIGHTER_PROTOCOL, "policy": "sub_account_underweight"},
-                )
-            )
+            trades.append(_policy_trade(position_manager.transfer_lighter_funds(LIGHTER_MASTER_ACCOUNT_ID, account_id, amount, notes="Automatic Lighter cash management: sub_account_underweight"), "sub_account_underweight"))
     if trades:
         logger.info("Lighter sub-account rebalance: %s", movements)
     return trades

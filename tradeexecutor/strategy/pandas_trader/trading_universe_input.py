@@ -79,7 +79,7 @@ class CreateTradingUniverseInput:
     #: Lets a strategy resolve deployment-time facts recorded in the state,
     #: such as which exchange account each declared sub-account maps to.
     #: ``None`` in backtests, deployment and universe checks.
-    state: Optional["State"] = None
+    state: "State | None" = None
 
 
 class CreateTradingUniverseProtocol(Protocol):
