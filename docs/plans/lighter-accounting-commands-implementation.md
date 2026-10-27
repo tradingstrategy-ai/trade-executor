@@ -19,12 +19,20 @@ commands, no new strategy parameters.
   balance update, and the operator reruns the test trade. The same
   trade-off already applies to cross-chain test trades
   (`tradeexecutor/cli/commands/perform_test_trade.py:276`).
-- **`correct-accounts` cleans Lighter positions the way it cleans HyperCore
-  dust** (`close_hypercore_dust_positions()` at
-  `tradeexecutor/cli/commands/correct_accounts.py:1343`): a position whose
-  account the strategy no longer declares is closed once its equity is
-  zero; an account that still holds funds is reported with the command that
-  drains it. `check-accounts` only reports; it never changes the state.
+- **`correct-accounts` closes Lighter positions under Lighter's own
+  close and dust rules, separate from the HyperCore ones.** HyperCore dust
+  is redeemed and written off under its own thresholds in
+  `tradeexecutor/ethereum/vault/hypercore_small_position_cleanup.py` and
+  `tradeexecutor/strategy/dust.py`; none of that code, its constants or
+  `close_position_with_empty_trade()` is reused. Lighter's rule follows its
+  protocol: a sub-account cannot withdraw less than the 1 USDC minimum
+  (`LIGHTER_MIN_MAINNET_USDC`), so equity below it is unwithdrawable dust.
+  A position whose account the strategy no longer declares is closed when
+  its equity is below that minimum, with the residual written off; an
+  undeclared account at or above it is reported with the command that
+  drains it. Declared accounts are never closed by `correct-accounts`; the
+  strategy manages them. `check-accounts` only reports; it never changes
+  the state.
 
 ## 1. `perform-test-trade`
 
@@ -179,11 +187,17 @@ with what the strategy declares and what the state tracks, so that
      unclean: "run correct-accounts" (it reopens a declared account, and
      reports an undeclared one with the drain command);
    - a tracked position whose account is not declared is unclean: "run
-     correct-accounts" (it closes the position at zero equity);
+     correct-accounts" (it closes the position when the equity is Lighter
+     dust, below `LIGHTER_DUST_USDC`, and otherwise names the drain
+     command);
    - an owned account that is neither declared nor tracked is unclean when
-     it holds equity, and clean at zero equity;
-   - a declared account with zero equity and no position is clean, so a
-     closed or never-funded sub-account does not fail the check.
+     its equity is at or above `LIGHTER_DUST_USDC`, and clean below it;
+   - a declared account with equity below `LIGHTER_DUST_USDC` and no
+     position is clean, so a closed or never-funded sub-account does not
+     fail the check.
+   `LIGHTER_DUST_USDC = LIGHTER_MIN_MAINNET_USDC` is declared in
+   `tradeexecutor/exchange_account/lighter.py` with a comment saying why:
+   it is the smallest amount a Lighter withdrawal can move.
 3. **A Lighter read failure is unclean.** `check_lighter_account_set()`:
    return `(False, message)` on a request error and when Lighter lists no
    accounts for the Safe. The function is only called for Lagoon vaults, so
@@ -219,35 +233,40 @@ declares are cleaned up like HyperCore dust.
    an open one. This applies to every exchange-account protocol the sync
    model serves, which is the intended behaviour: `check-accounts` already
    values frozen positions, so the two commands then agree.
-3. **Clean up positions of undeclared accounts, like HyperCore dust.** Add
-   `close_undeclared_lighter_positions(state, universe, equity) -> list[TradeExecution]`
-   to `tradeexecutor/exchange_account/state.py`, called from
-   `correct_accounts.py` right where `close_hypercore_dust_positions()` is
-   called (`:1343`), after the exchange-account sync has booked the live
-   equity on every position. For each open or frozen Lighter position whose
-   pair is not in the universe:
-   - equity zero: close it with `close_position_with_empty_trade()`
-     (`tradeexecutor/state/repair.py`, the same helper HyperCore cleanup
-     uses at `hypercore_small_position_cleanup.py:281`), so the account
-     stops being tracked and `check-accounts` is clean again. The helper
-     asserts spot, credit, vault or CCTP pairs (`repair.py:586`): extend
-     that assertion with `is_exchange_account()`; its empty closing trade
-     needs nothing else from the pair. `Portfolio.close_position()` asserts
-     the position is in `open_positions` (`tradeexecutor/state/portfolio.py:1018`),
-     so a frozen position is first moved back from `frozen_positions` to
-     `open_positions`, the way `tradeexecutor/state/repair.py` unfreezes a
-     position before it closes it;
-   - equity above zero: leave it and log at error level "Lighter account
-     `<index>` holds `<equity>` USDC but the strategy no longer declares
-     it; drain it with `lighter-move-funds --lighter-account-index <index>`
-     and rerun correct-accounts". The command still saves its other
-     corrections and exits 1 on every exit path, including the dry-run
-     return at `:1306` and the early successful exit at `:1375`.
+3. **Close positions of undeclared accounts under Lighter's own rules.**
+   New module `tradeexecutor/exchange_account/lighter_cleanup.py`, Lighter
+   only, with one public function
+   `close_undeclared_lighter_positions(state, universe, equity, executed_at) -> list[TradingPosition]`
+   called from `correct_accounts.py` after the exchange-account sync has
+   booked the live equity on every position, next to (not inside) the
+   HyperCore dust call at `:1343`. For each open or frozen Lighter position
+   whose pair is not in the universe:
+   - equity below `LIGHTER_DUST_USDC`: close it with a new
+     `close_exchange_account_position()` in
+     `tradeexecutor/exchange_account/state.py`, the counterpart of
+     `open_exchange_account_position()` (`state.py:380`): it books the
+     residual as one balance update of `-quantity` with cause
+     `BalanceUpdateCause.correction` and the note "Lighter dust below the
+     1 USDC withdrawal minimum written off", records a zero-quantity
+     synthetic closing trade at price 1.0 marked successful the way the
+     opener records its opening trade, and calls
+     `state.portfolio.close_position(position, executed_at)`. A frozen
+     position is first returned to `open_positions` with
+     `unfreeze_position()` (`tradeexecutor/state/repair.py:779`), because
+     `close_position()` asserts membership (`tradeexecutor/state/portfolio.py:1018`).
+     The account stops being tracked and `check-accounts` is clean again;
+   - equity at or above `LIGHTER_DUST_USDC`: leave it and log at error
+     level "Lighter account `<index>` holds `<equity>` USDC but the
+     strategy no longer declares it; drain it with
+     `lighter-move-funds --lighter-account-index <index>` and rerun
+     correct-accounts". The command still saves its other corrections and
+     exits 1 on every exit path, including the dry-run return at `:1306`
+     and the early successful exit at `:1375`.
    An owned account that is neither declared nor tracked gets the same
-   error message when it holds equity, from the account-set check below.
-   No automatic withdrawal: a Lighter withdrawal takes about half an hour
-   to become claimable and is an operator decision, unlike a HyperCore
-   dust redemption.
+   error message at or above the dust threshold, from the account-set
+   check below. No automatic withdrawal: a Lighter withdrawal takes about
+   half an hour to become claimable and is an operator decision. Nothing
+   from the HyperCore cleanup is called or imported.
 4. **Run the account-set check.** After the cleanup, for a Lagoon vault,
    call `check_lighter_account_set()` with the same arguments as
    `check-accounts` (change 2.2) and exit 1 with its message on a mismatch,
@@ -290,14 +309,20 @@ master index the state records.
    `LIGHTER_ACCOUNT_INDEX=<master>`. `check-accounts` exits 1 naming the
    funded, now undeclared sub-account. `correct-accounts` exits 1 with the
    `lighter-move-funds` instruction and closes the other, drained
-   sub-account's position. Debit the fake account to zero, run
-   `correct-accounts`: it closes the last position; `check-accounts` passes
-   with the master alone.
+   sub-account's position. Debit the fake account to 0.4 USDC, below the
+   1 USDC withdrawal minimum, run `correct-accounts`: it writes the
+   residual off as one `correction` balance update and closes the last
+   position; `check-accounts` passes with the master alone.
 
 Unit test in `tests/exchange_account/test_lighter_exchange_account.py`
 (extend the existing `check_lighter_account_set` test): a mocked request
 error returns unclean; each of the four rule cases in change 2.2 returns the
-expected result from a mocked account list and equity snapshot.
+expected result from a mocked account list and equity snapshot. Unit test
+in `tests/exchange_account/test_lighter_multi_account_positions.py` (extend
+the existing test): `close_undeclared_lighter_positions()` on a state with
+one declared, one undeclared dust and one undeclared funded position closes
+only the dust position, with its write-off balance update, and reports the
+funded one; `state.check_if_clean()` passes afterwards.
 
 ## Order and size
 
