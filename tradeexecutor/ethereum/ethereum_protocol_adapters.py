@@ -9,6 +9,7 @@ from typing import Callable, Set, TYPE_CHECKING
 
 from web3 import Web3
 from eth_defi.aave_v3.deployment import fetch_deployment as fetch_aave_deployment
+from eth_defi.token import USDC_NATIVE_TOKEN
 from eth_defi.uniswap_v3.constants import UNISWAP_V3_DEPLOYMENTS
 from eth_defi.uniswap_v3.deployment import fetch_deployment as fetch_uniswap_v3_deployment
 from eth_defi.one_delta.deployment import fetch_deployment as fetch_1delta_deployment
@@ -708,23 +709,27 @@ def create_hypercore_vault_adapter(
         # For multichain deployments, use satellite vault on HyperEVM
         # instead of the primary chain's LagoonVault
         lagoon_vault = execution_model.tx_builder.vault
+        reserve_token_address = strategy_universe.get_reserve_asset().address
         satellite_vaults = getattr(execution_model, 'satellite_vaults', {})
         hypercore_chain_id = web3.eth.chain_id
         if hypercore_chain_id in satellite_vaults:
             lagoon_vault = satellite_vaults[hypercore_chain_id]
+            # A satellite Safe holds HyperEVM's own USDC, not the master chain's reserve token:
+            # approving or reading the master chain's address on HyperEVM hits a contract the guard never whitelisted.
+            reserve_token_address = USDC_NATIVE_TOKEN[hypercore_chain_id].lower()
             logger.info(
-                "Using satellite vault on chain %d for Hypercore routing: %s",
+                "Using satellite vault on chain %d for Hypercore routing: %s, USDC %s",
                 hypercore_chain_id,
                 lagoon_vault.safe_address,
+                reserve_token_address,
             )
 
         deployer = execution_model.tx_builder.hot_wallet
-        reserve = strategy_universe.get_reserve_asset()
         routing_model = HypercoreVaultRouting(
             web3=web3,
             lagoon_vault=lagoon_vault,
             deployer=deployer,
-            reserve_token_address=reserve.address,
+            reserve_token_address=reserve_token_address,
             simulate=simulate,
         )
         logger.info(

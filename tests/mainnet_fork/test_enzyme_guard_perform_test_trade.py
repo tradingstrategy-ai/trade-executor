@@ -25,7 +25,6 @@ from tradeexecutor.state.state import State
 from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
 #: Runs on Github?
-CI = os.environ.get("CI", "false") == "true"
 
 pytestmark = pytest.mark.skipif(not os.environ.get("JSON_RPC_POLYGON") or not os.environ.get("TRADING_STRATEGY_API_KEY"), reason="Set POLYGON_JSON_RPC and TRADING_STRATEGY_API_KEY environment variables to run this test")
 
@@ -167,7 +166,8 @@ def environment(
     return environment
 
 
-@pytest.mark.skipif(CI, reason="Too flaky on Github")
+# eth_defi phases out Enzyme: its deployer still asserts GuardV0 internal version 2, while the guard returns 4.
+@pytest.mark.skip(reason="Phasing out Enzyme support")
 @flaky.flaky
 def test_enzyme_guard_perform_test_trade(
     environment: dict,

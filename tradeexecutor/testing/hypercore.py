@@ -232,6 +232,9 @@ def install_hypercore_live_deposit_mocks(monkeypatch: Any) -> None:
        contracts settle immediately on the fork.
     2. Replace the vault-deposit confirmation poll with a deterministic
        synthetic equity response based on the expected deposit delta.
+    3. Replace the deposit ``spot -> perp`` verification with the coherent
+       movement HyperCore would show, because the Info API cannot observe a
+       fork and would never see either balance change.
     """
 
     # 1. Replace the escrow-clear wait with a no-op because the mock Hypercore
@@ -258,6 +261,25 @@ def install_hypercore_live_deposit_mocks(monkeypatch: Any) -> None:
     monkeypatch.setattr(
         "tradeexecutor.ethereum.vault.hypercore_routing.wait_for_vault_deposit_confirmation",
         _mock_wait_for_vault_deposit_confirmation,
+    )
+
+    # 3. Replace the deposit spot -> perp verification with the coherent
+    # movement HyperCore would show, because the Info API cannot observe a fork.
+    def _mock_wait_for_deposit_spot_to_perp_transfer(
+        self: HypercoreVaultRouting,
+        spot_baseline: Decimal,
+        perp_baseline: Decimal,
+        expected_increase_raw: int,
+        timeout: float = 60.0,
+        poll_interval: float = 2.0,
+    ) -> tuple[Decimal, Decimal]:
+        moved = raw_to_usdc(expected_increase_raw)
+        return spot_baseline - moved, perp_baseline + moved
+
+    monkeypatch.setattr(
+        HypercoreVaultRouting,
+        "_wait_for_deposit_spot_to_perp_transfer",
+        _mock_wait_for_deposit_spot_to_perp_transfer,
     )
 
 

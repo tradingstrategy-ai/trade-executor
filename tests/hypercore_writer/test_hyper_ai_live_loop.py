@@ -1071,7 +1071,8 @@ def test_hyper_ai_lagoon_redeem_accounting(
             )
 
         if trade.is_buy():
-            assert len(trade.blockchain_transactions) == 3
+            # Phase 1 approval and deposit, phase 2 spot -> perp, phase 3 perp -> vault.
+            assert len(trade.blockchain_transactions) == 4
             assert all(tx.tx_hash is not None for tx in trade.blockchain_transactions)
         else:
             assert_phased_withdrawal_trade(trade)
