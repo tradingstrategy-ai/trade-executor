@@ -14,3 +14,7 @@ For the Ethereum Lighter account activation and public NAV wiring, see
 
 For operator setup and external-account accounting, see
 [Lighter exchange account integration](../tradeexecutor/exchange_account/README-Lighter.md).
+
+## Shared vault admission rule
+
+Strategies and charts use `tradeexecutor.strategy.vault_closure`: `is_vault_closed()` reports closure, while `can_interact_with_vault()` applies interaction policy. See [protocol cases and API controls](vault-closure.md). Do not reinterpret raw maximum-capacity fields at call sites.

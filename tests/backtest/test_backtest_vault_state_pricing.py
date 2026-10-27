@@ -20,7 +20,7 @@ from eth_defi.erc_4626.core import ERC4626Feature
 
 from tradeexecutor.backtest.backtest_pricing import BacktestPricing
 from tradeexecutor.backtest.vault_windows import VaultWindowSchedule
-from tradeexecutor.strategy.redemption import DepositBlockReason, DepositCheckStage
+from tradeexecutor.strategy.redemption import DepositBlockReason, DepositCheckStage, RedemptionBlockReason
 from tradingstrategy.alternative_data.vault import convert_vault_prices_to_vault_state
 from tradingstrategy.candle import GroupedCandleUniverse
 
@@ -355,10 +355,18 @@ def test_no_vault_state_allowed():
     assert p.get_max_deposit(pd.Timestamp("2026-03-06"), _FakePair(1)) is None
 
 
-def test_check_redemption_closed(pricing):
+def test_check_redemption_closed(pricing: BacktestPricing) -> None:
+    """Report an explicit withdrawal closure using its window reason.
+
+    1. Read an explicit closed flag with an accompanying zero capacity.
+    2. Verify the reason identifies closure rather than inferred zero liquidity.
+    """
+    # 1. The real pricing lookup selects the historical observation.
     result = pricing.check_redemption(pd.Timestamp("2026-03-06"), _FakePair(2))
     assert result.can_redeem is False
     assert result.max_redemption == 0.0
+    # 2. The explicit permission flag takes precedence over the cap.
+    assert result.reason_code is RedemptionBlockReason.redemption_window_closed
     assert result.message == "Redemptions paused"
 
 

@@ -16,14 +16,10 @@ from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.types import (AnyTimestamp, Percent, USDollarAmount,
                                        USDollarPrice)
 from tradeexecutor.strategy.execution_model import ExecutionModel
-from tradeexecutor.strategy.deposit_check import (
-    check_backtesting_deposit,
-    is_backtesting_deposit_open,
-)
+from tradeexecutor.strategy.vault_closure import get_vault_closure, can_interact_with_vault
 from tradeexecutor.strategy.generic.generic_router import GenericRouting
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.redemption import (
-    DepositBlockReason,
     DepositCheckResult,
     DepositCheckStage,
     RedemptionBlockReason,
@@ -33,7 +29,6 @@ from tradeexecutor.strategy.redemption import (
 from tradeexecutor.strategy.trade_pricing import TradePricing
 from tradeexecutor.strategy.trading_strategy_universe import (
     TradingStrategyUniverse, translate_trading_pair)
-from tradingstrategy.alternative_data.vault import HYPERCORE_DEPOSIT_STATE_CUTOFF
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.liquidity import (GroupedLiquidityUniverse,
                                        LiquidityDataUnavailable)
@@ -704,171 +699,35 @@ class BacktestPricing(PricingModel):
         """
         return self._lookup_cap(ts, pair, "max_redeem")
 
-    def _check_hypercore_deposit(
-        self,
-        ts: AnyTimestamp | None,
-        pair: TradingPairIdentifier,
-        *,
-        stage: DepositCheckStage,
-    ) -> DepositCheckResult | None:
-        """Share historical HyperCore deposit policy between both deposit APIs.
-
-        Called by :meth:`can_deposit` and :meth:`check_deposit` after explicit
-        backtest-window overrides. Before collection began we assume open;
-        afterwards unavailable state must not create impossible deposits.
-
-        :param ts: Logical decision timestamp used for an as-of lookup.
-        :param pair: Vault identity, identified by its native protocol helper.
-        :param stage: Deposit-check stage retained in diagnostic results.
-        :return: HyperCore gate result, or ``None`` for another protocol.
-        """
-        if pair is None or not pair.is_hyperliquid_vault():
-            return None
-
-        result = DepositCheckResult(
-            timestamp=ts,
-            stage=stage,
-            pair_ticker=pair.get_ticker(),
-            vault_address=pair.pool_address,
+    def get_vault_closure(self, ts, pair, *, operation="deposit", position=None, **kwargs):
+        """Supply original-clock, as-of evidence to the unified closure rule."""
+        return get_vault_closure(
+            pair, timestamp=ts, operation=operation,
+            historical_state=self._lookup_vault_state(ts, pair),
+            window_override=self._vault_window_overrides.get(pair.internal_id) if pair else None,
+            **kwargs,
         )
 
-        # Historical HyperCore availability was not collected reliably before this boundary.
-        # The explicit product assumption is that deposits were open during that period.
-        if ts is None or ts < HYPERCORE_DEPOSIT_STATE_CUTOFF:
-            return result
+    def can_deposit(self, ts, pair) -> bool:
+        """Use the same operation decision as strategies and universe charts."""
+        return can_interact_with_vault(pair, timestamp=ts, pricing_model=self)
 
-        state = self._lookup_vault_state(ts, pair)
-        deposits_open = None if state is None else state.get("deposits_open", -1)
-        if state is None or deposits_open is None or deposits_open == -1 or pd.isna(deposits_open):
-            result.can_deposit = False
-            result.reason_code = DepositBlockReason.unknown
-            result.message = "HyperCore deposit availability is missing, unknown, or stale in historical data"
-            return result
+    def check_deposit(self, ts, pair, *, stage=DepositCheckStage.unknown) -> DepositCheckResult:
+        """Preserve structured diagnostics from the shared decision."""
+        return get_vault_closure(pair, timestamp=ts, pricing_model=self).as_deposit_check(pair, ts, stage)
 
-        return check_backtesting_deposit(
-            timestamp=ts,
-            pair=pair,
-            deposits_open=deposits_open,
-            max_deposit=self._state_cap(state, "max_deposit"),
-            closed_reason=state.get("deposit_closed_reason"),
-            stage=stage,
-        )
-
-    def can_deposit(
-        self,
-        ts: datetime.datetime | None,
-        pair: TradingPairIdentifier,
-    ) -> bool:
-        override = self._vault_window_overrides.get(pair.internal_id) if pair is not None else None
-        if override is not None:
-            # Explicit backtest window override beats the (possibly stale) vault_state.
-            return ts is None or override.is_deposit_open(ts)
-
-        hypercore_result = self._check_hypercore_deposit(
-            ts,
-            pair,
-            stage=DepositCheckStage.unknown,
-        )
-        if hypercore_result is not None:
-            return hypercore_result.can_deposit
-
-        state = self._lookup_vault_state(ts, pair)
-        if state is None:
-            return True
-        return is_backtesting_deposit_open(
-            pair,
-            state.get("deposits_open", -1),
-            self._state_cap(state, "max_deposit"),
-        )
-
-    def check_deposit(
-        self,
-        ts: datetime.datetime | None,
-        pair: TradingPairIdentifier,
-        *,
-        stage: DepositCheckStage = DepositCheckStage.unknown,
-    ) -> DepositCheckResult:
-        """Return the historical deposit gate and its captured reason data."""
-        result = DepositCheckResult(
-            timestamp=ts,
-            stage=stage,
-            pair_ticker=pair.get_ticker(),
-            vault_address=pair.pool_address,
-        )
-
-        override = self._vault_window_overrides.get(pair.internal_id)
-        if override is not None:
-            result.can_deposit = ts is None or override.is_deposit_open(ts)
-            if not result.can_deposit:
-                result.reason_code = DepositBlockReason.deposit_window_closed
-                result.message = "Vault deposits closed by backtest window override"
-            return result
-
-        hypercore_result = self._check_hypercore_deposit(ts, pair, stage=stage)
-        if hypercore_result is not None:
-            return hypercore_result
-
-        state = self._lookup_vault_state(ts, pair)
-        if state is None:
-            return result
-
-        return check_backtesting_deposit(
-            timestamp=ts,
-            pair=pair,
-            deposits_open=state.get("deposits_open", -1),
-            max_deposit=self._state_cap(state, "max_deposit"),
-            closed_reason=state.get("deposit_closed_reason"),
-            stage=stage,
-        )
-
-    def check_redemption(
-        self,
-        ts: datetime.datetime | None,
-        pair: TradingPairIdentifier | None,
-        *,
-        stage: RedemptionCheckStage = RedemptionCheckStage.unknown,
-        position=None,
-    ) -> RedemptionCheckResult:
-        del position
-        result = RedemptionCheckResult(
-            timestamp=ts,
-            stage=stage,
-            can_redeem=True,
-            pair_ticker=pair.get_ticker() if pair else None,
-            vault_address=pair.pool_address if pair else None,
-        )
-
-        override = self._vault_window_overrides.get(pair.internal_id) if pair is not None else None
-        if override is not None:
-            # Explicit backtest window override beats the (possibly stale) vault_state.
-            if ts is not None and not override.is_redemption_open(ts):
-                result.can_redeem = False
-                result.reason_code = RedemptionBlockReason.redemption_window_closed
-                result.max_redemption = 0.0
-                result.max_withdrawable = 0.0
-                result.message = "Vault redemptions closed by backtest window override"
-            return result
-
-        state = self._lookup_vault_state(ts, pair)
-        if state is None:
-            return result
-
-        cap = self._state_cap(state, "max_redeem")
-        if state.get("redemption_open", -1) == 0 or (cap is not None and cap == 0):
-            result.can_redeem = False
-            result.reason_code = RedemptionBlockReason.vault_max_withdrawable_zero
-            result.max_redemption = 0.0
-            result.max_withdrawable = 0.0
-            reason = state.get("redemption_closed_reason")
-            result.message = reason if isinstance(reason, str) and reason else "Vault redemptions closed in historical data"
-            return result
-
-        # Report a positive historical cap for the Hyperliquid reduction path that consumes it.
-        # The generic rebalance path enforces open/closed only, not partial size caps (out of
-        # scope here; partial-cap sizing belongs in the size-risk model).
-        if cap is not None:
-            result.max_redemption = float(cap)
-            result.max_withdrawable = float(cap)
+    def check_redemption(self, ts, pair, *, stage=RedemptionCheckStage.unknown, position=None) -> RedemptionCheckResult:
+        """Use the shared historical redemption rule and retain cap reporting."""
+        decision = get_vault_closure(pair, timestamp=ts, operation="redemption", pricing_model=self)
+        result = RedemptionCheckResult(timestamp=ts, stage=stage, can_redeem=not decision.blocked,
+            pair_ticker=pair.get_ticker() if pair else None, vault_address=pair.pool_address if pair else None)
+        if decision.blocked:
+            result.reason_code = (RedemptionBlockReason.redemption_window_closed if decision.reason in ("window_closed", "explicit_closed")
+                                  else RedemptionBlockReason.vault_max_withdrawable_zero)
+            result.max_redemption = result.max_withdrawable = 0.0
+            result.message = decision.message
+        elif decision.max_amount is not None:
+            result.max_redemption = result.max_withdrawable = float(decision.max_amount)
         return result
 
 

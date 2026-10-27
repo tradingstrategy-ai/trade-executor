@@ -16,6 +16,7 @@ cycle, so a "quiet" queue cycle still exists in the store without the queue key)
 """
 import dataclasses
 from typing import Iterable
+from tradeexecutor.strategy.vault_closure import can_interact_with_vault
 
 from tradeexecutor.state.other_data import OtherData
 from tradeexecutor.state.portfolio import Portfolio
@@ -450,7 +451,7 @@ class PhaseAwareAlphaModel(AlphaModel):
                 continue
             if vault_id not in self.window_gated_pair_ids:
                 continue
-            if pricing_model.can_deposit(self.timestamp, signal.pair):
+            if can_interact_with_vault(signal.pair, timestamp=self.timestamp, pricing_model=pricing_model):
                 if vault_id in open_events:
                     self._promote_candidates.add(vault_id)
             else:

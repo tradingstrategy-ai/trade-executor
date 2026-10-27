@@ -15,7 +15,7 @@ from tradeexecutor.ethereum.vault.vault_routing import (
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.types import JSONHexAddress
 from tradeexecutor.state.types import USDollarAmount
-from tradeexecutor.strategy.deposit_check import check_live_deposit, get_live_max_deposit
+from tradeexecutor.strategy.vault_closure import check_live_deposit, get_live_max_deposit
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.redemption import (
     DepositCheckResult,

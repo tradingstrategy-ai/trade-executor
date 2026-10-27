@@ -25,6 +25,8 @@ import datetime
 
 import pytest
 
+from tradeexecutor.strategy.redemption import DepositCheckResult
+
 from tradeexecutor.state.identifier import (AssetIdentifier,
                                             TradingPairIdentifier,
                                             TradingPairKind)
@@ -85,6 +87,9 @@ class _StubPricing:
 
     def can_deposit(self, timestamp, pair) -> bool:
         return pair.internal_id in self.open_pairs
+
+    def check_deposit(self, timestamp, pair):
+        return DepositCheckResult(can_deposit=self.can_deposit(timestamp, pair))
 
     def check_redemption(self, timestamp, pair, *, stage, position):
         self.check_redemption_calls += 1

@@ -291,6 +291,18 @@ per-cycle window availability; `tradeexecutor.analysis.vault_windows.calculate_v
 summarises those gating inputs (open/closed/unknown days per vault) for
 notebook inspection.
 
+For a universe chart over time, use
+`tradeexecutor.analysis.vault_windows.calculate_vault_window_counts()` or the
+standard `available_trading_pairs()` chart. The count table has separate
+deposit-closed and redemption-closed series, price-history coverage and separate
+unknown-state counts, optional strategy-policy blocks and total interactions blocked by the rules. Pass `pair_ids` (`vault_pair_ids` on the chart) to exclude
+cash-management vaults; non-vault pairs are always excluded. Match
+`availability_tolerance` to the run. The count helper reuses `BacktestPricing`'s
+as-of evidence clocks, never future samples. Synthetic overrides take precedence
+and are labelled in the closure series. Missing/stale state is unknown rather
+than an observed closure, even where trading policy blocks unknown deposits.
+Price coverage alone does not establish strategy eligibility or an open window.
+
 ## Live trading
 
 In live trading nobody knows when a Lagoon operator will settle, so the
@@ -439,7 +451,7 @@ The execution layer, in trade-executor:
 | [tradeexecutor/ethereum/vault/settlement_retry.py](../../tradeexecutor/ethereum/vault/settlement_retry.py) | Live settlement resolver: poll, claim/reclaim, robust receipt wait and idempotent retry |
 | [tradeexecutor/strategy/execution_model.py](../../tradeexecutor/strategy/execution_model.py) | The polymorphic settlement hook called by the runner each cycle |
 | [tradeexecutor/backtest/backtest_execution.py](../../tradeexecutor/backtest/backtest_execution.py) | Simulated requests and delayed settlement; delay configuration |
-| [tradeexecutor/strategy/deposit_check.py](../../tradeexecutor/strategy/deposit_check.py) | Protocol-aware live and backtest deposit admission checks and reason capture |
+| [tradeexecutor/strategy/vault_closure.py](../../tradeexecutor/strategy/vault_closure.py) | Shared closure/interaction assessments and protocol-aware live/backtest admission; deposit_check.py is a compatibility shim |
 | [tradeexecutor/state/trade.py](../../tradeexecutor/state/trade.py), [state.py](../../tradeexecutor/state/state.py) | The `vault_settlement_pending` status and its bookkeeping |
 | [tradeexecutor/state/portfolio.py](../../tradeexecutor/state/portfolio.py), [position.py](../../tradeexecutor/state/position.py) | `get_vault_settlement_pending_value()` in equity; `has_pending_vault_settlement()` and the per-position pending value; available-quantity guard against double redemption |
 | [tradeexecutor/strategy/alpha_model.py](../../tradeexecutor/strategy/alpha_model.py) | Settlement-aware carry-forward pinning, pending-inclusive old weights, the `settlement_pending` rebalance skip, and the pending columns in `format_signals()` |
@@ -481,3 +493,9 @@ Each test doubles as a worked example:
   force-settles on the destination chain on Anvil, instead of crashing.
 - [strategies/test_only/async_vault_backtest_example.py](../../strategies/test_only/async_vault_backtest_example.py)
   — a minimal strategy module written against an async vault.
+
+## Shared vault admission rule
+
+Strategies and charts use `tradeexecutor.strategy.vault_closure`: `is_vault_closed()` reports closure, while `can_interact_with_vault()` applies interaction policy. See [protocol cases and API controls](../../docs/vault-closure.md). Do not reinterpret raw maximum-capacity fields at call sites.
+
+The shared closure analytics expose unknown evidence, optional policy blocks and total interactions blocked by the strategy rules separately. Account restrictions in live adapters are not global vault closures. `strategy.deposit_check` is a compatibility import shim. See [the unified rule](../../docs/vault-closure.md).
