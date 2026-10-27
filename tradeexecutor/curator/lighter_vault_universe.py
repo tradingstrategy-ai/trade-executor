@@ -8,6 +8,10 @@ Lighter pools are non-EVM: they use synthetic addresses of the form
 ``lighter-pool-{account_index}`` and a placeholder zero denomination-token
 address (see :py:mod:`eth_defi.lighter.constants`). The off-chain metrics
 pipeline publishes them under the synthetic chain id ``9998``.
+
+The USDC Lighter Liquidity Provider (LLP) needs staked LIT and is excluded by
+default. Include it only when explicitly requested and when the strategy models
+the additional LIT capital and staking requirements.
 """
 
 import hashlib
@@ -94,7 +98,7 @@ def is_leveraged_beta_pool(name: str) -> bool:
 CACHE_DIR = Path.home() / ".cache" / "indicators"
 
 #: Bump this whenever cache invalidation needs to cover a new policy dimension.
-CURATOR_POLICY_VERSION = 2
+CURATOR_POLICY_VERSION = 3
 
 
 def _source_digest(*objects) -> str:
@@ -144,12 +148,13 @@ def _curator_fingerprint() -> str:
     return digest
 
 
-def _make_cache_key(min_tvl: float, top_n: int | None, min_age: float, sort_period: str, include_closed_vaults: bool, exclude_leveraged_beta: bool) -> str:
+def _make_cache_key(min_tvl: float, top_n: int | None, min_age: float, sort_period: str, include_closed_vaults: bool, exclude_leveraged_beta: bool, include_lighter_llp: bool = False) -> str:
     """Derive a cache key from filter parameters."""
     top_part = "topall" if top_n is None else f"top{top_n}"
     closed_part = "-closed" if include_closed_vaults else ""
     beta_part = "-nobeta" if exclude_leveraged_beta else ""
-    return f"lighter-tvl{int(min_tvl)}-{top_part}-age{min_age}-sort{sort_period}{closed_part}{beta_part}-cur{_curator_fingerprint()}"
+    llp_part = "-with-llp" if include_lighter_llp else "-no-llp"
+    return f"lighter-tvl{int(min_tvl)}-{top_part}-age{min_age}-sort{sort_period}{closed_part}{beta_part}{llp_part}-cur{_curator_fingerprint()}"
 
 
 def _cache_path(cache_key: str) -> Path:
@@ -183,11 +188,17 @@ def build_lighter_vault_universe(
     exclude_leveraged_beta: bool = False,
     printer: Callable[[str], None] = print,
     vault_data_client: VaultDataClient | None = None,
+    include_lighter_llp: bool = False,
 ) -> list[tuple[ChainId, str]]:
     """Build a filtered Lighter vault universe, cached by parameters.
 
     Mirrors :py:func:`~tradeexecutor.curator.hyperliquid_vault_universe.build_hyperliquid_vault_universe`
     but targets the synthetic Lighter chain (``9998``).
+
+    :param include_lighter_llp:
+        Opt into USDC LLP only when explicitly requested. Default False because
+        LLP requires staked LIT, which a reserve-only strategy does not supply.
+        Inclusion does not implement LIT acquisition or staking accounting.
 
     :param exclude_leveraged_beta:
         Apply the blacklist rules: drop pools whose declared name matches
@@ -210,7 +221,7 @@ def build_lighter_vault_universe(
         client caches under the home directory, which containers do not keep,
         and then shares no download with the later vault universe load.
     """
-    cache_key = _make_cache_key(min_tvl, top_n, min_age, sort_period, include_closed_vaults, exclude_leveraged_beta)
+    cache_key = _make_cache_key(min_tvl, top_n, min_age, sort_period, include_closed_vaults, exclude_leveraged_beta, include_lighter_llp)
     fingerprint = _curator_fingerprint()
     printer(f"Lighter universe fingerprint: {fingerprint}")
     cached = _load_cache(cache_key)
@@ -226,7 +237,7 @@ def build_lighter_vault_universe(
 
     parsed = []
     for rv in raw_vaults:
-        v = parse_vault(rv, chain_config, TRACKED_PERIODS)
+        v = parse_vault(rv, chain_config, TRACKED_PERIODS, include_lighter_llp=include_lighter_llp)
         if v is not None:
             parsed.append(v)
 
