@@ -4,9 +4,27 @@ Implements items 1 to 3 of
 [lighter-accounting-commands-compatibility.md](lighter-accounting-commands-compatibility.md):
 `perform-test-trade`, `check-accounts` and `correct-accounts` for a Lagoon
 vault with a Lighter master account and sub-accounts. Written 2026-10-27
-against master `99cacee5f` and revised after a Codex (gpt-6-astra) review.
-Every change reuses what `start`, `lighter-move-funds` and the tests already
-have; no new abstractions, no new commands, no new strategy parameters.
+against master `99cacee5f`, revised after a Codex (gpt-6-astra) review and
+the maintainer's decisions recorded below. Every change reuses what `start`,
+`lighter-move-funds` and the tests already have; no new abstractions, no new
+commands, no new strategy parameters.
+
+## Decisions
+
+- **`perform-test-trade` does not checkpoint the state before a Lighter
+  submission.** It is a single-use manual command run by an operator who
+  watches it. If it times out after Lighter accepted a transfer, the state
+  holds no trade for the moved funds; `check-accounts` then shows the
+  difference on the account and the Safe, `correct-accounts` books it as a
+  balance update, and the operator reruns the test trade. The same
+  trade-off already applies to cross-chain test trades
+  (`tradeexecutor/cli/commands/perform_test_trade.py:276`).
+- **`correct-accounts` cleans Lighter positions the way it cleans HyperCore
+  dust** (`close_hypercore_dust_positions()` at
+  `tradeexecutor/cli/commands/correct_accounts.py:1343`): a position whose
+  account the strategy no longer declares is closed once its equity is
+  zero; an account that still holds funds is reported with the command that
+  drains it. `check-accounts` only reports; it never changes the state.
 
 ## 1. `perform-test-trade`
 
@@ -18,9 +36,9 @@ fresh deployment end to end. `--all-pairs` does one round trip per account.
 ### Changes
 
 1. **Build the universe with the state.**
-   `tradeexecutor/cli/commands/perform_test_trade.py:232`: add `state=state`
-   to `construct_universe()`, as `check-accounts` and `correct-accounts`
-   do. Without it a sub-account strategy gets placeholder account indices.
+   `perform_test_trade.py:232`: add `state=state` to `construct_universe()`,
+   as `check-accounts` and `correct-accounts` do. Without it a sub-account
+   strategy gets placeholder account indices.
 2. **Wire the Lighter routing configuration.** Import
    `_create_lighter_routing_config()` from
    `tradeexecutor/cli/commands/start.py:68` (no move; nothing requires it),
@@ -35,18 +53,7 @@ fresh deployment end to end. `--all-pairs` does one round trip per account.
    `ValueError` naming `LIGHTER_OPERATOR_RECORD_FILE` when the strategy sets
    `lighter_cash_management` and no record is given (`start.py:98`); that is
    the "not configured" error, nothing new is needed.
-3. **Persist the state before every Lighter submission.** `perform-test-trade`
-   saves only after the whole run (`perform_test_trade.py:363`), while
-   `LighterRouting` checkpoints before it submits and after it records a
-   transfer hash through `ExecutionModel.sync_state_before_broadcast()`
-   (`tradeexecutor/strategy/execution_model.py:91`), which does nothing
-   until a callback is set. Before the Lighter round trip, call
-   `execution_model.set_pre_broadcast_state_sync_callback(lambda: store.sync(state))`
-   (`execution_model.py:76`, as `tradeexecutor/strategy/runner.py:1132`
-   does for `start`), except in `--simulate` mode. A timeout then leaves a
-   pending custody trade in the saved state for `correct-accounts`, never
-   moved funds without a record.
-4. **An exchange-account branch in `make_test_trade()`**
+3. **An exchange-account branch in `make_test_trade()`**
    (`tradeexecutor/cli/testtrade.py:1024`). After the pair is resolved and
    before the spot logic, if `pair.is_exchange_account()`:
    - Require `pair.get_exchange_account_protocol() == LIGHTER_PROTOCOL`;
@@ -79,16 +86,19 @@ fresh deployment end to end. `--all-pairs` does one round trip per account.
    - `amount` defaults to the command's `--amount`; Lighter's 1 USDC minimum
      applies, so document that the default `1.0` is the minimum
      (`LIGHTER_MIN_MAINNET_USDC`).
-5. **Pair selection.** In `perform_test_trade.py:252`, when
+4. **Pair selection.** In `perform_test_trade.py:252`, when
    `--single-pair` is given and the universe contains Lighter pairs, use
    `get_lighter_master_pair(universe.iterate_pairs())` instead of
    `universe.get_single_pair()`, which asserts one pair. `--all-pairs`
    already iterates every pair; each Lighter pair gets its own round trip.
    No new option.
-6. **Trading Strategy client.** Replace `assert client is not None`
+5. **Trading Strategy client.** Replace `assert client is not None`
    (`perform_test_trade.py:198`) with a warning; a strategy whose universe
    needs market data fails at `construct_universe()` with the client's own
    error, a code-built Lighter universe does not.
+6. **Document the no-checkpoint trade-off** from the decisions above in the
+   command's docstring and in `README-Lighter.md`, next to the recovery
+   steps.
 
 ### Not done
 
@@ -98,17 +108,21 @@ fresh deployment end to end. `--all-pairs` does one round trip per account.
 
 ### Test
 
-One black-box test in `tests/lagoon/test_lagoon_lighter_test_trade_cli_e2e.py`
-on the simulated stack (`tradeexecutor/testing/lighter_simulation.py`,
-`FakeLighterCore`), reusing the deploy and init phases of
+One black-box test in `tests/lagoon/test_lagoon_lighter_test_trade_cli_e2e.py`,
+structured like `tests/lagoon/test_lagoon_lighter_sub_account_corrections_e2e.py`:
+the shared fixed Ethereum fork, `SIMULATE=true`, the `Tutorial` helpers of
 `tradeexecutor/testing/lighter_tutorial.py` with
-`strategies/test_only/lighter_multi_subaccount_strategy.py`:
+`strategies/test_only/lighter_scripted_transfers_strategy.py`, and
+`run_cli()` for every command.
 
-1. Deploy a vault with two sub-accounts, `init`, `correct-accounts`.
-2. Subscribe and settle with `correct-accounts --process-redemption`, not
-   with `start`: the strategy keeps no Safe cash
-   (`lighter_multi_subaccount_strategy.py:50`) and a `start` cycle would
-   deposit the subscription before the test trade can.
+1. `deploy()`, `initialise_state()`.
+2. Subscribe without running the strategy: `subscribe()` settles the
+   Lagoon deposit with a `start` cycle (`lighter_tutorial.py:533`), which
+   would run the script's first step and move the Safe cash to Lighter.
+   Add `settle_with_start: bool = True` to `subscribe()`; with `False` it
+   settles with `run_cli(["correct-accounts", "--process-redemption"])`,
+   exactly as `initialise_state()` does (`:507`). The Safe then holds the
+   subscription.
 3. `perform-test-trade --single-pair`: one deposit and one withdrawal trade
    on the master position, both `success`, both flagged `test_trade`; the
    Safe's USDC is unchanged, as the fake master withdrawal charges no fee
@@ -125,9 +139,9 @@ on the simulated stack (`tradeexecutor/testing/lighter_simulation.py`,
 ## 2. `check-accounts`
 
 Goal: the command reports instead of crashing for a pending Lighter
-transfer, and the account-set check uses the accounts the deployment
-declares, while a declared account that has funds but no active position
-is still caught.
+transfer, and the account-set check compares what the Safe owns on Lighter
+with what the strategy declares and what the state tracks, so that
+`correct-accounts` has something to act on.
 
 ### Changes
 
@@ -148,74 +162,55 @@ is still caught.
    call. Combine the result as `clean = clean and not pending` after the
    call, because `clean, df = _check_accounts(...)` at
    `check_accounts.py:206` would otherwise overwrite an earlier `False`.
-2. **The account-set check uses the declared accounts; the per-position
-   checks stay as they are.** Keep `lighter_pairs` from positions for
-   the reader selection and the mixed-protocol validation
-   (`check_accounts.py:195-203`, `lighter.py:398`), so a residual Lighter
-   position in a universe without Lighter pairs is still checked. For the
-   account-set check pass
-   `validate_lighter_exchange_account_pairs(universe.iterate_pairs())`
-   (the universe is built with the state and already translated,
-   `tradeexecutor/strategy/trading_strategy_universe.py:819`) and run it
-   whenever the universe has Lighter pairs and the sync model has a vault.
-   Extend `check_lighter_account_set()` (`lighter.py:91`) with the equity
-   snapshot it can read from the same `fetch_lighter_accounts_equity()`
-   call `read_lighter_equity()` uses: an owned account that is declared
-   but has no open or frozen position passes only with zero equity; a
-   closed sub-account position with funds left behind is therefore
-   unclean, and one drained to zero is clean. Pass the open and frozen
-   position indices as a second set for that rule.
-3. **A Lighter read failure is unclean.** `check_lighter_account_set()`
-   (`lighter.py:116-122`): return `(False, message)` on a request error and
-   when Lighter lists no accounts for the Safe. The function is only called
-   for Lagoon vaults, so a hot-wallet deployment is unaffected.
+2. **The account-set check knows declared accounts and tracked positions.**
+   Keep `lighter_pairs` from positions for the reader selection and the
+   mixed-protocol validation (`check_accounts.py:195-203`,
+   `lighter.py:398`). Give `check_lighter_account_set()`
+   (`tradeexecutor/exchange_account/lighter.py:91`) a second set,
+   `declared`, the indices of
+   `validate_lighter_exchange_account_pairs(universe.iterate_pairs())` (the
+   universe is built with the state and already translated,
+   `tradeexecutor/strategy/trading_strategy_universe.py:819`), and the
+   per-account equity it can read from the same
+   `fetch_lighter_accounts_equity()` call `read_lighter_equity()` uses. Run
+   it whenever the sync model has a vault and either set is non-empty. The
+   rule, each case with its own message:
+   - an owned account with equity and no open or frozen position is
+     unclean: "run correct-accounts" (it reopens a declared account, and
+     reports an undeclared one with the drain command);
+   - a tracked position whose account is not declared is unclean: "run
+     correct-accounts" (it closes the position at zero equity);
+   - an owned account that is neither declared nor tracked is unclean when
+     it holds equity, and clean at zero equity;
+   - a declared account with zero equity and no position is clean, so a
+     closed or never-funded sub-account does not fail the check.
+3. **A Lighter read failure is unclean.** `check_lighter_account_set()`:
+   return `(False, message)` on a request error and when Lighter lists no
+   accounts for the Safe. The function is only called for Lagoon vaults, so
+   a hot-wallet deployment is unaffected.
 4. **Guard the hot wallet.** `check_accounts.py:115`: log the address only
    when `hot_wallet is not None`, as `correct_accounts.py:762` does.
 
-### Test
-
-Extend `tests/lagoon/test_lagoon_lighter_sub_account_corrections_e2e.py`
-with two steps, no new test:
-
-- Make a master to sub-account funding pending the way
-  `tests/lagoon/test_lagoon_lighter_multi_subaccount_e2e.py:309` does
-  (the fake sequencer holds the transfer record and the trade carries
-  `lighter_transfer_tx_hash`), run `check-accounts`: exits 1, the output
-  names the trade id and "pending", and the balance table is still printed.
-- Reconcile it with `correct-accounts`, drain one sub-account through the
-  fake sequencer and reconcile again, close that position in the state,
-  run `check-accounts`: exits 0. Then put equity back on the drained
-  account in the fake and run `check-accounts`: exits 1 naming the account.
-
-Unit test in `tests/exchange_account/test_lighter_exchange_account.py`
-(extend the existing `check_lighter_account_set` test): a mocked request
-error returns unclean; a declared account without a position passes with
-zero equity and fails with equity.
-
 ## 3. `correct-accounts`
 
-Goal: `--dry-run` previews what the real run does, undeclared or missing
-accounts are flagged, and frozen positions are handled like open ones.
+Goal: `--dry-run` previews what the real run does, frozen positions are
+handled like open ones, and positions of accounts the strategy no longer
+declares are cleaned up like HyperCore dust.
 
 ### Changes
 
 1. **Dry run previews the reconciliation.**
-   `tradeexecutor/cli/commands/correct_accounts.py:801`: call
+   `correct_accounts.py:801`: call
    `reconcile_verified_lighter_transfers(..., mutate=True)` in both modes.
    A dry run never persists: it uses `SimulateStore` (`correct_accounts.py:775`),
    the early save at `:809` is guarded by `if not dry_run`, and the dry-run
    return at `:1306` precedes every later save (`:1352`, `:1400`, `:1420`,
    `:1460`). The preflight then sees the completed transfers and the
-   printed corrections match what the real run books.
-2. **Flag owned accounts outside the universe.** After the exchange-account
-   sync, for a Lagoon vault, call `check_lighter_account_set()` with the
-   same universe-based pair list and position-index set as `check-accounts`
-   (change 2.2). On a mismatch log the message at error level and exit 1 on
-   every exit path, including the dry-run return at `:1306` and the early
-   successful exit at `:1375`; ordinary corrections are still saved first,
-   because they are right regardless, and the operator must declare or
-   drain the extra account.
-3. **Frozen positions.** `create_missing_exchange_account_positions()`
+   printed corrections match what the real run books. Change the log line
+   at `:810-814` to say "Reconciled N verified Lighter transfer(s)
+   (dry run, not saved)" in dry-run mode, so the preview reads as what it
+   is.
+2. **Frozen positions.** `create_missing_exchange_account_positions()`
    (`account_correction.py:1018`): look the pair up among
    `state.portfolio.get_open_and_frozen_positions()` before creating a
    position. `ExchangeAccountSyncModel.sync_positions()`
@@ -224,31 +219,93 @@ accounts are flagged, and frozen positions are handled like open ones.
    an open one. This applies to every exchange-account protocol the sync
    model serves, which is the intended behaviour: `check-accounts` already
    values frozen positions, so the two commands then agree.
-4. **Document** in `README-Lighter.md` that a closed exchange-account
-   position is reopened at zero on the next `correct-accounts` while its
-   account is declared, and that `--dry-run` previews the reconciliation
-   without saving it.
+3. **Clean up positions of undeclared accounts, like HyperCore dust.** Add
+   `close_undeclared_lighter_positions(state, universe, equity) -> list[TradeExecution]`
+   to `tradeexecutor/exchange_account/state.py`, called from
+   `correct_accounts.py` right where `close_hypercore_dust_positions()` is
+   called (`:1343`), after the exchange-account sync has booked the live
+   equity on every position. For each open or frozen Lighter position whose
+   pair is not in the universe:
+   - equity zero: close it with `close_position_with_empty_trade()`
+     (`tradeexecutor/state/repair.py`, the same helper HyperCore cleanup
+     uses at `hypercore_small_position_cleanup.py:281`), so the account
+     stops being tracked and `check-accounts` is clean again. The helper
+     asserts spot, credit, vault or CCTP pairs (`repair.py:586`): extend
+     that assertion with `is_exchange_account()`; its empty closing trade
+     needs nothing else from the pair. `Portfolio.close_position()` asserts
+     the position is in `open_positions` (`tradeexecutor/state/portfolio.py:1018`),
+     so a frozen position is first moved back from `frozen_positions` to
+     `open_positions`, the way `tradeexecutor/state/repair.py` unfreezes a
+     position before it closes it;
+   - equity above zero: leave it and log at error level "Lighter account
+     `<index>` holds `<equity>` USDC but the strategy no longer declares
+     it; drain it with `lighter-move-funds --lighter-account-index <index>`
+     and rerun correct-accounts". The command still saves its other
+     corrections and exits 1 on every exit path, including the dry-run
+     return at `:1306` and the early successful exit at `:1375`.
+   An owned account that is neither declared nor tracked gets the same
+   error message when it holds equity, from the account-set check below.
+   No automatic withdrawal: a Lighter withdrawal takes about half an hour
+   to become claimable and is an operator decision, unlike a HyperCore
+   dust redemption.
+4. **Run the account-set check.** After the cleanup, for a Lagoon vault,
+   call `check_lighter_account_set()` with the same arguments as
+   `check-accounts` (change 2.2) and exit 1 with its message on a mismatch,
+   after saving, on every exit path. This catches an owned account with
+   funds that has no position and is not declared.
+5. **Document** in `README-Lighter.md`: a closed position of a declared
+   account is reopened at zero on the next `correct-accounts`; a position
+   of an account the strategy stopped declaring is closed once drained;
+   `--dry-run` previews the reconciliation without saving it.
 
-### Test
+## Tests for `check-accounts` and `correct-accounts`
 
 Extend `tests/lagoon/test_lagoon_lighter_sub_account_corrections_e2e.py`
-with three steps:
+after its current step 5, so the scenarios run on the vault and the fake
+sequencer it already has. The scripted strategy there moves fixed amounts
+through five `start` cycles and ends with every account drained to the Safe
+(`tradeexecutor/testing/lighter_scripted_transfers.py`), which gives the
+closed-account scenarios for free; its two sub-accounts become undeclared
+by pointing `STRATEGY_FILE` at `strategies/test_only/minimal_lighter_strategy.py`,
+which declares only the master, with `LIGHTER_ACCOUNT_INDEX` set to the
+master index the state records.
 
-- With the pending funding from the `check-accounts` step above, run
-  `correct-accounts --dry-run` with the operator record: exits 0, logs
-  "Found 1 verified Lighter transfer(s)", the state file is unchanged.
-- Add an extra sub-account to `FakeLighterCore` for the Safe without
-  declaring it, run `correct-accounts`: the balance corrections are saved
-  and the command exits 1 naming the account index.
-- Freeze one sub-account position in the state, change its fake equity, run
-  `correct-accounts`: exactly one balance update on the frozen position and
-  no new position for its account.
+6. Interrupt the next scripted transfer the way
+   `tests/lagoon/test_lagoon_lighter_multi_subaccount_e2e.py:309` does:
+   `fake.execute_transfers = False`, `run_start()` raises `TimeoutError`,
+   the state holds one pending funding with `lighter_transfer_tx_hash`.
+   `check-accounts` exits 1, the output names the trade id and "pending",
+   and the balance table is still printed. `fake.execute_pending_transfers()`,
+   then `correct-accounts --dry-run` with the sub-account signer files:
+   exits 0, logs "Reconciled 1 verified Lighter transfer(s) (dry run, not
+   saved)", the state file is unchanged. `correct-accounts` without
+   `--dry-run` completes it.
+7. Run the remaining scripted cycles until every account is drained;
+   `check-accounts` passes with three zero-equity positions.
+8. Freeze one sub-account position in the saved state, credit its fake
+   account, run `correct-accounts`: exactly one balance update on the
+   frozen position, no new position for its account; `check-accounts`
+   passes.
+9. Switch `STRATEGY_FILE` to `minimal_lighter_strategy.py` with
+   `LIGHTER_ACCOUNT_INDEX=<master>`. `check-accounts` exits 1 naming the
+   funded, now undeclared sub-account. `correct-accounts` exits 1 with the
+   `lighter-move-funds` instruction and closes the other, drained
+   sub-account's position. Debit the fake account to zero, run
+   `correct-accounts`: it closes the last position; `check-accounts` passes
+   with the master alone.
+
+Unit test in `tests/exchange_account/test_lighter_exchange_account.py`
+(extend the existing `check_lighter_account_set` test): a mocked request
+error returns unclean; each of the four rule cases in change 2.2 returns the
+expected result from a mocked account list and equity snapshot.
 
 ## Order and size
 
-1. `check-accounts` changes 2 to 4 and `correct-accounts` change 3: small
-   and independent.
-2. `check-accounts` change 1 and `correct-accounts` changes 1 and 2.
+1. `check-accounts` changes 3 and 4, `correct-accounts` change 2: small and
+   independent.
+2. `check-accounts` change 2 with `correct-accounts` changes 3 and 4 (they
+   share the account-set rule), then `check-accounts` change 1 and
+   `correct-accounts` change 1.
 3. `perform-test-trade`, the largest change, last.
 
 Documentation corrections listed in the compatibility document are made
