@@ -18,6 +18,7 @@ from tradeexecutor.ethereum.lighter.transfer_verification import reconcile_verif
 from tradeexecutor.exchange_account.lighter_operator import load_lighter_signers
 from tradeexecutor.strategy.account_correction import check_accounts as _check_accounts
 
+from ...ethereum.lagoon.vault import LagoonVaultSyncModel
 from ...state.state import UncleanState
 from ...state.trade import TradeExecution
 from ...strategy.bootstrap import make_factory_from_strategy_mod
@@ -232,9 +233,8 @@ def check_accounts(
     )
     clean = clean and not pending
 
-    vault = getattr(sync_model, "vault", None)
-    # Every Lighter account the Safe owns must be declared and tracked, or NAV misses it.
-    if vault is not None and check_lighter_vault_accounts(vault.safe_address, state, universe):
+    # Every Lighter account a Lagoon Safe owns must be declared and tracked, or NAV misses it.
+    if isinstance(sync_model, LagoonVaultSyncModel) and check_lighter_vault_accounts(sync_model.vault.safe_address, state, universe):
         clean = False
 
     output = tabulate(
