@@ -19,6 +19,7 @@ from typer.testing import CliRunner
 
 from eth_defi.provider.anvil import AnvilLaunch, fund_erc20_on_anvil, launch_anvil
 from eth_defi.provider.multi_provider import create_multi_provider_web3
+from eth_defi.testing.rpc_cache import seed_foundry_rpc_cache
 from eth_defi.token import fetch_erc20_details
 
 from tradeexecutor.cli.main import app
@@ -51,8 +52,18 @@ pytestmark = [
 
 
 @pytest.fixture()
-def anvil() -> Iterator[AnvilLaunch]:
-    """Fork the incident block, letting the session fixture install its stored RPC seed."""
+def anvil(tmp_path: Path) -> Iterator[AnvilLaunch]:
+    """Fork the incident block using this incident's committed historical reads."""
+    # Session seeding preserves existing runner caches. A stale entry at this
+    # incident block can therefore override the recorded Safe balance before
+    # recovery starts. Restore only this block atomically; retain other caches.
+    # Its isolated xdist group prevents concurrent users of this fork block.
+    relative = Path("hyperliquid") / str(BLOCK) / "storage.json"
+    seed_root = tmp_path / "incident-rpc-seed"
+    seed_file = seed_root / relative
+    seed_file.parent.mkdir(parents=True)
+    shutil.copyfile(Path(__file__).resolve().parents[1] / "rpc_cache_seed" / relative, seed_file)
+    seed_foundry_rpc_cache(seed_root, overwrite=True)
     fork = launch_anvil(
         os.environ.get("JSON_RPC_HYPERLIQUID") or PUBLIC_HYPEREVM_RPC,
         fork_block_number=BLOCK,

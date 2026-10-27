@@ -454,10 +454,11 @@ class BacktestExecution(ExecutionModel):
            D2 and Plutus.
         3. D2 and Plutus' conservative 14-day fallback where the historical
            data does not report that metadata.
-        4. Ostium-style vaults (``ostium_like`` feature) — the next day at
+        4. Atoma vaults — the reported estimate or a seven-day epoch fallback.
+        5. Ostium-style vaults (``ostium_like`` feature) — the next day at
            :py:data:`OSTIUM_BACKTEST_SETTLEMENT_HOUR`, preserving the
            historical backtest approximation.
-        5. The global default delay (``vault_settlement_delay``).
+        6. The global default delay (``vault_settlement_delay``).
         """
         if pair.pool_address:
             override = self.vault_settlement_delay_overrides.get(pair.pool_address.lower())
@@ -477,6 +478,13 @@ class BacktestExecution(ExecutionModel):
             if features & {ERC4626Feature.d2_like, ERC4626Feature.plutus_like}:
                 # TODO pending real data: 14 days average delay estimated from 30 days cycle.
                 return ts + datetime.timedelta(days=14)
+
+        if ERC4626Feature.atoma_like in features:
+            # Atoma deposits are synchronous, but withdrawals settle in an
+            # operator-processed epoch. Use the reported estimate when present;
+            # otherwise match eth-defi's conservative seven-day epoch fallback.
+            estimated_settlement = pair.get_vault_estimated_settlement()
+            return ts + (estimated_settlement or datetime.timedelta(days=7))
 
         if ERC4626Feature.ostium_like in features:
             # Preserve the original Ostium backtest approximation instead of
