@@ -85,12 +85,13 @@ ASYNC_VAULT_FEATURES = {
 
 #: Vault feature flags whose redemption cash must not fund a same-cycle buy.
 #:
-#: D2 redemptions are bounded by epoch windows and Plutus Hedge redemptions
-#: may require operator fulfilment. Their deposits remain synchronous, so they
+#: D2 and Atoma redemptions are bounded by epoch windows and Plutus Hedge
+#: redemptions may require operator fulfilment. Their deposits remain synchronous, so they
 #: intentionally do not belong to :py:data:`ASYNC_VAULT_FEATURES`.
 DELAYED_VAULT_REDEMPTION_FEATURES = ASYNC_VAULT_FEATURES | {
     ERC4626Feature.d2_like,
     ERC4626Feature.plutus_like,
+    ERC4626Feature.atoma_like,
 }
 
 
