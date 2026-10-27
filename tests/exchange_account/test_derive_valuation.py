@@ -21,7 +21,6 @@ from eth_account import Account
 from eth_defi.compat import native_datetime_utc_now
 from eth_defi.derive.account import fetch_account_summary, fetch_subaccount_ids
 from eth_defi.derive.authentication import DeriveApiClient
-from eth_defi.derive.onboarding import fetch_derive_wallet_address
 from tradingstrategy.chain import ChainId
 
 from tradeexecutor.cli.bootstrap import create_metadata
@@ -37,7 +36,7 @@ from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.trade import TradeExecution, TradeType
 from tradeexecutor.strategy.execution_model import AssetManagementMode
 
-pytestmark = pytest.mark.skip(reason="Needs fresh API key")
+pytestmark = pytest.mark.skip(reason="Derive v3 needs a testnet account created by a deposit on Ethereum Sepolia and a session key registered with private/set_session_key")
 
 
 @pytest.fixture(scope="module")
@@ -48,11 +47,11 @@ def owner_account():
 
 @pytest.fixture(scope="module")
 def derive_wallet_address(owner_account):
-    """Derive wallet address from env, or auto-derived from owner key."""
+    """Derive wallet address from env, or the owner EOA that owns Derive v3 accounts."""
     env_address = os.environ.get("DERIVE_WALLET_ADDRESS")
     if env_address:
         return env_address
-    return fetch_derive_wallet_address(owner_account.address, is_testnet=True)
+    return owner_account.address
 
 
 @pytest.fixture(scope="module")

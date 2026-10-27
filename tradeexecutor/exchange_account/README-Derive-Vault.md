@@ -1,5 +1,7 @@
 # Derive vault deployment
 
+> **Derive v3:** this guide describes the v2 setup, where the Lagoon Safe on Derive Chain owned the Derive account. Derive v3 settles on Ethereum, and a Safe-owned v3 account is created by a deposit through `OnchainActionManager` on Ethereum, with its session key registered by an onchain action from the Safe. v2 Safe accounts and session keys do not carry over. See [smart contracts and multisigs](https://docs.derive.xyz/authentication/contract-owned-accounts) and the [Derive integration guide](./README-Derive.md#derive-v3).
+
 ## Overview
 
 Derive Chain is an OP Stack L2 rollup built specifically for decentralised derivatives trading (options and perpetuals), offering institutional-grade infrastructure with unified portfolio margin, high-performance orderbook matching, and low gas costs optimized for frequent trading operations.
