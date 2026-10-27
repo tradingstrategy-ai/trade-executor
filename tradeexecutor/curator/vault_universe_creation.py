@@ -5,6 +5,8 @@ import json
 import sys
 from dataclasses import dataclass
 
+from eth_defi.lighter.constants import LIGHTER_CHAIN_ID
+
 from tradingstrategy.vault_data_client import VaultDataClient, VaultDataset
 
 from tradeexecutor.curator.curator import EXCLUDED_PROTOCOLS, EXCLUDED_VAULTS, MUST_INCLUDE
@@ -39,6 +41,28 @@ MORPHO_VAULT_FLAG_FILTER_SEVERITIES: dict[MorphoVaultFlagFilter, set[str]] = {
 #: Risk labels that no inclusion override may admit to a generated universe.
 NON_SELECTABLE_RISKS = frozenset({"Blacklisted", "Dangerous"})
 
+#: Main Lighter USDC LLP requires staked LIT in addition to reserve capital.
+#: A USDC-only strategy must not acquire or stake LIT implicitly. This identity
+#: does not cover XLP or the separate Robinhood USDG deployment.
+LIGHTER_LLP_ADDRESS = "lighter-pool-281474976710654"
+LIGHTER_LLP_EXCLUSION_REASON = "Lighter LLP requires staked LIT; strategy does not supply LIT"
+
+
+def lighter_llp_exclusion_reason(
+    chain_id: int,
+    address: str,
+    *,
+    include_lighter_llp: bool = False,
+) -> str | None:
+    """Exclude the USDC Lighter LLP unless its LIT prerequisite is requested.
+
+    Opting in only permits universe membership; it does not model acquisition,
+    staking, lock-up or valuation of LIT. Those require explicit strategy work.
+    """
+    if not include_lighter_llp and chain_id == LIGHTER_CHAIN_ID and address.lower() == LIGHTER_LLP_ADDRESS:
+        return LIGHTER_LLP_EXCLUSION_REASON
+    return None
+
 
 @dataclass
 class VaultInfo:
@@ -60,6 +84,7 @@ class VaultInfo:
     must_include: bool
     excluded: bool
     excluded_protocol_reason: str | None
+    excluded_reason: str | None = None
 
 
 def fetch_vaults(vault_data_client: VaultDataClient | None = None) -> list[dict]:
@@ -182,13 +207,22 @@ def parse_vault(
     vault: dict,
     chain_config: dict,
     tracked_periods: tuple[str, ...],
+    *,
+    include_lighter_llp: bool = False,
 ) -> VaultInfo | None:
-    """Parse a raw vault dict into :class:`VaultInfo`."""
+    """Parse metadata, excluding USDC Lighter LLP by default because it needs staked LIT.
+
+    Set ``include_lighter_llp=True`` only for an explicitly requested strategy
+    that supplies and accounts for LIT. Other exclusion rules still apply.
+    """
     chain_id = vault.get("chain_id")
     if chain_id not in chain_config:
         return None
 
     address = vault.get("address", "").lower()
+    excluded_reason = lighter_llp_exclusion_reason(
+        chain_id, address, include_lighter_llp=include_lighter_llp,
+    )
 
     return VaultInfo(
         name=vault.get("name", "Unknown"),
@@ -207,8 +241,9 @@ def parse_vault(
         protocol_slug=vault.get("protocol_slug") or "",
         deposit_closed_reason=vault.get("deposit_closed_reason"),
         must_include=address in MUST_INCLUDE,
-        excluded=address in EXCLUDED_VAULTS,
+        excluded=address in EXCLUDED_VAULTS or excluded_reason is not None,
         excluded_protocol_reason=EXCLUDED_PROTOCOLS.get(vault.get("protocol_slug") or ""),
+        excluded_reason=excluded_reason,
     )
 
 
@@ -475,6 +510,8 @@ def format_output(
             lines.append(f"{prefix}# {comment}")
             if v.excluded_protocol_reason is not None:
                 lines.append(f"{prefix}# Excluded protocol ({v.protocol_slug}): {v.excluded_protocol_reason}")
+            if v.excluded_reason is not None:
+                lines.append(f"{prefix}# Excluded vault: {v.excluded_reason}")
             if v.deposit_closed_reason is not None:
                 lines.append(f"{prefix}# Deposits disabled: {v.deposit_closed_reason}")
             if v.excluded:
