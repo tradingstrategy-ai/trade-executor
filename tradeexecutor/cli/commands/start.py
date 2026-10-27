@@ -23,7 +23,7 @@ from tradingstrategy.timebucket import TimeBucket
 from . import shared_options
 from .app import app
 from ..bootstrap import prepare_executor_id, prepare_cache_and_token_cache, create_web3_config, create_state_store, \
-    create_execution_and_sync_model, resolve_deployment_file, log_multichain_deployment_information, update_strategy_file_deployment_info, refresh_lagoon_guard_migration_state, create_metadata, create_approval_model, create_client, configure_default_chain
+    create_execution_and_sync_model, create_lighter_routing_config, resolve_deployment_file, log_multichain_deployment_information, update_strategy_file_deployment_info, refresh_lagoon_guard_migration_state, create_metadata, create_approval_model, create_client, configure_default_chain
 from ...exchange_account.derive import DeriveNetwork
 from ..log import setup_logging, setup_discord_logging, setup_logstash_logging, setup_file_logging, setup_telegram_logging, setup_sentry_logging
 from ..loop import ExecutionLoop
@@ -32,15 +32,10 @@ from ..slippage import configure_max_slippage_tolerance
 from ..version_info import VersionInfo
 from ..watchdog import stop_watchdog
 from ...ethereum.enzyme.vault import EnzymeVaultSyncModel
-from ...ethereum.lighter.lighter_routing import (
-    DEFAULT_LIGHTER_TRANSFER_TIMEOUT_SECONDS,
-    DEFAULT_LIGHTER_WITHDRAWAL_TIMEOUT_SECONDS,
-    LighterRoutingConfig,
-)
+from ...ethereum.lighter.lighter_routing import LighterRoutingConfig
 from ...ethereum.lagoon.vault import LagoonVaultSyncModel
 from ...ethereum.velvet.execution import VelvetExecution
 from ...ethereum.velvet.vault import VelvetVaultSyncModel
-from ...exchange_account.lighter_operator import load_lighter_operator_record, load_lighter_sub_account_operator_records
 from ...state.state import State
 from ...state.store import NoneStore, JSONFileStore
 from ...strategy.approval import ApprovalType
@@ -86,7 +81,7 @@ def _create_lighter_routing_config(
     :param withdrawal_timeout:
         CLI timeout for the secure withdrawal wait.
     :param transfer_timeout:
-        CLI timeout for a master to sub-account transfer to appear in history.
+        CLI timeout for a transfer between accounts to appear in history.
     :return:
         Lighter routing settings, or ``None`` when the strategy does not use them.
     """
@@ -101,12 +96,7 @@ def _create_lighter_routing_config(
             "when automatic Lighter cash management is enabled"
         )
 
-    return LighterRoutingConfig(
-        operator_record=load_lighter_operator_record(operator_record_file),
-        sub_account_operator_records=load_lighter_sub_account_operator_records(sub_account_operator_record_files),
-        withdrawal_timeout=withdrawal_timeout,
-        transfer_timeout=transfer_timeout,
-    )
+    return create_lighter_routing_config(operator_record_file, sub_account_operator_record_files, withdrawal_timeout, transfer_timeout)
 
 
 def should_save_failed_execution(error: BaseException) -> bool:
@@ -159,22 +149,10 @@ def start(
     derive_session_private_key: Optional[str] = typer.Option(None, envvar="DERIVE_SESSION_PRIVATE_KEY", help="Derive session key private key"),
     derive_wallet_address: Optional[str] = typer.Option(None, envvar="DERIVE_WALLET_ADDRESS", help="Derive wallet address (auto-derived from owner key if not provided). For Lagoon vault deployments, set this to the Safe multisig address."),
     derive_network: DeriveNetwork = typer.Option(DeriveNetwork.mainnet, envvar="DERIVE_NETWORK", help="Derive network: mainnet or testnet"),
-    lighter_operator_record_file: Optional[Path] = typer.Option(
-        None,
-        envvar="LIGHTER_OPERATOR_RECORD_FILE",
-        help="Owner-only Lighter operator record used for automatic master withdrawals and master to sub-account transfers",
-    ),
+    lighter_operator_record_file: Path | None = shared_options.lighter_operator_record_file,
     lighter_sub_account_operator_record_files: str | None = shared_options.lighter_sub_account_operator_record_files,
-    lighter_withdrawal_timeout: int = typer.Option(
-        DEFAULT_LIGHTER_WITHDRAWAL_TIMEOUT_SECONDS,
-        envvar="LIGHTER_WITHDRAWAL_TIMEOUT",
-        help="Maximum seconds to wait for a Lighter master secure withdrawal or sub-account L1 withdrawal to become claimable. Default 3600; a live sub-account withdrawal took about 29 minutes.",
-    ),
-    lighter_transfer_timeout: int = typer.Option(
-        DEFAULT_LIGHTER_TRANSFER_TIMEOUT_SECONDS,
-        envvar="LIGHTER_TRANSFER_TIMEOUT",
-        help="Maximum seconds to wait for a Lighter master to sub-account transfer",
-    ),
+    lighter_withdrawal_timeout: int = shared_options.lighter_withdrawal_timeout,
+    lighter_transfer_timeout: int = shared_options.lighter_transfer_timeout,
 
     gas_price_method: Optional[GasPriceMethod] = shared_options.gas_price_method,
     confirmation_block_count: int = shared_options.confirmation_block_count,

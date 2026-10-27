@@ -5,6 +5,7 @@ from typing import Any
 
 from tabulate import tabulate
 
+from tradeexecutor.exchange_account.lighter import get_lighter_trade_hashes
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 
@@ -29,27 +30,6 @@ def describe_lighter_trade(trade: TradeExecution) -> str:
     if amount == 0:
         return f"Open the position of Lighter account {account}"
     return trade.get_human_description()
-
-
-def get_lighter_trade_hashes(trade: TradeExecution) -> list[str]:
-    """Return the Ethereum transaction hashes and Lighter identifiers of a trade.
-
-    :param trade:
-        Any trade on an exchange-account position.
-    :return:
-        ``label: hash`` lines, Ethereum transactions first.
-    """
-    lines = [f"ethereum: {tx.tx_hash}" for tx in trade.blockchain_transactions if tx.tx_hash]
-    other_data = trade.other_data or {}
-    for key, label in (
-        ("lighter_deposit_tx_hash", "ethereum deposit"),
-        ("lighter_withdrawal_request_id", "withdrawal request"),
-        ("lighter_claim_tx_hash", "ethereum claim"),
-        ("lighter_transfer_tx_hash", "lighter transfer"),
-    ):
-        if other_data.get(key):
-            lines.append(f"{label}: {other_data[key]}")
-    return lines
 
 
 def build_trade_summary(state: State) -> list[dict[str, Any]]:

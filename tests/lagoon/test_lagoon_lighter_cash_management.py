@@ -38,6 +38,7 @@ from web3 import Web3
 from tradeexecutor.cli.main import app
 from tradeexecutor.exchange_account.lighter import LIGHTER_PROTOCOL
 from tradeexecutor.state.state import State
+from tradeexecutor.testing.lighter_core import get_master_only_account_patches
 from tradeexecutor.state.trade import TradeFlag
 
 #: Optional upstream RPC used to enable the fixed-block Ethereum fork.
@@ -246,6 +247,9 @@ def test_cli_lagoon_lighter_cash_management_uses_normal_pipeline(
         "tradeexecutor.ethereum.lighter.transfer_verification.wait_for_lighter_collateral",
         side_effect=wait_for_collateral,
     )
+    # Mocked because Lighter's public API does not know the Anvil Safe: it owns only the master account here.
+    for target, replacement in get_master_only_account_patches(LIGHTER_ACCOUNT_INDEX, lambda: _lighter_equity(lighter_state["equity"])):
+        mocker.patch(target, new=replacement)
     environment = {
         "PATH": os.environ["PATH"],
         "EXECUTOR_ID": "lighter-cash-management",

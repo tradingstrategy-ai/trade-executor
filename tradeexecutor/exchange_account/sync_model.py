@@ -152,7 +152,8 @@ class ExchangeAccountSyncModel(SyncModel):
         # Capture block once — used for both the value func read and state persistence
         block_number = self.web3.eth.block_number if self.web3 else None
 
-        for position in state.portfolio.get_open_positions():
+        # Frozen positions are revalued too, as check-accounts values them.
+        for position in state.portfolio.get_open_and_frozen_positions():
             if not position.is_exchange_account():
                 continue
 

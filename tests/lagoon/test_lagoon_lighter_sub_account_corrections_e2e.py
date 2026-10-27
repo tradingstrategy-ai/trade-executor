@@ -12,6 +12,7 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
+from eth_defi.compat import native_datetime_utc_now
 from eth_defi.provider.anvil import AnvilLaunch
 from eth_defi.testing.anvil_fork_pool import AnvilForkPool
 from eth_defi.testing.evm_snapshot_fixture import evm_snapshot_revert
@@ -22,6 +23,7 @@ from pytest import CaptureFixture, LogCaptureFixture, MonkeyPatch
 from tradeexecutor.state.balance_update import BalanceUpdateCause
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
+from tradeexecutor.state.trade import TradeFlag
 from tradeexecutor.testing.lighter_scripted_transfers import SCRIPTED_STEP_KEY, SCRIPTED_TRANSFER_UNIT_USDC
 from tradeexecutor.testing.lighter_tutorial import (
     SIMULATED_TRANSFER_FEE_USDC,
@@ -99,6 +101,17 @@ def _positions_by_account(state: State) -> dict[int, TradingPosition]:
     return {int(position.pair.get_exchange_account_id()): position for position in state.portfolio.get_open_positions() if position.is_exchange_account()}
 
 
+def _run_and_read(tutorial: Tutorial, args: list[str], caplog: LogCaptureFixture, capsys: CaptureFixture[str], **overrides: str) -> tuple[int, str]:
+    """Run a command and return its exit code with everything it logged and printed."""
+    caplog.clear()
+    capsys.readouterr()
+    with caplog.at_level(logging.INFO):
+        code = run_cli(args, get_cli_environment(tutorial, **overrides), check=False)
+    # The command installs its own console handler, so read both captures.
+    captured = capsys.readouterr()
+    return code, captured.out + captured.err + caplog.text
+
+
 @pytest.mark.timeout(900)
 def test_cli_lighter_sub_account_balance_corrections(tutorial: Tutorial, caplog: LogCaptureFixture, capsys: CaptureFixture[str]) -> None:
     """Report and record sub-account balance changes made outside the executor.
@@ -113,6 +126,10 @@ def test_cli_lighter_sub_account_balance_corrections(tutorial: Tutorial, caplog:
     3. Check that check-accounts fails and names both sub-accounts.
     4. Run correct-accounts and check each sub-account position carries one balance update for its net change, in the accounting log, with the master unchanged.
     5. Check that check-accounts passes, that the NAV matches Lighter, and that the next start cycle continues the script from the corrected balances.
+    6. Interrupt the next scripted transfer: check-accounts reports it as pending, correct-accounts --dry-run previews its reconciliation without saving, and correct-accounts completes it.
+    7. Run the last scripted cycle, which drains every account, and check that check-accounts passes.
+    8. Freeze a sub-account position and credit its account: correct-accounts revalues the frozen position without opening a second one.
+    9. Stop declaring the sub-accounts: correct-accounts closes the drained one, reports the funded one with the drain command, and closes it once it holds only Lighter dust.
     """
     # 1. Deploy a vault with two sub-accounts, initialise state, subscribe and fund both sub-accounts with the scripted strategy.
     deploy(tutorial, "Lighter corrections", "LCT")
@@ -176,3 +193,69 @@ def test_cli_lighter_sub_account_balance_corrections(tutorial: Tutorial, caplog:
     assert positions[arb].get_quantity() == 2 * UNIT_USDC + arb_change + UNIT_USDC
     assert {index: position.get_quantity() for index, position in positions.items()} == {index: fake.get_account(index).collateral for index in (master, trend, arb)}
     state.check_if_clean()
+
+    # 6. Interrupt the next scripted transfer: check-accounts reports it as pending, correct-accounts --dry-run previews its reconciliation without saving, and correct-accounts completes it.
+    fake.execute_transfers = False
+    with pytest.raises(TimeoutError):
+        run_start(tutorial, **signers)
+    state = State.read_json_file(tutorial.state_file)
+    [pending] = [trade for trade in state.portfolio.get_all_trades() if trade.is_exchange_account_transfer_pending()]
+    assert TradeFlag.internal_account_transfer in pending.flags and pending.other_data["lighter_transfer_tx_hash"]
+    code, report = _run_and_read(tutorial, ["check-accounts"], caplog, capsys, **signers)
+    assert code == 1
+    assert f"Lighter transfer trade #{pending.trade_id}" in report and "is pending" in report
+    assert "LIGHTER-ACCOUNT-USDC" in report, "The balance table is still printed"
+    fake.execute_pending_transfers()
+    fake.execute_transfers = True
+    saved = tutorial.state_file.read_bytes()
+    code, report = _run_and_read(tutorial, ["correct-accounts", "--dry-run"], caplog, capsys, LOG_LEVEL="info", **signers)
+    assert code == 0
+    assert "Reconciled 1 verified Lighter transfer(s) (dry run, not saved)" in report
+    assert tutorial.state_file.read_bytes() == saved
+    run_cli(["correct-accounts"], get_cli_environment(tutorial, **signers))
+    state = State.read_json_file(tutorial.state_file)
+    assert state.portfolio.get_trade_by_id(pending.trade_id).is_success()
+
+    # 7. Run the last scripted cycle, which drains every account, and check that check-accounts passes.
+    run_start(tutorial, **signers)
+    assert [fake.get_account(index).collateral for index in (master, trend, arb)] == [0, 0, 0]
+    run_cli(["check-accounts"], get_cli_environment(tutorial))
+    state = State.read_json_file(tutorial.state_file)
+    assert [position.get_quantity() for position in _positions_by_account(state).values()] == [0, 0, 0]
+
+    # 8. Freeze a sub-account position and credit its account: correct-accounts revalues the frozen position without opening a second one.
+    trend_position = _positions_by_account(state)[trend]
+    del state.portfolio.open_positions[trend_position.position_id]
+    state.portfolio.frozen_positions[trend_position.position_id] = trend_position
+    trend_position.frozen_at = native_datetime_utc_now()
+    state.write_json_file(tutorial.state_file)
+    updates_before = set(trend_position.balance_updates)
+    fake.get_account(trend).collateral += TREND_PROFIT_USDC
+    run_cli(["correct-accounts"], get_cli_environment(tutorial))
+    state = State.read_json_file(tutorial.state_file)
+    trend_position = state.portfolio.frozen_positions[trend_position.position_id]
+    assert [update.quantity for update_id, update in trend_position.balance_updates.items() if update_id not in updates_before] == [TREND_PROFIT_USDC]
+    assert trend not in _positions_by_account(state), "No second position was opened for the frozen account"
+    run_cli(["check-accounts"], get_cli_environment(tutorial))
+    # Return the position to the open positions, as repair would, for the next step.
+    del state.portfolio.frozen_positions[trend_position.position_id]
+    state.portfolio.open_positions[trend_position.position_id] = trend_position
+    trend_position.frozen_at = None
+    state.write_json_file(tutorial.state_file)
+
+    # 9. Stop declaring the sub-accounts: correct-accounts closes the drained one, reports the funded one with the drain command, and closes it once it holds only Lighter dust.
+    master_only = {"STRATEGY_FILE": str(STRATEGY_DIR / "minimal_lighter_strategy.py"), "LIGHTER_ACCOUNT_INDEX": str(master)}
+    code, report = _run_and_read(tutorial, ["check-accounts"], caplog, capsys, **master_only)
+    assert code == 1 and f"positions track Lighter accounts {sorted([trend, arb])} the strategy does not declare" in report
+    code, report = _run_and_read(tutorial, ["correct-accounts"], caplog, capsys, **master_only)
+    assert code == 1 and f"lighter-move-funds --lighter-account-index {trend}" in report
+    state = State.read_json_file(tutorial.state_file)
+    assert set(_positions_by_account(state)) == {master, trend}, "The drained, undeclared account was closed"
+    fake.get_account(trend).collateral = Decimal("0.4")
+    run_cli(["correct-accounts"], get_cli_environment(tutorial, **master_only))
+    state = State.read_json_file(tutorial.state_file)
+    assert set(_positions_by_account(state)) == {master}
+    closed_trend = state.portfolio.closed_positions[trend_position.position_id]
+    assert closed_trend.get_quantity() == 0
+    assert [update.cause for update in closed_trend.balance_updates.values()][-1] == BalanceUpdateCause.correction
+    run_cli(["check-accounts"], get_cli_environment(tutorial, **master_only))

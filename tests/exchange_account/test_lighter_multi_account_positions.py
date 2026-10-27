@@ -6,6 +6,7 @@ second account's trades attach to the first account's position.
 """
 
 from decimal import Decimal
+from types import SimpleNamespace
 
 import pytest
 from eth_defi.compat import native_datetime_utc_now
@@ -20,7 +21,9 @@ from tradeexecutor.exchange_account.lighter import (
     is_lighter_sub_account_pair,
     validate_lighter_exchange_account_pairs,
 )
+from tradeexecutor.exchange_account.lighter_cleanup import close_undeclared_lighter_positions
 from tradeexecutor.exchange_account.state import open_exchange_account_position
+from tradeexecutor.state.balance_update import BalanceUpdateCause
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.state import State
 
@@ -45,6 +48,8 @@ def test_lighter_accounts_are_separate_positions() -> None:
     2. Check the pairs are distinct by equality, hash, identifier, internal id and ticker, and the master is unchanged.
     3. Open one position per pair and check every portfolio lookup returns the right position.
     4. Reject universes with two masters or a sub-account of another master.
+    5. Open positions for two accounts the strategy does not declare, one holding Lighter dust and one holding funds.
+    6. Run the Lighter cleanup and check it closes only the dust position, writing its residual off, and leaves the state clean.
     """
     usdc = _usdc()
 
@@ -83,3 +88,23 @@ def test_lighter_accounts_are_separate_positions() -> None:
     foreign_sub = create_lighter_exchange_account_pair(usdc, SUB_INDICES[0] - 5, role=LIGHTER_ROLE_SUB_ACCOUNT, master_account_index=MASTER_INDEX + 1, sub_account_id="foreign")
     with pytest.raises(ValueError, match="belong to the strategy's master"):
         validate_lighter_exchange_account_pairs([master, foreign_sub])
+
+    # 5. Open positions for two accounts the strategy does not declare, one holding Lighter dust and one holding funds.
+    dust_pair = create_lighter_exchange_account_pair(usdc, SUB_INDICES[1] - 1, role=LIGHTER_ROLE_SUB_ACCOUNT, master_account_index=MASTER_INDEX, sub_account_id="dust")
+    funded_pair = create_lighter_exchange_account_pair(usdc, SUB_INDICES[1] - 2, role=LIGHTER_ROLE_SUB_ACCOUNT, master_account_index=MASTER_INDEX, sub_account_id="funded")
+    state.portfolio.adjust_reserves(usdc, Decimal("3.4"), "Capital for the undeclared accounts")
+    for pair, amount in ((dust_pair, Decimal("0.4")), (funded_pair, Decimal(3))):
+        open_exchange_account_position(state=state, strategy_cycle_at=native_datetime_utc_now(), pair=pair, reserve_currency=usdc, reserve_amount=amount)
+    dust_position = state.portfolio.get_open_position_for_pair(dust_pair)
+    funded_position = state.portfolio.get_open_position_for_pair(funded_pair)
+
+    # 6. Run the Lighter cleanup and check it closes only the dust position, writing its residual off, and leaves the state clean.
+    # A stand-in universe, because the cleanup reads only the declared pairs from it.
+    universe = SimpleNamespace(iterate_pairs=lambda: [master, sub_1, sub_2])
+    assert close_undeclared_lighter_positions(state, universe, native_datetime_utc_now()) == [dust_position]
+    assert dust_position.is_closed() and dust_position.get_quantity() == 0
+    [write_off] = dust_position.balance_updates.values()
+    assert (write_off.quantity, write_off.cause) == (Decimal("-0.4"), BalanceUpdateCause.correction)
+    assert funded_position.is_open() and funded_position.get_quantity() == 3
+    assert all(state.portfolio.get_open_position_for_pair(pair) is not None for pair in (master, sub_1, sub_2))
+    state.check_if_clean()

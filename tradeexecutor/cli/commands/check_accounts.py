@@ -8,15 +8,19 @@ from eth_defi.hotwallet import HotWallet
 from tabulate import tabulate
 
 from tradeexecutor.exchange_account.lighter import (
-    check_lighter_account_set,
     create_lighter_account_value_func,
+    get_lighter_trade_hashes,
+    is_lighter_exchange_account_pair,
     validate_lighter_exchange_account_pairs,
 )
+from tradeexecutor.exchange_account.lighter_cleanup import check_lighter_vault_accounts
 from tradeexecutor.ethereum.lighter.transfer_verification import reconcile_verified_lighter_transfers
 from tradeexecutor.exchange_account.lighter_operator import load_lighter_signers
 from tradeexecutor.strategy.account_correction import check_accounts as _check_accounts
 
+from ...ethereum.lagoon.vault import LagoonVaultSyncModel
 from ...state.state import UncleanState
+from ...state.trade import TradeExecution
 from ...strategy.bootstrap import make_factory_from_strategy_mod
 from ...strategy.description import StrategyExecutionDescription
 from ...strategy.execution_context import ExecutionContext, ExecutionMode
@@ -64,7 +68,7 @@ def check_accounts(
     test_evm_uniswap_v2_init_code_hash: Optional[str] = shared_options.test_evm_uniswap_v2_init_code_hash,
     unit_testing: bool = shared_options.unit_testing,
     raise_on_unclean: bool = typer.Option(False, is_flag=False, envvar="RAISE_ON_UNCLEAN", help="Raise an exception if unclean. Unit test option."),
-    lighter_operator_record_file: Path | None = shared_options.lighter_operator_record_file_for_accounting,
+    lighter_operator_record_file: Path | None = shared_options.lighter_operator_record_file,
     lighter_sub_account_operator_record_files: str | None = shared_options.lighter_sub_account_operator_record_files,
 ):
     """Check that the state ledger matches onchain and external balances.
@@ -112,7 +116,8 @@ def check_accounts(
 
     # Check balances
     logger.info("Balance details")
-    logger.info("  Hot wallet is %s", hot_wallet.address)
+    if hot_wallet is not None:
+        logger.info("  Hot wallet is %s", hot_wallet.address)
 
     vault_address =  sync_model.get_key_address()
     if vault_address:
@@ -139,6 +144,22 @@ def check_accounts(
         logger.info(
             "Found %d verified but unreconciled Lighter transfer(s); run correct-accounts or repair",
             len(verified_transfers),
+        )
+
+    # Report pending Lighter transfers instead of refusing the state, so the
+    # operator can inspect them; any other unfinished trade still refuses it.
+    def is_pending_lighter_transfer(trade: TradeExecution) -> bool:
+        return trade.is_exchange_account_transfer_pending() and is_lighter_exchange_account_pair(trade.pair)
+
+    state.check_if_clean(ignore=is_pending_lighter_transfer)
+    pending = [trade for position in state.portfolio.get_open_and_frozen_positions() for trade in position.trades.values() if is_pending_lighter_transfer(trade)]
+    for trade in pending:
+        logger.error(
+            "Lighter transfer trade #%d on %s is pending (%s), %s; run correct-accounts or repair",
+            trade.trade_id,
+            trade.pair.get_ticker(),
+            trade.get_status().value,
+            ", ".join(get_lighter_trade_hashes(trade)) or "no recorded hash",
         )
 
     mod: StrategyModuleInformation = read_strategy_module(strategy_file)
@@ -208,17 +229,13 @@ def check_accounts(
         state,
         sync_model,
         exchange_account_value_func=exchange_account_value_func,
+        check_clean=not pending,
     )
+    clean = clean and not pending
 
-    vault = getattr(sync_model, "vault", None)
-    if lighter_pairs and vault is not None:
-        # Every Lighter account the Safe owns must be a position, or NAV misses it.
-        accounts_clean, message = check_lighter_account_set(vault.safe_address, lighter_pairs)
-        if accounts_clean:
-            logger.info("%s", message)
-        else:
-            logger.error("%s", message)
-            clean = False
+    # Every Lighter account a Lagoon Safe owns must be declared and tracked, or NAV misses it.
+    if isinstance(sync_model, LagoonVaultSyncModel) and check_lighter_vault_accounts(sync_model.vault.safe_address, state, universe):
+        clean = False
 
     output = tabulate(
         df,

@@ -35,6 +35,7 @@ from tradeexecutor.exchange_account.lighter import create_lighter_exchange_accou
 from tradeexecutor.state.balance_update import BalanceUpdateCause
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.state import State
+from tradeexecutor.testing.lighter_core import get_master_only_account_patches
 
 #: Optional upstream RPC used to enable the fixed-block Ethereum fork.
 JSON_RPC_ETHEREUM = os.environ.get("JSON_RPC_ETHEREUM")
@@ -281,6 +282,9 @@ def test_cli_lagoon_deploy_lighter_on_external_anvil(
         "tradeexecutor.exchange_account.lighter.fetch_lighter_total_equity",
         return_value=FakeLighterEquity(),
     )
+    # Mocked because Lighter's public API does not know the Anvil Safe: it owns only the master account here.
+    for target, replacement in get_master_only_account_patches(LIGHTER_ACCOUNT_INDEX, FakeLighterEquity):
+        mocker.patch(target, new=replacement)
     cli.main(args=["init"], standalone_mode=False)
     with pytest.raises(SystemExit) as exit_info:
         cli.main(args=["correct-accounts", "--process-redemption"], standalone_mode=False)

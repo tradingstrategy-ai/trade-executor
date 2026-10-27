@@ -1378,7 +1378,7 @@ class State:
             if max_slippage is not None:
                 t.planned_max_slippage = max_slippage
 
-    def check_if_clean(self):
+    def check_if_clean(self, ignore: Callable[[TradeExecution], bool] | None = None):
         """Check that the state data is intact.
 
         Check for the issues that could be caused e.g. trade-executor unclean shutdown
@@ -1395,6 +1395,9 @@ class State:
         the old state is intact. For any unfinished trades,
         run a repair command or manually repair the database.
 
+        :param ignore:
+            Trades a caller reports itself instead of refusing the state for.
+
         :raise UncleanState:
             In the case we detect unclean stuff
         """
@@ -1402,6 +1405,8 @@ class State:
         for p in self.portfolio.get_open_and_frozen_positions():
             t: TradeExecution
             for t in p.trades.values():
+                if ignore is not None and ignore(t):
+                    continue
                 if t.is_unfinished() or t.is_exchange_account_transfer_pending():
                     tx_hashes = ", ".join([str(tx.tx_hash) for tx in t.blockchain_transactions])
                     raise UncleanState(

@@ -18,6 +18,7 @@ orders are submitted by a separate execution tool, not by trade-executor.
 | Public total-equity valuation | Yes, without an API key |
 | Lagoon NAV posting | `lagoon-settle` |
 | Manual Safe/Lighter custody diagnostic | `lighter-move-funds` |
+| Custody test trade through the normal pipeline | `perform-test-trade --single-pair` or `--all-pairs` |
 | Read-only accounting comparison | `check-accounts` |
 | Accounting correction, PnL and verified-transfer reconciliation | `correct-accounts` |
 | Interrupted-transfer reconciliation | `correct-accounts` or `repair` |
@@ -77,7 +78,8 @@ Mainnet observations from 2026-10-26:
 
 - A master secure withdrawal takes about 20 minutes. A sub-account L1
   withdrawal became claimable after about 29 minutes. The
-  `LIGHTER_WITHDRAWAL_TIMEOUT` default of `start` is therefore one hour.
+  `LIGHTER_WITHDRAWAL_TIMEOUT` default of `start` and `perform-test-trade`
+  is therefore one hour.
 - Lighter charged no fee for same-owner transfers. The authenticated
   `transferFeeInfo` quotes 0 USDC between accounts of the same owner (master
   to sub-account and sub-account to sub-account) and 1 USDC to a different
@@ -244,13 +246,15 @@ each funding transfer; the fee actually charged is booked from Lighter's
 transfer history. See
 [`lighter_multi_subaccount_strategy.py`](../../strategies/test_only/lighter_multi_subaccount_strategy.py).
 
-Set `LIGHTER_TRANSFER_TIMEOUT` for `start` to bound the wait for a
-sub-account transfer to appear in Lighter's transfer history.
+Set `LIGHTER_TRANSFER_TIMEOUT` for `start` or `perform-test-trade` to bound
+the wait for a transfer between accounts to appear in Lighter's transfer
+history.
 
 ### Recovery
 
 An interrupted transfer makes the state unclean, and `start` refuses to run.
-Inspect it with `check-accounts`, then:
+`check-accounts` lists each pending Lighter transfer with its trade id,
+status and saved hashes, exits 1 and still prints the balance table. Then:
 
 - **Transfer between accounts:** `correct-accounts` or `repair` reconciles
   it from Lighter's transfer history; pass the sending account's record
@@ -504,6 +508,44 @@ never written to the text record, Markdown report, executor deployment
 artefact, strategy module or logs. Back up that JSON file in the organisation's
 secret manager without printing it to a terminal or chat.
 
+### Custody test trade with `perform-test-trade`
+
+`perform-test-trade` verifies a deployment's custody path with the same
+trades `start` makes:
+
+```shell
+export LIGHTER_OPERATOR_RECORD_FILE="/secure/path/vault-record.json"
+
+# Safe -> master -> Safe
+trade-executor perform-test-trade --single-pair --amount 1
+
+# Every account; a sub-account is funded through the master and withdrawn with the key-free L1 path
+trade-executor perform-test-trade --all-pairs --amount 1
+```
+
+The operator record is required for any Lighter vault, whether or not the
+strategy sets `lighter_cash_management`; without it the command refuses
+before moving anything. `--amount` defaults to 1 USDC, Lighter's minimum.
+`--buy-only` leaves the deposit (and the funding of a sub-account) in place.
+A transfer between accounts charges Lighter's fee on top of the amount on
+the master; it is zero between accounts of one owner, but the master's free
+collateral must cover it if one is charged. Withdrawals run one after
+another and each waits up to `LIGHTER_WITHDRAWAL_TIMEOUT` for Lighter to make
+it claimable, so expect about half an hour per account live. Outside
+`--simulate`, `--all-pairs` accepts fewer than ten pairs.
+
+The command saves the state only when it finishes, and never with
+`--simulate`. That is an accepted trade-off for a manual one-off check. If
+it is interrupted after Lighter accepted a deposit or a transfer between
+accounts, `check-accounts` shows the difference and `correct-accounts`
+books it before the test trade is rerun. If it is interrupted during a
+withdrawal, the USDC waits in the Safe's pending balance on the ZkLighter
+contract and no saved trade tracks it, so `lighter-move-funds` cannot
+resume it: once it is claimable, claim it into the Safe with
+`eth_defi.lighter.lagoon.claim_usdc_to_lagoon_safe_from_lighter()`, and
+only then run `correct-accounts`. Run neither `correct-accounts` nor a NAV
+settlement in between, or the in-transit amount is booked as a loss.
+
 ### 3. Perform a resumable ETH/USD test trade
 
 For an existing Lighter-enabled Lagoon vault, use the dedicated Typer command.
@@ -613,9 +655,10 @@ The Lighter AI Yubi deployment convention maps the protected host directory
 `~/secrets/lighter` to `/secure-lighter` in the manual-command container. Its
 delegated-key record is conventionally
 `~/secrets/lighter/lighter-ai-vault-info.json`. `lagoon-lighter-test-trade`,
-`lighter-move-funds` and a `start` with `lighter_cash_management` need this
-record; `check-accounts`, `correct-accounts` and `repair` take it only to
-reconcile an interrupted transfer between accounts:
+`lighter-move-funds`, `perform-test-trade` and a `start` with
+`lighter_cash_management` need this record; `check-accounts`,
+`correct-accounts` and `repair` take it only to reconcile an interrupted
+transfer between accounts:
 
 ```shell
 export LIGHTER_OPERATOR_RECORD_FILE="/secure-lighter/lighter-ai-vault-info.json"
@@ -784,7 +827,9 @@ Lighter. It creates or updates the external-account balance from public equity.
 
 Use `check-accounts` for a read-only comparison. It exits successfully when
 the tracked quantity matches public Lighter equity and exits with an accounting
-mismatch when they differ. It does not write a balance update:
+mismatch when they differ. For a Lagoon vault it also exits 1 while a Lighter
+transfer is pending or when the account sets below differ. It does not write
+a balance update:
 
 ```shell
 trade-executor check-accounts
@@ -800,6 +845,45 @@ trading PnL from a deposit or withdrawal solely from the account-value change:
 trade-executor correct-accounts
 trade-executor check-accounts
 ```
+
+`correct-accounts --dry-run` previews the run: it reconciles verified
+transfers and applies the Lighter close rule below in memory, prints the
+corrections and saves nothing.
+
+### Accounts the Safe owns, the strategy declares and the state tracks
+
+For a Lagoon vault both commands compare three sets: the Lighter accounts the
+Safe owns, the accounts the strategy declares (its universe) and the accounts
+with an open or frozen position. Lighter cannot withdraw less than its
+1 USDC minimum, so equity below `LIGHTER_DUST_USDC` (1 USDC) is
+unwithdrawable dust. The check fails when:
+
+- an owned account holds at least 1 USDC but has no position: for a
+  declared account `correct-accounts` opens it; an undeclared one is
+  outside the vault's accounting and needs the operator;
+- a position tracks an account the strategy no longer declares;
+- a tracked or declared account is not owned by the Safe, or Lighter cannot
+  be read.
+
+A declared account below 1 USDC without a position passes, so a drained
+sub-account does not fail the check. A closed position of a declared account
+is reopened at zero by the next `correct-accounts`.
+
+When the strategy stops declaring a sub-account, `correct-accounts` closes
+its position under Lighter's own rule, separate from the HyperCore dust
+rules: below 1 USDC the residual is written off as one `correction` balance
+update and the position is closed; at or above it the command logs the
+`lighter-move-funds --lighter-account-index <index>` command that drains the
+account, saves its other corrections and exits 1 until the account is
+drained. The posted NAV applies the same rule: an owned account outside the
+universe aborts the NAV only when it holds 1 USDC or more.
+
+The executor never freezes a Lighter position; a failed custody transfer
+keeps it open. A position frozen by a manual state edit is still revalued by
+`correct-accounts`, but `start` looks up open positions only, so move it back
+to the open positions by hand before the next `start`, or the next custody
+trade opens a second position for the account. `repair` cannot do this: it
+unfreezes only positions with a repaired trade.
 
 ### External transfer accounting
 
@@ -948,6 +1032,20 @@ amount, first establish that no transfer is still pending, then run
 `correct-accounts`; Lagoon Lighter strategies reconcile both the public Lighter
 equity and on-chain Safe reserve. Run `lagoon-settle` separately when the vault
 needs a fresh posted NAV. Repeat `check-accounts` afterwards.
+
+The account-set check has its own messages:
+
+- *Could not read Lighter accounts* or *Lighter lists no accounts for
+  `<safe>`*: check the network and that `VAULT_ADDRESS` is the vault whose
+  Safe owns the accounts. Both fail the check; they used to pass.
+- *declared Lighter accounts … hold funds but have no position*: run
+  `correct-accounts`, which opens them.
+- *positions track Lighter accounts … the strategy does not declare*: run
+  `correct-accounts`; it closes a position once its account holds less than
+  1 USDC, and otherwise names the `lighter-move-funds` command that drains it.
+- *Lighter accounts … hold funds but are neither declared by the strategy nor
+  tracked*: the account is outside the vault's accounting. Declare it in the
+  strategy, or withdraw it to the Safe manually.
 
 ### `UnauthorizedException` during an authenticated SDK call
 

@@ -1012,9 +1012,8 @@ def create_missing_exchange_account_positions(
         if not pair.is_exchange_account():
             continue
 
-        # Check if position exists
-        existing_position = state.portfolio.get_position_by_trading_pair(pair)
-        if existing_position and existing_position.is_open():
+        # A frozen position still tracks the account; never open a second one next to it.
+        if any(position.pair == pair for position in state.portfolio.get_open_and_frozen_positions()):
             logger.debug("Exchange account position already exists for %s, skipping", pair)
             continue
 
@@ -1265,6 +1264,7 @@ def check_accounts(
     sync_model: SyncModel,
     block_identifier: BlockIdentifier = None,
     exchange_account_value_func: Callable[..., Decimal] | None = None,
+    check_clean: bool = True,
 ) -> Tuple[bool, pd.DataFrame]:
     """Create a summary accounting corrections needed.
 
@@ -1288,12 +1288,18 @@ def check_accounts(
         Optional public account-value reader for external exchange positions.
         The check is read-only and does not create balance update events.
 
+    :param check_clean:
+        Refuse a state with unfinished trades. ``check-accounts`` turns this
+        off after it has checked that the only unfinished trades are pending
+        Lighter transfers, which it reports instead.
+
     :return:
         Tuple (accounts clean, accounting clean Dataframe that can be printed to the console)
     """
 
     # Any unbroadcasted trades need to be cleaned up first
-    state.check_if_clean()
+    if check_clean:
+        state.check_if_clean()
 
     if block_identifier is None:
         web3 = sync_model.web3

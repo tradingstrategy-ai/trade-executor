@@ -23,12 +23,13 @@ from tradingstrategy.chain import ChainId
 from .app import app
 from .pair_mapping import parse_pair_data
 from ..bootstrap import prepare_executor_id, prepare_cache_and_token_cache, create_web3_config, create_state_store, \
-    create_execution_and_sync_model, resolve_deployment_file, create_client, configure_default_chain, \
+    create_execution_and_sync_model, create_lighter_routing_config, resolve_deployment_file, create_client, configure_default_chain, \
     check_universe_chains_have_rpc, check_universe_chains_have_gas, \
     check_universe_contracts_resolve
 from ..log import setup_logging
 from ..slippage import configure_max_slippage_tolerance
 from ..testtrade import make_test_trade
+from ...exchange_account.lighter import get_lighter_master_pair, has_lighter_exchange_account_pairs
 from ...ethereum.routing_state import OutOfBalance
 from ...ethereum.velvet.execution import VelvetExecution
 from ...ethereum.velvet.vault import VelvetVaultSyncModel
@@ -89,8 +90,12 @@ def perform_test_trade(
     single_pair: bool = Option(False, help="Test single pair in the trading universe."),
     test_short: bool = Option(True, "--test-short/--no-test-short", help="Perform test short trades as well."),
     test_credit_supply: bool = Option(False,"--test-credit-supply/--no-test-credit-supply", help="Deprecated argument. Do not use anymore. Inistead, specify --pair (...lending pair description...)"),
-    amount: float = Option(1.0, envvar="AMOUNT", help="The USD value of the test trade"),
+    amount: float = Option(1.0, envvar="AMOUNT", help="The USD value of the test trade. For a Lighter account, 1.0 is Lighter's minimum transfer."),
     simulate: bool = shared_options.simulate,
+    lighter_operator_record_file: Path | None = shared_options.lighter_operator_record_file,
+    lighter_sub_account_operator_record_files: str | None = shared_options.lighter_sub_account_operator_record_files,
+    lighter_withdrawal_timeout: int = shared_options.lighter_withdrawal_timeout,
+    lighter_transfer_timeout: int = shared_options.lighter_transfer_timeout,
 ):
     """Perform a small test swap.
 
@@ -115,6 +120,19 @@ def perform_test_trade(
 
         trade-executor perform-test-trade --lending-reserve "(base, aave-v3, USDC)"
 
+    Test a Lighter vault: ``--single-pair`` moves ``--amount`` USDC from the
+    Safe to the Lighter master account and back; ``--all-pairs`` does the
+    same for the master and, through the master, for every sub-account.
+    ``LIGHTER_OPERATOR_RECORD_FILE`` is required for any Lighter vault; the
+    command refuses before moving anything without it. Each movement is the
+    custody trade ``start`` would make, and a withdrawal waits up to
+    ``LIGHTER_WITHDRAWAL_TIMEOUT`` for Lighter to make it claimable.
+
+    The command saves the state only when it finishes. That is an accepted
+    trade-off for a manual one-off check: an interrupted deposit or transfer
+    shows up in ``check-accounts`` and ``correct-accounts`` books it; an
+    interrupted withdrawal must be claimed into the Safe by hand first, as
+    ``README-Lighter.md`` describes.
     """
 
     if pair:
@@ -164,6 +182,12 @@ def perform_test_trade(
 
     max_slippage = configure_max_slippage_tolerance(max_slippage, mod)
 
+    # A Lighter test trade needs the master's signer whether or not the strategy manages its cash automatically.
+    lighter_routing_config = (
+        create_lighter_routing_config(lighter_operator_record_file, lighter_sub_account_operator_record_files, lighter_withdrawal_timeout, lighter_transfer_timeout)
+        if asset_management_mode == AssetManagementMode.lagoon and lighter_operator_record_file is not None
+        else None
+    )
     execution_model, sync_model, valuation_model_factory, pricing_model_factory = create_execution_and_sync_model(
         asset_management_mode=asset_management_mode,
         private_key=private_key,
@@ -181,6 +205,7 @@ def perform_test_trade(
         # next to the state file by lagoon-deploy-vault. Derive from state_file so
         # a custom STATE_FILE location is honoured (matches the deploy side).
         deployment_file=resolve_deployment_file(id, state_file),
+        lighter_routing_config=lighter_routing_config,
     )
 
     client, routing_model = create_client(
@@ -195,7 +220,9 @@ def perform_test_trade(
         clear_caches=False,
         asset_management_mode=asset_management_mode,
     )
-    assert client is not None, "You need to give details for TradingStrategy.ai client"
+    if client is None:
+        # A universe built in code, such as Lighter's, needs no market data; one that does fails at construction.
+        logger.warning("No Trading Strategy client: the strategy universe must not need market data")
 
     if not state_file:
         state_file = f"state/{id}.json"
@@ -235,6 +262,7 @@ def perform_test_trade(
         universe_options,
         strategy_parameters=mod.parameters,
         execution_model=execution_model,
+        state=state,
     )
 
     # Validate all universe chains have RPC and gas before starting trades.
@@ -249,8 +277,13 @@ def perform_test_trade(
     # than after an irreversible cross-chain CCTP bridge.
     check_universe_contracts_resolve(web3config, universe, execution_model)
 
+    if has_lighter_exchange_account_pairs(universe) and lighter_routing_config is None:
+        # Refuse before any trade: without the master's signer the withdrawal would fail after the deposit moved funds.
+        raise ValueError("A Lighter test trade needs the master's operator record: set LIGHTER_OPERATOR_RECORD_FILE")
+
     if single_pair:
-        pair = universe.get_single_pair()
+        # A Lighter vault has one pair per account; its single test pair is the master.
+        pair = get_lighter_master_pair(universe.iterate_pairs()) if has_lighter_exchange_account_pairs(universe) else universe.get_single_pair()
         logger.info("Using single pair from the universe: %s", pair)
 
     runner = run_description.runner

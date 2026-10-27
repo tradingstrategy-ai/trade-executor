@@ -14,6 +14,7 @@ from typer import Option
 from typer.models import OptionInfo
 
 from eth_defi.gas import GasPriceMethod
+from tradeexecutor.ethereum.lighter.lighter_routing import DEFAULT_LIGHTER_TRANSFER_TIMEOUT_SECONDS, DEFAULT_LIGHTER_WITHDRAWAL_TIMEOUT_SECONDS
 from tradeexecutor.ethereum.web3config import collect_rpc_kwargs
 
 
@@ -70,10 +71,20 @@ private_key = Option(None, envvar="PRIVATE_KEY", help="Ethereum private key to b
 
 vault_address = Option(None, envvar="VAULT_ADDRESS", help="Deployed strategy vault address")
 
-lighter_operator_record_file_for_accounting = Option(
+lighter_operator_record_file = Option(
     None,
     envvar="LIGHTER_OPERATOR_RECORD_FILE",
-    help="Owner-only Lighter master operator record, used to read transfer history when reconciling an interrupted transfer between accounts",
+    help="Owner-only Lighter master operator record. start (with lighter_cash_management) and perform-test-trade need it for master withdrawals and every transfer between accounts; check-accounts, correct-accounts and repair read transfer history with it when reconciling an interrupted transfer",
+)
+lighter_withdrawal_timeout = Option(
+    DEFAULT_LIGHTER_WITHDRAWAL_TIMEOUT_SECONDS,
+    envvar="LIGHTER_WITHDRAWAL_TIMEOUT",
+    help="Maximum seconds to wait for a Lighter master secure withdrawal or sub-account L1 withdrawal to become claimable. Default 3600; a live sub-account withdrawal took about 29 minutes.",
+)
+lighter_transfer_timeout = Option(
+    DEFAULT_LIGHTER_TRANSFER_TIMEOUT_SECONDS,
+    envvar="LIGHTER_TRANSFER_TIMEOUT",
+    help="Maximum seconds to wait for a Lighter transfer between accounts to appear in transfer history",
 )
 lighter_sub_account_operator_record_files = Option(
     None,

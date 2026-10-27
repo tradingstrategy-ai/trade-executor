@@ -10,6 +10,7 @@ import pytest
 from eth_defi.compat import native_datetime_utc_now
 from eth_defi.lighter.api import LighterAccounts
 from pytest_mock import MockerFixture
+from requests.exceptions import RequestException
 from web3 import Web3
 
 from strategies.test_only.minimal_lighter_strategy import create_trading_universe
@@ -17,7 +18,9 @@ from tradeexecutor.ethereum.ethereum_protocol_adapters import EthereumPairConfig
 from tradeexecutor.ethereum.lagoon.vault import LagoonVaultSyncModel
 from tradeexecutor.exchange_account.derive import DeriveNetwork
 from tradeexecutor.exchange_account.lighter import (
+    LIGHTER_DUST_USDC,
     NegativeLighterEquityError,
+    check_lighter_account_set,
     create_lighter_account_value_func,
     create_lighter_exchange_account_pair,
     create_lighter_vault_valuation_func,
@@ -401,6 +404,7 @@ def test_negative_lighter_vault_valuation_aborts_before_nav(
     2. Evaluate the custom NAV function.
     3. Verify the invariant aborts before returning a value to Lagoon.
     4. Verify a Safe-owned sub-account outside the universe also aborts the NAV.
+    5. Verify an outside sub-account holding Lighter dust is left out of the NAV instead of aborting it.
     """
     # 1. Mock a valid Safe balance and negative public Lighter equity.
     # These reads are mocked because the unit test targets the fail-closed NAV
@@ -431,8 +435,74 @@ def test_negative_lighter_vault_valuation_aborts_before_nav(
 
     # 4. Verify a Safe-owned sub-account outside the universe also aborts the NAV.
     accounts.return_value = LighterAccounts(master_index=124, sub_account_indices=(2**47,))
+    # The outside account's equity decides, read from the same mocked public API.
+    snapshot = mocker.patch(
+        "tradeexecutor.exchange_account.lighter.fetch_lighter_accounts_equity",
+        return_value={2**47: SimpleNamespace(get_total=lambda: LIGHTER_DUST_USDC)},
+    )
     with pytest.raises(ValueError, match="not in the strategy universe"):
         valuation(None, block_number=7)
+
+    # 5. Verify an outside sub-account holding Lighter dust is left out of the NAV instead of aborting it.
+    # The master is valued from the same snapshot, so a transfer between two reads cannot move funds out of the NAV.
+    snapshot.return_value = {
+        124: SimpleNamespace(get_total=lambda: Decimal("2")),
+        2**47: SimpleNamespace(get_total=lambda: Decimal("0.4")),
+    }
+    assert valuation(None, block_number=7) == pytest.approx(5.0)
+
+
+def test_lighter_account_set_check(mocker: MockerFixture) -> None:
+    """Compare the Lighter accounts a Safe owns with the declared accounts and the tracked positions.
+
+    ``check-accounts`` and ``correct-accounts`` rely on this rule to catch
+    funds the NAV or the state misses, while a drained account below the
+    1 USDC withdrawal minimum must not fail the check forever.
+
+    1. Mock the Safe's Lighter accounts and their equity.
+    2. Check that matching accounts are clean.
+    3. Check that a funded declared account without a position, and a position of an undeclared account, are unclean.
+    4. Check that an undeclared, untracked account is clean below the dust threshold and unclean at it.
+    5. Check that a read failure and an empty account list are unclean.
+    """
+    # 1. Mock the Safe's Lighter accounts and their equity.
+    # Mocked because the check reads Lighter's public API, which knows no test Safe.
+    master, trend, arb, extra = 124, 2**47, 2**47 - 1, 2**47 - 2
+    equity = {master: Decimal(5), trend: Decimal(3), arb: Decimal(0), extra: Decimal("0.4")}
+    accounts = mocker.patch(
+        "tradeexecutor.exchange_account.lighter.fetch_lighter_accounts",
+        return_value=LighterAccounts(master_index=master, sub_account_indices=(trend, arb)),
+    )
+    mocker.patch(
+        "tradeexecutor.exchange_account.lighter.fetch_lighter_accounts_equity",
+        side_effect=lambda *_args, **_kwargs: {index: SimpleNamespace(get_total=lambda value=value: value) for index, value in equity.items()},
+    )
+    safe = "0x0000000000000000000000000000000000000002"
+
+    # 2. Check that matching accounts are clean.
+    assert check_lighter_account_set(safe, tracked=[master, trend, arb], declared=[master, trend, arb], session=object())[0]
+    # A drained declared account without a position is clean too.
+    assert check_lighter_account_set(safe, tracked=[master, trend], declared=[master, trend, arb], session=object())[0]
+
+    # 3. Check that a funded declared account without a position, and a position of an undeclared account, are unclean.
+    clean, message = check_lighter_account_set(safe, tracked=[master, arb], declared=[master, trend, arb], session=object())
+    assert not clean and f"declared Lighter accounts [{trend}] hold funds" in message
+    clean, message = check_lighter_account_set(safe, tracked=[master, trend, arb], declared=[master, trend], session=object())
+    assert not clean and f"positions track Lighter accounts [{arb}] the strategy does not declare" in message
+
+    # 4. Check that an undeclared, untracked account is clean below the dust threshold and unclean at it.
+    accounts.return_value = LighterAccounts(master_index=master, sub_account_indices=(trend, arb, extra))
+    assert check_lighter_account_set(safe, tracked=[master, trend, arb], declared=[master, trend, arb], session=object())[0]
+    equity[extra] = LIGHTER_DUST_USDC
+    clean, message = check_lighter_account_set(safe, tracked=[master, trend, arb], declared=[master, trend, arb], session=object())
+    assert not clean and f"Lighter accounts [{extra}] hold funds but are neither declared" in message
+
+    # 5. Check that a read failure and an empty account list are unclean.
+    accounts.side_effect = RequestException("unreachable")
+    assert not check_lighter_account_set(safe, tracked=[master], declared=[master], session=object())[0]
+    accounts.side_effect = None
+    accounts.return_value = None
+    assert check_lighter_account_set(safe, tracked=[master], declared=[master], session=object()) == (False, f"Lighter lists no accounts for {safe}")
 
 
 def test_lagoon_nav_adds_pending_settlement_float() -> None:

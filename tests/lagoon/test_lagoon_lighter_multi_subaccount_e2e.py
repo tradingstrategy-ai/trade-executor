@@ -263,8 +263,11 @@ def test_cli_lagoon_lighter_multi_subaccount_lifecycle(
     assert (master.get_quantity(), sub_1_position.get_quantity(), sub_2_position.get_quantity()) == (LIGHTER_MIN_MAINNET_USDC, 0, 0)
     assert state.portfolio.get_default_reserve_position().quantity == LIGHTER_BOOTSTRAP_SUBSCRIPTION - LIGHTER_MIN_MAINNET_USDC
     _run(cli, "check-accounts")
-    # A sub-account the strategy does not track would be missing from NAV.
+    # A sub-account the strategy does not track would be missing from NAV once it holds funds;
+    # below Lighter's 1 USDC withdrawal minimum it is unwithdrawable dust and passes.
     untracked = fake_lighter_core.create_sub_account()
+    _run(cli, "check-accounts")
+    fake_lighter_core.get_account(untracked).collateral = LIGHTER_MIN_MAINNET_USDC
     with pytest.raises(AssertionError, match="exited with 1"):
         _run(cli, "check-accounts")
     del fake_lighter_core.accounts[untracked]

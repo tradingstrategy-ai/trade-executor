@@ -246,6 +246,7 @@ def _book_exchange_account_balance_update(
     quantity: Decimal,
     timestamp: datetime.datetime,
     notes: str,
+    cause: BalanceUpdateCause = BalanceUpdateCause.vault_flow,
 ) -> BalanceUpdate:
     """Record a non-trade quantity change on an exchange-account position.
 
@@ -259,6 +260,8 @@ def _book_exchange_account_balance_update(
         Event timestamp.
     :param notes:
         Human-readable reason.
+    :param cause:
+        Why the quantity changed.
     :return:
         The stored balance update.
     """
@@ -266,7 +269,7 @@ def _book_exchange_account_balance_update(
     event = BalanceUpdate(
         balance_update_id=event_id,
         position_type=BalanceUpdatePositionType.open_position,
-        cause=BalanceUpdateCause.vault_flow,
+        cause=cause,
         asset=position.pair.base,
         block_mined_at=timestamp,
         strategy_cycle_included_at=timestamp,
@@ -622,3 +625,69 @@ def open_exchange_account_position(
         position.share_price_state = create_share_price_state(trade)
 
     return [trade]
+
+
+def close_exchange_account_position(
+    state: State,
+    position: TradingPosition,
+    executed_at: datetime.datetime,
+    notes: str,
+) -> TradeExecution:
+    """Close an exchange-account position whose account is left with an unwithdrawable residual.
+
+    The counterpart of :py:func:`open_exchange_account_position`. A non-zero
+    residual is written off as one ``correction`` balance update, a
+    zero-quantity closing trade is recorded directly in the state as the
+    opening trade is, and the position moves to the closed positions. No
+    custody transfer happens, so the trade carries no custody flags.
+
+    :param state:
+        Strategy state owning the position.
+    :param position:
+        Open exchange-account position.
+    :param executed_at:
+        Timestamp of the close.
+    :param notes:
+        Why the residual is written off and the position closed.
+    :return:
+        The closing trade.
+    """
+    assert position.is_exchange_account(), f"Expected an exchange-account position, got: {position}"
+    assert position.position_id in state.portfolio.open_positions, f"Only an open position can be closed: {position}"
+    residual = position.get_quantity()
+    if residual != 0:
+        write_off = _book_exchange_account_balance_update(
+            state=state,
+            position=position,
+            quantity=-residual,
+            timestamp=executed_at,
+            notes=notes,
+            cause=BalanceUpdateCause.correction,
+        )
+        if position.share_price_state is not None:
+            position.share_price_state = update_share_price_state_for_balance_update(position.share_price_state, write_off)
+    _position, trade, _created = state.create_trade(
+        strategy_cycle_at=executed_at,
+        pair=position.pair,
+        quantity=Decimal(0),
+        reserve=None,
+        assumed_price=1.0,
+        trade_type=TradeType.rebalance,
+        reserve_currency=position.reserve_currency,
+        reserve_currency_price=1.0,
+        notes=notes,
+        pair_fee=0.0,
+        lp_fees_estimated=0,
+        position=position,
+    )
+    trade.mark_success(
+        executed_at=executed_at,
+        executed_price=1.0,
+        executed_quantity=Decimal(0),
+        executed_reserve=Decimal(0),
+        lp_fees=0,
+        native_token_price=0,
+        force=True,
+    )
+    state.portfolio.close_position(position, executed_at)
+    return trade
