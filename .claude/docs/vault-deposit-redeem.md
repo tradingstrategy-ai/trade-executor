@@ -283,6 +283,18 @@ per-cycle window availability; `tradeexecutor.analysis.vault_windows.calculate_v
 summarises those gating inputs (open/closed/unknown days per vault) for
 notebook inspection.
 
+For a universe chart over time, use
+`tradeexecutor.analysis.vault_windows.calculate_vault_window_counts()` or the
+standard `available_trading_pairs()` chart. The count table has separate
+deposit-closed and redemption-closed series, price-history coverage and separate
+unknown-state counts. Pass `pair_ids` (`vault_pair_ids` on the chart) to exclude
+cash-management vaults; non-vault pairs are always excluded. Match
+`availability_tolerance` to the run. The count helper reuses `BacktestPricing`'s
+as-of evidence clocks, never future samples. Synthetic overrides take precedence
+and are labelled in the closure series. Missing/stale state is unknown rather
+than an observed closure, even where trading policy blocks unknown deposits.
+Price coverage alone does not establish strategy eligibility or an open window.
+
 ## Live trading
 
 In live trading nobody knows when a Lagoon operator will settle, so the

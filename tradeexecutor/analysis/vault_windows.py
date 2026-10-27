@@ -8,15 +8,19 @@
 - Surface data-quality issues: vaults with no usable state samples,
   long closed or unknown runs, and stale sample ages
 
-See :py:func:`calculate_vault_window_diagnostics` for the entry point.
+Use :py:func:`calculate_vault_window_diagnostics` for per-vault summaries and
+:py:func:`calculate_vault_window_counts` for trading-universe histories.
 """
 
 import datetime
+from collections.abc import Collection
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
+
+from tradeexecutor.backtest.backtest_pricing import BacktestPricing
 
 if TYPE_CHECKING:
     from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
@@ -118,6 +122,90 @@ def _run_summary(statuses: list[str], timestamps: pd.DatetimeIndex, target_statu
 
 def _format_ts(ts) -> str:
     return "" if ts is None or pd.isna(ts) else pd.Timestamp(ts).strftime("%Y-%m-%d")
+
+
+def calculate_vault_window_counts(
+    strategy_universe: "TradingStrategyUniverse",
+    cycle_index: pd.DatetimeIndex,
+    pair_ids: Collection[int] | None = None,
+    availability_tolerance: pd.Timedelta = pd.Timedelta(days=2),
+) -> pd.DataFrame:
+    """Count historical vault closures separately for deposits and redemptions.
+
+    Counts cover vaults within their candle-history bounds, excluding non-vault
+    pairs. Pass investable ``pair_ids`` to exclude cash-management vaults too.
+    Price coverage is not proof that the strategy's admission criteria pass.
+
+    Uses the pricing model's as-of state lookup, including its permission and
+    capacity evidence clocks and staleness tolerance. There is no backfill from
+    future state. A false flag or zero cap is closed; absent/stale/unknown flags
+    and caps are unknown, regardless of the strategy's unknown-state admission
+    policy. Synthetic window overrides take precedence and are labelled in the
+    returned column names. These are window closures, not permanent shutdowns.
+
+    :param cycle_index: Naive UTC decision timestamps to evaluate.
+    :param pair_ids: Optional vault scope, e.g. the universe minus queue venues.
+    :param availability_tolerance: Maximum historical state age, matching the run.
+    :return: Integer counts indexed by the supplied timestamps, including zeros.
+    """
+    if cycle_index.tz is not None:
+        raise ValueError("Vault window counts require naive UTC timestamps")
+    if availability_tolerance < pd.Timedelta(0):
+        raise ValueError("Availability tolerance must not be negative")
+
+    pairs = [
+        pair for pair in strategy_universe.iterate_pairs()
+        if pair.kind.is_vault() and (pair_ids is None or pair.internal_id in pair_ids)
+    ]
+    overrides = strategy_universe.vault_window_overrides or {}
+    synthetic = any(pair.internal_id in overrides for pair in pairs)
+    suffix = " (includes synthetic windows)" if synthetic else ""
+    columns = [
+        "Vaults with price history",
+        "Deposits closed" + suffix,
+        "Redemptions closed" + suffix,
+        "Deposit state unknown",
+        "Redemption state unknown",
+    ]
+    counts = pd.DataFrame(0, index=cycle_index, columns=columns, dtype="int64")
+    if not pairs or cycle_index.empty:
+        return counts
+
+    pricing = BacktestPricing(
+        strategy_universe,
+        routing_model=None,
+        data_delay_tolerance=availability_tolerance,
+    )
+    for pair in pairs:
+        candles = strategy_universe.data_universe.candles.get_candles_by_pair(pair.internal_id)
+        if candles is None or candles.empty:
+            continue
+        timestamps = candles.index.get_level_values("timestamp")
+        covered_index = cycle_index[(cycle_index >= timestamps.min()) & (cycle_index <= timestamps.max())]
+        counts.loc[covered_index, columns[0]] += 1
+        override = overrides.get(pair.internal_id)
+        for ts in covered_index:
+            if override is not None:
+                counts.loc[ts, columns[1]] += int(not override.is_deposit_open(ts.to_pydatetime()))
+                counts.loc[ts, columns[2]] += int(not override.is_redemption_open(ts.to_pydatetime()))
+                continue
+
+            # Reuse the pricing model's evidence-age rules instead of maintaining
+            # a second as-of implementation in reporting code.
+            sample = pricing._lookup_vault_state(ts, pair) or {}
+            for flag, cap, closed_column, unknown_column in (
+                ("deposits_open", "max_deposit", columns[1], columns[3]),
+                ("redemption_open", "max_redeem", columns[2], columns[4]),
+            ):
+                value = sample.get(flag)
+                capacity = sample.get(cap)
+                if _is_false(value) or _is_zero_cap(capacity):
+                    counts.loc[ts, closed_column] += 1
+                elif (value is None or pd.isna(value) or value == -1) and (
+                    capacity is None or pd.isna(capacity)
+                ):
+                    counts.loc[ts, unknown_column] += 1
+    return counts
 
 
 def calculate_vault_window_diagnostics(

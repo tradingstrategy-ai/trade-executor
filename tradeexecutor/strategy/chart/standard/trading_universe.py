@@ -1,5 +1,7 @@
 """Analysis of trading universe."""
 
+from collections.abc import Collection
+
 import pandas as pd
 from plotly.graph_objects import Figure
 import plotly.express as px
@@ -7,6 +9,7 @@ import plotly.express as px
 from tradingstrategy.chain import ChainId
 
 from tradeexecutor.strategy.chart.definition import ChartInput
+from tradeexecutor.analysis.vault_windows import calculate_vault_window_counts
 from tradeexecutor.strategy.pandas_trader.indicator import IndicatorNotFound
 from tradingstrategy.liquidity import LiquidityDataUnavailable
 
@@ -21,6 +24,8 @@ def available_trading_pairs(
     whitelisted_vault_pair_count="whitelisted_vault_pair_count",
     blacklisted_vault_pair_count="blacklisted_vault_pair_count",
     with_dataframe: bool = False,
+    vault_pair_ids: Collection[int] | None = None,
+    availability_tolerance: pd.Timedelta = pd.Timedelta(days=2),
 ) -> Figure | tuple[Figure, pd.DataFrame]:
     """Render a chart showing the number of trading pairs available for the strategy to trade over history.
 
@@ -35,6 +40,11 @@ def available_trading_pairs(
     :param blacklisted_vault_pair_count: Optional indicator counting visible
         vaults accidentally included despite a producer Blacklisted risk label.
     :param with_dataframe: If True, return both DataFrame and Figure.
+    :param vault_pair_ids: Optional investable vault scope for window counts;
+        exclude cash-management vaults here. Other indicator lines keep their
+        original scope and are not evidence of open deposit/redemption windows.
+    :param availability_tolerance: Historical state age accepted for window counts.
+        Match the backtest's pricing tolerance.
     """
 
     indicator_data = input.strategy_input_indicators
@@ -103,16 +113,19 @@ def available_trading_pairs(
     if blacklisted_vaults is not None:
         data["Blacklisted vaults (cannot allocate)"] = blacklisted_vaults
 
-    # df = pd.DataFrame({
-    #    : indicator_data.get_indicator_series(all_criteria_included_pair_count),
-    #    "Volume criteria met": indicator_data.get_indicator_series(volume_included_pair_count) if volume_criteria is not None else None,
-    #    "TVL criteria met": indicator_data.get_indicator_series(tvl_included_pair_count),
-    #    "Visible pairs": indicator_data.get_indicator_series(trading_pair_count),
-    #})
-
     df = pd.DataFrame(data)
 
+    if any(pair.kind.is_vault() for pair in input.strategy_universe.iterate_pairs()):
+        window_counts = calculate_vault_window_counts(
+            input.strategy_universe,
+            pd.DatetimeIndex(df.index),
+            pair_ids=vault_pair_ids,
+            availability_tolerance=availability_tolerance,
+        )
+        df = df.join(window_counts)
+
     fig = px.line(df, title='Trading pairs available for strategy to trade')
+    fig.update_traces(line_shape="hv")
     fig.update_yaxes(title="Number of assets")
     xaxis_kwargs = dict(title="Time")
     if input.start_at or input.end_at:
