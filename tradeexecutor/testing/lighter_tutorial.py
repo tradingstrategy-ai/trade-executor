@@ -302,8 +302,18 @@ def prepare_tutorial(config: TutorialConfig) -> Tutorial:
     return tutorial
 
 
-def run_cli(args: list[str], environment: dict[str, str]) -> None:
-    """Invoke a real Typer command without printing its environment."""
+def run_cli(args: list[str], environment: dict[str, str], check: bool = True) -> int:
+    """Invoke a real Typer command without printing its environment.
+
+    :param args:
+        Command and its options.
+    :param environment:
+        The command's whole environment.
+    :param check:
+        Raise ``SystemExit`` on a non-zero exit code instead of returning it.
+    :return:
+        The exit code.
+    """
     _latest_delayed_block_number_cache.clear()
     logger.info("Running: trade-executor %s", " ".join(args))
     patched_environment = dict(environment)
@@ -316,10 +326,13 @@ def run_cli(args: list[str], environment: dict[str, str]) -> None:
                 app(args, standalone_mode=False)
             except SystemExit as error:
                 if error.code not in (None, 0):
-                    raise
+                    if check:
+                        raise
+                    return error.code
     finally:
         # Typer commands replace the root logger with their own LOG_LEVEL.
         configure_logging()
+    return 0
 
 
 def broadcast_and_wait(tutorial: Tutorial, function: ContractFunction) -> None:
@@ -513,7 +526,7 @@ def initialise_state(tutorial: Tutorial) -> None:
 
 
 def subscribe(tutorial: Tutorial, settle_with_start: bool = True, **start_overrides: str) -> None:
-    """Subscribe to Lagoon and run one ``start`` cycle, which settles the subscription.
+    """Subscribe to Lagoon and settle the subscription, by default with one ``start`` cycle.
 
     The deposit request is recorded in ``progress.json`` and checked onchain
     first, so a resumed run settles and claims the earlier request instead of

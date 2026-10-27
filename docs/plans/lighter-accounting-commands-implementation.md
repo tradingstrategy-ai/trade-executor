@@ -57,10 +57,9 @@ fresh deployment end to end. `--all-pairs` does one round trip per account.
    `start.py:162-176` still defines inline (`lighter_operator_record_file`,
    `lighter_withdrawal_timeout`, `lighter_transfer_timeout`) into
    `shared_options.py` next to `lighter_sub_account_operator_record_files`
-   so both commands declare them once. The helper already raises
-   `ValueError` naming `LIGHTER_OPERATOR_RECORD_FILE` when the strategy sets
-   `lighter_cash_management` and no record is given (`start.py:98`); that is
-   the "not configured" error, nothing new is needed.
+   so both commands declare them once. (Superseded in implementation: the
+   `start` helper ignores the record unless the strategy sets
+   `lighter_cash_management`, so see the implementation notes.)
 3. **An exchange-account branch in `make_test_trade()`**
    (`tradeexecutor/cli/testtrade.py:1024`). After the pair is resolved and
    before the reserve checks at `testtrade.py:1185-1193`, so that a
@@ -90,7 +89,7 @@ fresh deployment end to end. `--all-pairs` does one round trip per account.
      (`tradeexecutor/cli/close_position.py:204-212`) and hide it from
      `get_closed_positions_for_pair()` (`tradeexecutor/state/portfolio.py:354`).
      Pass `notes="perform-test-trade: ..."` to the custody methods instead;
-     the trade summary already prints notes.
+     each trade's notes are logged as it succeeds.
    - `buy_only` stops after the deposit (and the funding for a sub-account);
      `close_only` performs the withdrawal only. No short, no `test_short`.
    - **Fee headroom.** A transfer between accounts charges Lighter's fee on
@@ -147,10 +146,10 @@ the shared fixed Ethereum fork, `SIMULATE=true`, the `Tutorial` helpers of
    `lighter_core.py:252`, and rejects a funding only when
    `amount + fee` exceeds the free collateral, so without this step two
    sub-accounts would sit exactly on the boundary).
-4. `perform-test-trade --all-pairs --amount 1`: the master gets another
-   deposit and withdrawal; each sub-account position gets a funding and a
-   withdrawal trade; the Safe's USDC is down by the net master deposit
-   only, because every round trip withdraws what it deposited, while the
+4. `perform-test-trade --all-pairs --amount 1`: the master position gets
+   one deposit per account and its own withdrawal; each sub-account
+   position gets a funding and a withdrawal trade; the Safe's USDC is
+   unchanged, because every round trip withdraws what it deposited, while the
    master's Lighter equity is down by one fake transfer fee per
    sub-account, booked as fee balance updates on the master position by
    `complete_exchange_account_funding()` (`tradeexecutor/exchange_account/state.py:355-361`);
@@ -228,7 +227,7 @@ with what the strategy declares and what the state tracks, so that
 
 Goal: `--dry-run` previews what the real run does, frozen positions are
 handled like open ones, and positions of accounts the strategy no longer
-declares are cleaned up like HyperCore dust.
+declares are closed under Lighter's own dust rule.
 
 ### Changes
 
@@ -257,9 +256,9 @@ declares are cleaned up like HyperCore dust.
    frozen one comes from manual repair. `PositionManager` and
    `ensure_lighter_positions()` look up open positions only
    (`position_manager.py:445,545`), so document in `README-Lighter.md`
-   that a frozen Lighter position must be unfrozen with `repair` before
-   `start` runs, or the next custody trade opens a second position for the
-   account.
+   that a frozen Lighter position must be moved back to the open positions
+   by hand before `start` runs, or the next custody trade opens a second
+   position for the account; `repair` cannot unfreeze it.
 3. **Close positions of undeclared accounts under Lighter's own rules.**
    New module `tradeexecutor/exchange_account/lighter_cleanup.py`, Lighter
    only, with one public function
@@ -269,8 +268,8 @@ declares are cleaned up like HyperCore dust.
    (not inside) the first HyperCore dust call at `:1157` and before the
    preflight at `:1169` and the dry-run return at `:1306`, so a dry run
    previews the closes and the real run's preflight sees the closed
-   positions. A frozen Lighter position is skipped with a warning "run
-   repair first": `unfreeze_position()` (`tradeexecutor/state/repair.py:790-802`)
+   positions. A frozen Lighter position is skipped with a warning to move
+   it back to the open positions by hand: `unfreeze_position()` (`tradeexecutor/state/repair.py:790-802`)
    only accepts repaired trades and asserts `can_be_closed()`, which is
    never true for an exchange-account position
    (`tradeexecutor/state/position.py:1438-1441`). For each open Lighter
@@ -345,8 +344,8 @@ master index the state records.
    no new position for its account; `check-accounts` passes. Move the
    position back to `open_positions` in the state before step 9.
 9. Switch `STRATEGY_FILE` to `minimal_lighter_strategy.py` with
-   `LIGHTER_ACCOUNT_INDEX=<master>`. `check-accounts` exits 1 naming the
-   funded, now undeclared sub-account. `correct-accounts` exits 1 with the
+   `LIGHTER_ACCOUNT_INDEX=<master>`. `check-accounts` exits 1 naming both
+   undeclared sub-accounts. `correct-accounts` exits 1 with the
    `lighter-move-funds` instruction and closes the other, drained
    sub-account's position. Debit the fake account to 0.4 USDC, below the
    1 USDC withdrawal minimum, run `correct-accounts`: it writes the
@@ -389,8 +388,8 @@ Implemented on 2026-10-27. Deviations from the plan above:
 - **`close_undeclared_lighter_positions(state, universe, executed_at)`
   takes no equity argument and returns only the closed positions.** It runs
   after the exchange-account sync, so a position's quantity already is the
-  account's equity. A funded or frozen undeclared position is left open,
-  and `check_lighter_account_set()` reports it as tracked but undeclared,
+  account's equity. A funded undeclared position is left open and a frozen
+  one frozen, and `check_lighter_account_set()` reports it as tracked but undeclared,
   which gives `correct-accounts` its exit code.
 - **`check_lighter_account_set()` takes index sets** (`tracked`,
   `declared`) instead of pairs, and an undeclared, untracked account at or
@@ -408,3 +407,27 @@ Implemented on 2026-10-27. Deviations from the plan above:
   untracked sub-account before expecting a failure, as an empty one is now
   Lighter dust, and `test_home_chain_async_settlement.py` marks its
   `MagicMock` pair as not an exchange account.
+- **`perform-test-trade` builds its Lighter routing configuration whenever
+  an operator record is given**, with `create_lighter_routing_config()` in
+  `tradeexecutor/cli/bootstrap.py`. Reusing `start`'s helper would have
+  ignored the record for a strategy without `lighter_cash_management`,
+  such as `strategies/lighter-ai.py`: the deposit would succeed and the
+  withdrawal fail. For a Lighter universe without a record the command now
+  refuses before any trade.
+- **The no-checkpoint trade-off is sharper for withdrawals.** An
+  interrupted withdrawal waits in the Safe's pending balance with no saved
+  trade, so `lighter-move-funds` cannot resume it; the README tells the
+  operator to claim it with `claim_usdc_to_lagoon_safe_from_lighter()` and
+  only then run `correct-accounts`.
+- Simplifications after review: `check_lighter_vault_accounts()` in
+  `lighter_cleanup.py` serves both commands, `get_funded_lighter_accounts()`
+  holds the dust rule once, `State.check_if_clean(ignore=...)` replaces a
+  copied loop in `check-accounts`, `get_lighter_trade_hashes()` moved from
+  the testing helpers into `exchange_account/lighter.py`, and one
+  `LIGHTER_OPERATOR_RECORD_FILE` option serves every command.
+- Codex (gpt-6.1-sol) review fixes: when the NAV reader fetches the
+  by-owner equity snapshot (several declared accounts, or an undeclared
+  dust account), it values every declared account from that one snapshot,
+  so a transfer between two reads cannot move funds out of the NAV; and
+  `correct-accounts` keeps reconciling the Safe reserve after it has closed
+  the last Lighter position.

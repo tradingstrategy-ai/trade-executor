@@ -1,6 +1,9 @@
-"""Close Lighter positions of accounts the strategy no longer declares.
+"""Lighter account rules for ``check-accounts`` and ``correct-accounts``.
 
-Lighter's own close and dust rules, separate from the HyperCore ones in
+Compares the accounts the Safe owns with the accounts the strategy declares
+and the positions the state tracks, and closes the positions of accounts the
+strategy no longer declares. Lighter's own close and dust rules, separate
+from the HyperCore ones in
 ``tradeexecutor.ethereum.vault.hypercore_small_position_cleanup``. Lighter
 cannot withdraw less than :data:`~tradeexecutor.exchange_account.lighter.LIGHTER_DUST_USDC`,
 so a residual below it can never return to the Safe. When the strategy stops
@@ -14,7 +17,7 @@ automatically.
 import datetime
 import logging
 
-from tradeexecutor.exchange_account.lighter import LIGHTER_DUST_USDC, is_lighter_exchange_account_pair
+from tradeexecutor.exchange_account.lighter import LIGHTER_DUST_USDC, check_lighter_account_set, is_lighter_exchange_account_pair
 from tradeexecutor.exchange_account.state import close_exchange_account_position
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
@@ -50,7 +53,7 @@ def close_undeclared_lighter_positions(
     closed = []
     for position in state.portfolio.frozen_positions.values():
         if is_lighter_exchange_account_pair(position.pair) and position.pair not in declared:
-            logger.warning("Lighter position #%d of undeclared account %s is frozen; run repair first", position.position_id, position.pair.get_exchange_account_id())
+            logger.warning("Lighter position #%d of undeclared account %s is frozen; move it back to the open positions and rerun correct-accounts", position.position_id, position.pair.get_exchange_account_id())
     for position in list(state.portfolio.open_positions.values()):
         if not is_lighter_exchange_account_pair(position.pair) or position.pair in declared:
             continue
@@ -74,3 +77,28 @@ def close_undeclared_lighter_positions(
                 account_index,
             )
     return closed
+
+
+def check_lighter_vault_accounts(safe_address: str, state: State, universe: TradingStrategyUniverse) -> str | None:
+    """Check the Lighter accounts of a Lagoon vault against the strategy and the state, and log the result.
+
+    :param safe_address:
+        Safe owning the Lighter accounts.
+    :param state:
+        Strategy state; its open and frozen Lighter positions are the tracked accounts.
+    :param universe:
+        Strategy universe; its Lighter pairs are the declared accounts.
+    :return:
+        ``None`` when clean or when the vault has no Lighter account at all,
+        otherwise the problem message.
+    """
+    declared = [int(pair.get_exchange_account_id()) for pair in universe.iterate_pairs() if is_lighter_exchange_account_pair(pair)]
+    tracked = [int(position.pair.get_exchange_account_id()) for position in state.portfolio.get_open_and_frozen_positions() if is_lighter_exchange_account_pair(position.pair)]
+    if not declared and not tracked:
+        return None
+    clean, message = check_lighter_account_set(safe_address, tracked=tracked, declared=declared)
+    if clean:
+        logger.info("%s", message)
+        return None
+    logger.error("%s", message)
+    return message

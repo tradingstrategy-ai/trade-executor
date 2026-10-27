@@ -666,7 +666,6 @@ def close_exchange_account_position(
         )
         if position.share_price_state is not None:
             position.share_price_state = update_share_price_state_for_balance_update(position.share_price_state, write_off)
-    opening_trade = position.get_first_trade()
     _position, trade, _created = state.create_trade(
         strategy_cycle_at=executed_at,
         pair=position.pair,
@@ -674,7 +673,7 @@ def close_exchange_account_position(
         reserve=None,
         assumed_price=1.0,
         trade_type=TradeType.rebalance,
-        reserve_currency=opening_trade.reserve_currency,
+        reserve_currency=position.reserve_currency,
         reserve_currency_price=1.0,
         notes=notes,
         pair_fee=0.0,

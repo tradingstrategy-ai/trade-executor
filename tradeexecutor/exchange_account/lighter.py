@@ -25,6 +25,7 @@ from tradeexecutor.state.identifier import (
     TradingPairIdentifier,
     TradingPairKind,
 )
+from tradeexecutor.state.trade import TradeExecution
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +96,41 @@ def get_public_lighter_metadata(metadata: dict[Any, Any]) -> dict[str, Any]:
     return public
 
 
+def get_funded_lighter_accounts(indices: Iterable[int], snapshot: Mapping[int, Any]) -> list[int]:
+    """Return the accounts holding at least :data:`LIGHTER_DUST_USDC`, Lighter's dust rule.
+
+    :param indices:
+        Account indices to test.
+    :param snapshot:
+        Equity per account index from ``fetch_lighter_accounts_equity()``.
+    :return:
+        The funded accounts, sorted. An account missing from the snapshot
+        counts as funded, so callers fail closed.
+    """
+    return sorted(index for index in indices if index not in snapshot or snapshot[index].get_total() >= LIGHTER_DUST_USDC)
+
+
+def get_lighter_trade_hashes(trade: TradeExecution) -> list[str]:
+    """Return the Ethereum transaction hashes and Lighter identifiers of a trade.
+
+    :param trade:
+        Any trade on an exchange-account position.
+    :return:
+        ``label: hash`` lines, Ethereum transactions first.
+    """
+    lines = [f"ethereum: {tx.tx_hash}" for tx in trade.blockchain_transactions if tx.tx_hash]
+    other_data = trade.other_data or {}
+    for key, label in (
+        ("lighter_deposit_tx_hash", "ethereum deposit"),
+        ("lighter_withdrawal_request_id", "withdrawal request"),
+        ("lighter_claim_tx_hash", "ethereum claim"),
+        ("lighter_transfer_tx_hash", "lighter transfer"),
+    ):
+        if other_data.get(key):
+            lines.append(f"{label}: {other_data[key]}")
+    return lines
+
+
 def check_lighter_account_set(
     safe_address: str,
     tracked: Collection[int],
@@ -140,19 +176,14 @@ def check_lighter_account_set(
     if accounts is None:
         return False, f"Lighter lists no accounts for {safe_address}"
     owned = set(accounts.get_all_indices())
-
-    def is_funded(index: int) -> bool:
-        # An account missing from the snapshot counts as funded, so the check fails closed.
-        return index not in snapshot or snapshot[index].get_total() >= LIGHTER_DUST_USDC
-
     problems = []
-    unopened = sorted(index for index in (owned & declared) - tracked if is_funded(index))
+    unopened = get_funded_lighter_accounts((owned & declared) - tracked, snapshot)
     if unopened:
         problems.append(f"declared Lighter accounts {unopened} hold funds but have no position; run correct-accounts to open them")
     undeclared = sorted(tracked - declared)
     if undeclared:
         problems.append(f"positions track Lighter accounts {undeclared} the strategy does not declare; run correct-accounts, which closes them once they hold less than {LIGHTER_DUST_USDC} USDC")
-    unknown = sorted(index for index in owned - declared - tracked if is_funded(index))
+    unknown = get_funded_lighter_accounts(owned - declared - tracked, snapshot)
     if unknown:
         problems.append(f"Lighter accounts {unknown} hold funds but are neither declared by the strategy nor tracked, so the NAV omits them")
     unowned = sorted((tracked | declared) - owned)
@@ -626,14 +657,17 @@ def create_lighter_vault_valuation_func(
         accounts = fetch_lighter_accounts(lighter_session, safe_address)
         unconfigured = set(accounts.get_all_indices()) - set(indices) if accounts is not None else set()
         snapshot = fetch_lighter_accounts_equity(lighter_session, safe_address) if unconfigured or len(indices) > 1 else {}
-        funded = sorted(index for index in unconfigured if index not in snapshot or snapshot[index].get_total() >= LIGHTER_DUST_USDC)
+        funded = get_funded_lighter_accounts(unconfigured, snapshot)
         if funded:
             raise ValueError(
                 f"Lighter accounts {funded} owned by {safe_address} are not in the strategy universe, "
                 f"so the NAV would omit them"
             )
-        if len(indices) == 1:
+        if not snapshot:
+            # One account and nothing else owned: the per-account read.
             return account_value_func(pair)
+        # Value every account from the one snapshot, so a transfer between two
+        # reads cannot move funds out of the NAV.
         missing = [index for index in indices if index not in snapshot]
         if missing:
             # Fail closed: a missing account would understate the posted NAV.

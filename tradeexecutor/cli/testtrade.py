@@ -29,7 +29,7 @@ from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
 from tradeexecutor.ethereum.vault.settlement_retry import check_and_resolve_vault_settlements
 from tradeexecutor.ethereum.vault.vault_routing import get_vault_for_pair
 from tradeexecutor.ethereum.web3config import TEST_CHAIN_IDS
-from tradeexecutor.exchange_account.lighter import LIGHTER_MASTER_ACCOUNT_ID, LIGHTER_PROTOCOL, get_lighter_account_id
+from tradeexecutor.exchange_account.lighter import LIGHTER_MASTER_ACCOUNT_ID, get_lighter_account_id, is_lighter_exchange_account_pair
 from tradeexecutor.state.trade import TradeExecution, TradeFlag, TradeStatus
 from tradeexecutor.state.types import Percent
 from tradeexecutor.statistics.core import update_statistics
@@ -1052,7 +1052,7 @@ def _make_exchange_account_test_trade(
     :param close_only:
         Only withdraw ``amount`` from the account back to the Safe.
     """
-    if pair.get_exchange_account_protocol() != LIGHTER_PROTOCOL:
+    if not is_lighter_exchange_account_pair(pair):
         raise NotImplementedError(f"Test trades are not supported for {pair.get_exchange_account_protocol()} exchange accounts")
     account = get_lighter_account_id(pair)
     notes = f"perform-test-trade: {amount} USDC through Lighter account {account}"

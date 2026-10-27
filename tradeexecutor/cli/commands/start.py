@@ -23,7 +23,7 @@ from tradingstrategy.timebucket import TimeBucket
 from . import shared_options
 from .app import app
 from ..bootstrap import prepare_executor_id, prepare_cache_and_token_cache, create_web3_config, create_state_store, \
-    create_execution_and_sync_model, resolve_deployment_file, log_multichain_deployment_information, update_strategy_file_deployment_info, refresh_lagoon_guard_migration_state, create_metadata, create_approval_model, create_client, configure_default_chain
+    create_execution_and_sync_model, create_lighter_routing_config, resolve_deployment_file, log_multichain_deployment_information, update_strategy_file_deployment_info, refresh_lagoon_guard_migration_state, create_metadata, create_approval_model, create_client, configure_default_chain
 from ...exchange_account.derive import DeriveNetwork
 from ..log import setup_logging, setup_discord_logging, setup_logstash_logging, setup_file_logging, setup_telegram_logging, setup_sentry_logging
 from ..loop import ExecutionLoop
@@ -36,7 +36,6 @@ from ...ethereum.lighter.lighter_routing import LighterRoutingConfig
 from ...ethereum.lagoon.vault import LagoonVaultSyncModel
 from ...ethereum.velvet.execution import VelvetExecution
 from ...ethereum.velvet.vault import VelvetVaultSyncModel
-from ...exchange_account.lighter_operator import load_lighter_operator_record, load_lighter_sub_account_operator_records
 from ...state.state import State
 from ...state.store import NoneStore, JSONFileStore
 from ...strategy.approval import ApprovalType
@@ -82,7 +81,7 @@ def _create_lighter_routing_config(
     :param withdrawal_timeout:
         CLI timeout for the secure withdrawal wait.
     :param transfer_timeout:
-        CLI timeout for a master to sub-account transfer to appear in history.
+        CLI timeout for a transfer between accounts to appear in history.
     :return:
         Lighter routing settings, or ``None`` when the strategy does not use them.
     """
@@ -97,12 +96,7 @@ def _create_lighter_routing_config(
             "when automatic Lighter cash management is enabled"
         )
 
-    return LighterRoutingConfig(
-        operator_record=load_lighter_operator_record(operator_record_file),
-        sub_account_operator_records=load_lighter_sub_account_operator_records(sub_account_operator_record_files),
-        withdrawal_timeout=withdrawal_timeout,
-        transfer_timeout=transfer_timeout,
-    )
+    return create_lighter_routing_config(operator_record_file, sub_account_operator_record_files, withdrawal_timeout, transfer_timeout)
 
 
 def should_save_failed_execution(error: BaseException) -> bool:

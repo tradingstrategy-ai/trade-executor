@@ -8,16 +8,18 @@ from eth_defi.hotwallet import HotWallet
 from tabulate import tabulate
 
 from tradeexecutor.exchange_account.lighter import (
-    LIGHTER_PROTOCOL,
-    check_lighter_account_set,
     create_lighter_account_value_func,
+    get_lighter_trade_hashes,
+    is_lighter_exchange_account_pair,
     validate_lighter_exchange_account_pairs,
 )
+from tradeexecutor.exchange_account.lighter_cleanup import check_lighter_vault_accounts
 from tradeexecutor.ethereum.lighter.transfer_verification import reconcile_verified_lighter_transfers
 from tradeexecutor.exchange_account.lighter_operator import load_lighter_signers
 from tradeexecutor.strategy.account_correction import check_accounts as _check_accounts
 
 from ...state.state import UncleanState
+from ...state.trade import TradeExecution
 from ...strategy.bootstrap import make_factory_from_strategy_mod
 from ...strategy.description import StrategyExecutionDescription
 from ...strategy.execution_context import ExecutionContext, ExecutionMode
@@ -65,7 +67,7 @@ def check_accounts(
     test_evm_uniswap_v2_init_code_hash: Optional[str] = shared_options.test_evm_uniswap_v2_init_code_hash,
     unit_testing: bool = shared_options.unit_testing,
     raise_on_unclean: bool = typer.Option(False, is_flag=False, envvar="RAISE_ON_UNCLEAN", help="Raise an exception if unclean. Unit test option."),
-    lighter_operator_record_file: Path | None = shared_options.lighter_operator_record_file_for_accounting,
+    lighter_operator_record_file: Path | None = shared_options.lighter_operator_record_file,
     lighter_sub_account_operator_record_files: str | None = shared_options.lighter_sub_account_operator_record_files,
 ):
     """Check that the state ledger matches onchain and external balances.
@@ -145,25 +147,18 @@ def check_accounts(
 
     # Report pending Lighter transfers instead of refusing the state, so the
     # operator can inspect them; any other unfinished trade still refuses it.
-    pending = []
-    for position in state.portfolio.get_open_and_frozen_positions():
-        for trade in position.trades.values():
-            if trade.is_exchange_account_transfer_pending() and trade.pair.get_exchange_account_protocol() == LIGHTER_PROTOCOL:
-                pending.append(trade)
-            elif trade.is_unfinished() or trade.is_exchange_account_transfer_pending():
-                raise UncleanState(f"Position #{position.position_id}, trade #{trade.trade_id} ({trade.get_status().value}) is unfinished")
+    def is_pending_lighter_transfer(trade: TradeExecution) -> bool:
+        return trade.is_exchange_account_transfer_pending() and is_lighter_exchange_account_pair(trade.pair)
+
+    state.check_if_clean(ignore=is_pending_lighter_transfer)
+    pending = [trade for position in state.portfolio.get_open_and_frozen_positions() for trade in position.trades.values() if is_pending_lighter_transfer(trade)]
     for trade in pending:
-        hashes = ", ".join(
-            f"{key}={trade.other_data[key]}"
-            for key in ("lighter_transfer_tx_hash", "lighter_withdrawal_request_id", "lighter_claim_tx_hash")
-            if (trade.other_data or {}).get(key)
-        )
         logger.error(
-            "Lighter transfer trade #%d on %s is pending (%s) %s; run correct-accounts or repair",
+            "Lighter transfer trade #%d on %s is pending (%s), %s; run correct-accounts or repair",
             trade.trade_id,
             trade.pair.get_ticker(),
             trade.get_status().value,
-            hashes or "with no recorded hash",
+            ", ".join(get_lighter_trade_hashes(trade)) or "no recorded hash",
         )
 
     mod: StrategyModuleInformation = read_strategy_module(strategy_file)
@@ -238,19 +233,9 @@ def check_accounts(
     clean = clean and not pending
 
     vault = getattr(sync_model, "vault", None)
-    declared_pairs = validate_lighter_exchange_account_pairs(universe.iterate_pairs()) if vault is not None else []
-    if vault is not None and (lighter_pairs or declared_pairs):
-        # Every Lighter account the Safe owns must be declared and tracked, or NAV misses it.
-        accounts_clean, message = check_lighter_account_set(
-            vault.safe_address,
-            tracked=[int(pair.get_exchange_account_id()) for pair in lighter_pairs],
-            declared=[int(pair.get_exchange_account_id()) for pair in declared_pairs],
-        )
-        if accounts_clean:
-            logger.info("%s", message)
-        else:
-            logger.error("%s", message)
-            clean = False
+    # Every Lighter account the Safe owns must be declared and tracked, or NAV misses it.
+    if vault is not None and check_lighter_vault_accounts(vault.safe_address, state, universe):
+        clean = False
 
     output = tabulate(
         df,

@@ -7,10 +7,14 @@ for a Lagoon vault whose Safe owns a Lighter master account and sub-accounts
 and what still has to change. Written 2026-10-27 after PR #1683 merged, from
 reading the code at `befacd195`.
 
-**Status:** priorities 1 and 2 and the `check-accounts` items of priority 3
-are implemented as described in
+**Status:** the sections below describe the code at `befacd195` and are kept
+as the analysis. Since then, `check-accounts` gaps 1–5, `correct-accounts`
+gaps 1–3 and 5 and `perform-test-trade` gaps 1–4 are resolved, and the
+documentation claims at the end are corrected, as described in
 [lighter-accounting-commands-implementation.md](lighter-accounting-commands-implementation.md).
-`lagoon-lighter-test-trade` is unchanged and stays master-only.
+`correct-accounts` gap 4 (closed positions of declared accounts are
+reopened) is documented as intended. `lagoon-lighter-test-trade` is
+unchanged and stays master-only.
 
 ## Summary of actions
 

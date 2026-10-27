@@ -24,6 +24,7 @@ from eth_defi.vault.base import VaultSpec
 from eth_defi.velvet import VelvetVault
 from tradeexecutor.ethereum.lagoon.execution import LagoonExecution
 from tradeexecutor.ethereum.lighter.lighter_routing import LighterRoutingConfig
+from tradeexecutor.exchange_account.lighter_operator import load_lighter_operator_record, load_lighter_sub_account_operator_records
 from tradeexecutor.ethereum.lagoon.vault import (
     LagoonVaultSyncModel,
     fetch_lagoon_guard_v0_settlement_metadata,
@@ -199,6 +200,33 @@ def create_web3_config(
         web3config.mainnet_fork_simulation = True
 
     return web3config
+
+
+def create_lighter_routing_config(
+    operator_record_file: Path,
+    sub_account_operator_record_files: str | None,
+    withdrawal_timeout: int,
+    transfer_timeout: int,
+) -> LighterRoutingConfig:
+    """Load the Lighter signers a command was given into routing settings.
+
+    :param operator_record_file:
+        Owner-only master operator record.
+    :param sub_account_operator_record_files:
+        Comma-separated sub-account hand-over records the executor may sign with.
+    :param withdrawal_timeout:
+        Seconds to wait for a withdrawal to become claimable.
+    :param transfer_timeout:
+        Seconds to wait for a transfer between accounts to appear in history.
+    :return:
+        Lighter routing settings.
+    """
+    return LighterRoutingConfig(
+        operator_record=load_lighter_operator_record(operator_record_file),
+        sub_account_operator_records=load_lighter_sub_account_operator_records(sub_account_operator_record_files),
+        withdrawal_timeout=withdrawal_timeout,
+        transfer_timeout=transfer_timeout,
+    )
 
 
 def create_execution_model(

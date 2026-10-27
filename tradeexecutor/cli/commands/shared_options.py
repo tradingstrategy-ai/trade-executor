@@ -74,7 +74,7 @@ vault_address = Option(None, envvar="VAULT_ADDRESS", help="Deployed strategy vau
 lighter_operator_record_file = Option(
     None,
     envvar="LIGHTER_OPERATOR_RECORD_FILE",
-    help="Owner-only Lighter operator record used for Lighter custody trades: master secure withdrawals and transfers sent from the master",
+    help="Owner-only Lighter master operator record. start (with lighter_cash_management) and perform-test-trade need it for master withdrawals and every transfer between accounts; check-accounts, correct-accounts and repair read transfer history with it when reconciling an interrupted transfer",
 )
 lighter_withdrawal_timeout = Option(
     DEFAULT_LIGHTER_WITHDRAWAL_TIMEOUT_SECONDS,
@@ -85,11 +85,6 @@ lighter_transfer_timeout = Option(
     DEFAULT_LIGHTER_TRANSFER_TIMEOUT_SECONDS,
     envvar="LIGHTER_TRANSFER_TIMEOUT",
     help="Maximum seconds to wait for a Lighter transfer between accounts to appear in transfer history",
-)
-lighter_operator_record_file_for_accounting = Option(
-    None,
-    envvar="LIGHTER_OPERATOR_RECORD_FILE",
-    help="Owner-only Lighter master operator record, used to read transfer history when reconciling an interrupted transfer between accounts",
 )
 lighter_sub_account_operator_record_files = Option(
     None,

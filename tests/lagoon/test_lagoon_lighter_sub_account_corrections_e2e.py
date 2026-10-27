@@ -105,12 +105,8 @@ def _run_and_read(tutorial: Tutorial, args: list[str], caplog: LogCaptureFixture
     """Run a command and return its exit code with everything it logged and printed."""
     caplog.clear()
     capsys.readouterr()
-    code = 0
     with caplog.at_level(logging.INFO):
-        try:
-            run_cli(args, get_cli_environment(tutorial, **overrides))
-        except SystemExit as error:
-            code = error.code
+        code = run_cli(args, get_cli_environment(tutorial, **overrides), check=False)
     # The command installs its own console handler, so read both captures.
     captured = capsys.readouterr()
     return code, captured.out + captured.err + caplog.text

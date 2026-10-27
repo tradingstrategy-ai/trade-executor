@@ -360,3 +360,23 @@ class FakeLighterCore:
             ("tradeexecutor.cli.commands.lighter_move_funds.fetch_lighter_withdrawal_delay", self.fetch_lighter_withdrawal_delay),
             ("tradeexecutor.cli.commands.lighter_move_funds.request_usdc_withdrawal_from_lighter_account", self.request_usdc_withdrawal_from_lighter_account),
         ]
+
+
+def get_master_only_account_patches(master_index: int, equity: Callable[[], LighterEquity]) -> list[tuple[str, Callable[..., Any]]]:
+    """Return patches that make Lighter's public API report a Safe owning only its master account.
+
+    Lighter's public API does not know a Safe deployed on an Anvil fork, so a
+    test without :py:class:`FakeLighterCore` patches the account list and the
+    equity snapshot that the account-set check and the NAV read.
+
+    :param master_index:
+        The Safe's master account.
+    :param equity:
+        Returns the master's current equity.
+    :return:
+        Patch targets for ``mocker.patch(target, new=replacement)``.
+    """
+    return [
+        ("tradeexecutor.exchange_account.lighter.fetch_lighter_accounts", lambda *_args, **_kwargs: LighterAccounts(master_index=master_index, sub_account_indices=())),
+        ("tradeexecutor.exchange_account.lighter.fetch_lighter_accounts_equity", lambda *_args, **_kwargs: {master_index: equity()}),
+    ]

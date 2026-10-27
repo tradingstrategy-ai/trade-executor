@@ -23,13 +23,12 @@ from tradingstrategy.chain import ChainId
 from .app import app
 from .pair_mapping import parse_pair_data
 from ..bootstrap import prepare_executor_id, prepare_cache_and_token_cache, create_web3_config, create_state_store, \
-    create_execution_and_sync_model, resolve_deployment_file, create_client, configure_default_chain, \
+    create_execution_and_sync_model, create_lighter_routing_config, resolve_deployment_file, create_client, configure_default_chain, \
     check_universe_chains_have_rpc, check_universe_chains_have_gas, \
     check_universe_contracts_resolve
 from ..log import setup_logging
 from ..slippage import configure_max_slippage_tolerance
 from ..testtrade import make_test_trade
-from .start import _create_lighter_routing_config
 from ...exchange_account.lighter import get_lighter_master_pair, has_lighter_exchange_account_pairs
 from ...ethereum.routing_state import OutOfBalance
 from ...ethereum.velvet.execution import VelvetExecution
@@ -124,14 +123,16 @@ def perform_test_trade(
     Test a Lighter vault: ``--single-pair`` moves ``--amount`` USDC from the
     Safe to the Lighter master account and back; ``--all-pairs`` does the
     same for the master and, through the master, for every sub-account.
-    ``LIGHTER_OPERATOR_RECORD_FILE`` is required. Each movement is the
+    ``LIGHTER_OPERATOR_RECORD_FILE`` is required for any Lighter vault; the
+    command refuses before moving anything without it. Each movement is the
     custody trade ``start`` would make, and a withdrawal waits up to
     ``LIGHTER_WITHDRAWAL_TIMEOUT`` for Lighter to make it claimable.
 
     The command saves the state only when it finishes. That is an accepted
-    trade-off for a manual one-off check: if it is interrupted after Lighter
-    accepted a movement, ``check-accounts`` shows the difference and
-    ``correct-accounts`` books it before the test trade is rerun.
+    trade-off for a manual one-off check: an interrupted deposit or transfer
+    shows up in ``check-accounts`` and ``correct-accounts`` books it; an
+    interrupted withdrawal must be claimed into the Safe by hand first, as
+    ``README-Lighter.md`` describes.
     """
 
     if pair:
@@ -181,6 +182,12 @@ def perform_test_trade(
 
     max_slippage = configure_max_slippage_tolerance(max_slippage, mod)
 
+    # A Lighter test trade needs the master's signer whether or not the strategy manages its cash automatically.
+    lighter_routing_config = (
+        create_lighter_routing_config(lighter_operator_record_file, lighter_sub_account_operator_record_files, lighter_withdrawal_timeout, lighter_transfer_timeout)
+        if asset_management_mode == AssetManagementMode.lagoon and lighter_operator_record_file is not None
+        else None
+    )
     execution_model, sync_model, valuation_model_factory, pricing_model_factory = create_execution_and_sync_model(
         asset_management_mode=asset_management_mode,
         private_key=private_key,
@@ -198,14 +205,7 @@ def perform_test_trade(
         # next to the state file by lagoon-deploy-vault. Derive from state_file so
         # a custom STATE_FILE location is honoured (matches the deploy side).
         deployment_file=resolve_deployment_file(id, state_file),
-        lighter_routing_config=_create_lighter_routing_config(
-            asset_management_mode=asset_management_mode,
-            strategy_parameters=mod.parameters or {},
-            operator_record_file=lighter_operator_record_file,
-            sub_account_operator_record_files=lighter_sub_account_operator_record_files,
-            withdrawal_timeout=lighter_withdrawal_timeout,
-            transfer_timeout=lighter_transfer_timeout,
-        ),
+        lighter_routing_config=lighter_routing_config,
     )
 
     client, routing_model = create_client(
@@ -276,6 +276,10 @@ def perform_test_trade(
     # before trading, so a missing SATELLITE_MODULES entry fails fast here rather
     # than after an irreversible cross-chain CCTP bridge.
     check_universe_contracts_resolve(web3config, universe, execution_model)
+
+    if has_lighter_exchange_account_pairs(universe) and lighter_routing_config is None:
+        # Refuse before any trade: without the master's signer the withdrawal would fail after the deposit moved funds.
+        raise ValueError("A Lighter test trade needs the master's operator record: set LIGHTER_OPERATOR_RECORD_FILE")
 
     if single_pair:
         # A Lighter vault has one pair per account; its single test pair is the master.

@@ -195,7 +195,10 @@ temporary low NAV and avoids trading against money that has not arrived.
 For an already deployed Lighter-enabled vault, the Typer command is the
 supported small real-money test. It uses the deployment's protected operator
 record to deposit from the Safe, open and close ETH/USD, claim the withdrawal,
-and synchronise Lagoon NAV throughout.
+and synchronise Lagoon NAV throughout. It trades on the master only; to test
+the custody path of every account, including sub-accounts, use
+`perform-test-trade --single-pair` or `--all-pairs` as described in
+[README-Lighter.md](../tradeexecutor/exchange_account/README-Lighter.md#custody-test-trade-with-perform-test-trade).
 
 The operational sequence is:
 

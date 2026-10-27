@@ -34,8 +34,8 @@ from tradeexecutor.ethereum.vault.hypercore_transit_recovery import (
     HypercoreTransitBalanceSnapshot,
 )
 from tradeexecutor.exchange_account.derive import DeriveNetwork
-from tradeexecutor.exchange_account.lighter import LIGHTER_PROTOCOL, check_lighter_account_set, is_lighter_exchange_account_pair
-from tradeexecutor.exchange_account.lighter_cleanup import close_undeclared_lighter_positions
+from tradeexecutor.exchange_account.lighter import is_lighter_exchange_account_pair
+from tradeexecutor.exchange_account.lighter_cleanup import check_lighter_vault_accounts, close_undeclared_lighter_positions
 from tradeexecutor.ethereum.lighter.transfer_verification import reconcile_verified_lighter_transfers
 from tradeexecutor.exchange_account.lighter_operator import load_lighter_signers
 from tradeexecutor.exchange_account.sync_model import ExchangeAccountSyncModel
@@ -671,7 +671,7 @@ def correct_accounts(
     ccxt_exchange_id: Optional[str] = Option(None, envvar="CCXT_EXCHANGE_ID", help="CCXT exchange identifier (e.g. aster, binance, bybit)"),
     ccxt_options: Optional[str] = Option(None, envvar="CCXT_OPTIONS", help="CCXT exchange constructor options as JSON string"),
     ccxt_sandbox: bool = Option(False, envvar="CCXT_SANDBOX", help="Use CCXT exchange sandbox/testnet mode"),
-    lighter_operator_record_file: Path | None = shared_options.lighter_operator_record_file_for_accounting,
+    lighter_operator_record_file: Path | None = shared_options.lighter_operator_record_file,
     lighter_sub_account_operator_record_files: str | None = shared_options.lighter_sub_account_operator_record_files,
 ):
     """Correct accounting errors in the internal ledger of the trade executor.
@@ -1094,19 +1094,10 @@ def correct_accounts(
     # Both run before the preflight and the dry-run return, so a dry run
     # previews them; a mismatch exits 1 after the corrections are saved.
     lighter_account_problem = None
+    closed_lighter_positions = []
     if not incident and not withdrawal and isinstance(sync_model, LagoonVaultSyncModel):
-        declared = [int(pair.get_exchange_account_id()) for pair in universe.iterate_pairs() if is_lighter_exchange_account_pair(pair)]
-        if declared or any(is_lighter_exchange_account_pair(p.pair) for p in state.portfolio.get_open_and_frozen_positions()):
-            closed_lighter_positions = close_undeclared_lighter_positions(state, universe, native_datetime_utc_now())
-            if closed_lighter_positions:
-                logger.info("Closed %d Lighter position(s) of undeclared accounts", len(closed_lighter_positions))
-            tracked = [int(p.pair.get_exchange_account_id()) for p in state.portfolio.get_open_and_frozen_positions() if is_lighter_exchange_account_pair(p.pair)]
-            accounts_clean, message = check_lighter_account_set(sync_model.vault.safe_address, tracked=tracked, declared=declared)
-            if accounts_clean:
-                logger.info("%s", message)
-            else:
-                logger.error("%s", message)
-                lighter_account_problem = message
+        closed_lighter_positions = close_undeclared_lighter_positions(state, universe, native_datetime_utc_now())
+        lighter_account_problem = check_lighter_vault_accounts(sync_model.vault.safe_address, state, universe)
 
     closed_phantom_positions = False
     if not incident and not withdrawal:
@@ -1270,13 +1261,10 @@ def correct_accounts(
     # A Lagoon Lighter vault is the narrow exception: its Safe reserve remains
     # on-chain even when its sole trading position is the synthetic account.
     # A closed phantom Hypercore vault can similarly leave USDC in the Safe.
+    # A Lighter position closed above still leaves its Safe reserve to reconcile.
     has_lagoon_lighter_position = (
         asset_management_mode == AssetManagementMode.lagoon
-        and any(
-            position.pair.get_exchange_account_protocol() == LIGHTER_PROTOCOL
-            for position in state.portfolio.get_open_and_frozen_positions()
-            if position.is_exchange_account()
-        )
+        and (bool(closed_lighter_positions) or any(is_lighter_exchange_account_pair(position.pair) for position in state.portfolio.get_open_and_frozen_positions()))
     )
     has_onchain_positions = (
         any(

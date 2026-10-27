@@ -21,7 +21,6 @@ from eth_defi.erc_4626.vault_protocol.lagoon.deployment import (
 )
 from eth_defi.erc_4626.vault_protocol.lagoon.funding import fund_lagoon_vault
 from eth_defi.hotwallet import HotWallet
-from eth_defi.lighter.api import LighterAccounts
 from eth_defi.lighter.deployment import LighterDeployment
 from eth_defi.lighter.testing import register_lighter_account_on_anvil
 from eth_defi.lighter.valuation import LighterEquity
@@ -39,6 +38,7 @@ from web3 import Web3
 from tradeexecutor.cli.main import app
 from tradeexecutor.exchange_account.lighter import LIGHTER_PROTOCOL
 from tradeexecutor.state.state import State
+from tradeexecutor.testing.lighter_core import get_master_only_account_patches
 from tradeexecutor.state.trade import TradeFlag
 
 #: Optional upstream RPC used to enable the fixed-block Ethereum fork.
@@ -247,15 +247,9 @@ def test_cli_lagoon_lighter_cash_management_uses_normal_pipeline(
         "tradeexecutor.ethereum.lighter.transfer_verification.wait_for_lighter_collateral",
         side_effect=wait_for_collateral,
     )
-    # The Safe owns only the master account; the account-set check and the NAV read these.
-    mocker.patch(
-        "tradeexecutor.exchange_account.lighter.fetch_lighter_accounts",
-        return_value=LighterAccounts(master_index=LIGHTER_ACCOUNT_INDEX, sub_account_indices=()),
-    )
-    mocker.patch(
-        "tradeexecutor.exchange_account.lighter.fetch_lighter_accounts_equity",
-        side_effect=lambda *_args, **_kwargs: {LIGHTER_ACCOUNT_INDEX: _lighter_equity(lighter_state["equity"])},
-    )
+    # Mocked because Lighter's public API does not know the Anvil Safe: it owns only the master account here.
+    for target, replacement in get_master_only_account_patches(LIGHTER_ACCOUNT_INDEX, lambda: _lighter_equity(lighter_state["equity"])):
+        mocker.patch(target, new=replacement)
     environment = {
         "PATH": os.environ["PATH"],
         "EXECUTOR_ID": "lighter-cash-management",

@@ -404,7 +404,7 @@ def test_negative_lighter_vault_valuation_aborts_before_nav(
     2. Evaluate the custom NAV function.
     3. Verify the invariant aborts before returning a value to Lagoon.
     4. Verify a Safe-owned sub-account outside the universe also aborts the NAV.
-    5. Verify an outside sub-account holding Lighter dust is written off instead of aborting the NAV.
+    5. Verify an outside sub-account holding Lighter dust is left out of the NAV instead of aborting it.
     """
     # 1. Mock a valid Safe balance and negative public Lighter equity.
     # These reads are mocked because the unit test targets the fail-closed NAV
@@ -435,6 +435,7 @@ def test_negative_lighter_vault_valuation_aborts_before_nav(
 
     # 4. Verify a Safe-owned sub-account outside the universe also aborts the NAV.
     accounts.return_value = LighterAccounts(master_index=124, sub_account_indices=(2**47,))
+    # The outside account's equity decides, read from the same mocked public API.
     snapshot = mocker.patch(
         "tradeexecutor.exchange_account.lighter.fetch_lighter_accounts_equity",
         return_value={2**47: SimpleNamespace(get_total=lambda: LIGHTER_DUST_USDC)},
@@ -442,12 +443,12 @@ def test_negative_lighter_vault_valuation_aborts_before_nav(
     with pytest.raises(ValueError, match="not in the strategy universe"):
         valuation(None, block_number=7)
 
-    # 5. Verify an outside sub-account holding Lighter dust is written off instead of aborting the NAV.
-    snapshot.return_value = {2**47: SimpleNamespace(get_total=lambda: Decimal("0.4"))}
-    mocker.patch(
-        "tradeexecutor.exchange_account.lighter.fetch_lighter_total_equity",
-        return_value=SimpleNamespace(get_total=lambda: Decimal("2")),
-    )
+    # 5. Verify an outside sub-account holding Lighter dust is left out of the NAV instead of aborting it.
+    # The master is valued from the same snapshot, so a transfer between two reads cannot move funds out of the NAV.
+    snapshot.return_value = {
+        124: SimpleNamespace(get_total=lambda: Decimal("2")),
+        2**47: SimpleNamespace(get_total=lambda: Decimal("0.4")),
+    }
     assert valuation(None, block_number=7) == pytest.approx(5.0)
 
 
