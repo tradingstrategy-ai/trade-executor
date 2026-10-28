@@ -166,6 +166,13 @@ export LIGHTER_WITHDRAW_TIMEOUT=3600
 # Longest wait for a transfer between Lighter accounts to appear in history.
 export LIGHTER_TRANSFER_TIMEOUT=600
 
+# lagoon-deploy-vault with a strategy file connects to every chain that has a
+# JSON_RPC_* variable and refuses when the strategy does not use them all. A
+# shell set up for tests or other vaults exports many; keep only Ethereum.
+for name in $(compgen -e | grep '^JSON_RPC_' | grep -vx 'JSON_RPC_ETHEREUM'); do
+    unset "$name"
+done
+
 # lighter-move-funds acts on the account this selects; the withdrawal steps
 # pass --lighter-account-index explicitly, so a value inherited from the
 # shell must not redirect the master's withdrawal.
