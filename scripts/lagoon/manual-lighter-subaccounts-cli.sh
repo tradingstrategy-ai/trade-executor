@@ -7,20 +7,65 @@
 # top to bottom: every step says what it does to the vault and why, and
 # every action is a plain command you could type yourself.
 #
-#  0. Check the deployer can pay for the run
-#  1. Deploy the vault: Safe, Lagoon vault, guard, Lighter master account
-#     and two sub-accounts, each with its own API key
-#  2. Read the deployment's public addresses and Lighter account indices
-#  3. Initialise executor state and book the 1 USDC Lighter activation
-#  4. Subscribe test capital to the vault and claim the shares
-#  5. perform-test-trade: fund sub-account "trend" from the Safe
-#  6. perform-test-trade: fund sub-account "arb" from the Safe
-#  7. perform-test-trade: move USDC from "trend" to "arb"
-#  8. Withdraw "arb" to the Safe          (Lighter L1 withdrawal, ~30 min)
-#  9. Withdraw "trend" to the Safe        (Lighter L1 withdrawal, ~30 min)
-# 10. Withdraw the master to the Safe     (Lighter secure withdrawal, ~20 min)
-# 11. Redeem every share back to the deployer
-# 12. Sweep the Safe and reconcile the deployer's balances
+# Steps, with their durations in the live run of 2026-10-28 (1h 55m in total):
+#
+#  0. Check the deployer can pay for the run                            6s
+#  1. Deploy the vault: Safe, Lagoon vault, guard, Lighter master
+#     account and two sub-accounts, each with its own API key      14m 44s
+#  2. Read the deployment's public addresses and Lighter indices        0s
+#  3. Initialise executor state and book the 1 USDC activation         40s
+#  4. Subscribe test capital to the vault and claim the shares      4m 49s
+#  5. perform-test-trade: fund sub-account "trend" from the Safe    3m 11s
+#  6. perform-test-trade: fund sub-account "arb" from the Safe      3m 13s
+#  7. perform-test-trade: move USDC from "trend" to "arb"           1m 02s
+#  8. Withdraw "arb" to the Safe (Lighter L1 withdrawal)           29m 31s
+#  9. Withdraw "trend" to the Safe (Lighter L1 withdrawal)         28m 45s
+# 10. Withdraw the master to the Safe (secure withdrawal)          24m 14s
+# 11. Redeem every share back to the deployer                       4m 14s
+# 12. Sweep the Safe and reconcile the deployer's balances             13s
+#
+# The three withdrawals are mostly Lighter's withdrawal delay; the rest is
+# Ethereum confirmations. Gas prices were about 0.1 gwei.
+#
+# Example run, 2026-10-28: every USDC came back to the deployer, Lighter
+# charged no transfer fee and the run spent 0.0074 ETH of gas.
+#
+#   Vault   https://etherscan.io/address/0x208353A55b5eDC3F07563e46fA910a305A5BFA55
+#   Safe    https://etherscan.io/address/0x47D479f32D88f0e0898d85EF6FC98ef2b0A62380
+#   Guard   https://etherscan.io/address/0xE31A546f24BC38D8B17bA9e8505Ae76b0DB48fC5
+#   Lighter master 764640, sub-accounts trend 281474976447040 and arb 281474976447039
+#
+#   Step 1, 1 USDC activation deposit to Lighter
+#     https://etherscan.io/tx/0x8f5691bf4575031c830915c9361b673430c5d6db4e8602810d5ec7a9ec3713b1
+#   Step 1, API key registrations (Safe changePubKey) for master, trend and arb
+#     https://etherscan.io/tx/0x86d2f68b0fe3c37e53a7e2f26b4c17a56a9454d65541641453991f63c44d521b
+#     https://etherscan.io/tx/0x1ecc90d000852cd73097bffc120290505229d81a34c8da616f0b2bc25c714aba
+#     https://etherscan.io/tx/0x43c94be6b96a7cf95ab61876be7b40469e7b3cc7188e115bfabc05afb17ac7c0
+#   Step 4, deposit request, NAV posting, settlement and share claim
+#     https://etherscan.io/tx/0xd6c1e6d968e38fa9f391f023902332666b033346d5c9650b39d7ec730dde6a2f
+#     https://etherscan.io/tx/0x9ed6013f57179f66c1e9aca4fbbd4a4047b01800a8a28426ea3f9b42ef827e5c
+#     https://etherscan.io/tx/0x0fbd10d3075d312b8ff0a0a1a6c3149eda7d2fed2669b2b0eca6068243cbe1cc
+#     https://etherscan.io/tx/0x26ee3e338a800271f4a799f4f9607eb1373273acc09a7d99ee51fca63ffa7eb3
+#   Steps 5 and 6, Safe deposits to the Lighter master (approve, deposit)
+#     https://etherscan.io/tx/0x2b4f567a4c305130db083ecd4ae511f4cfc963d32d5058581010542cf12d3109
+#     https://etherscan.io/tx/0x9609bc9108ed325be90bb8ffbeadb76c70012146636e2175030f16e122111961
+#     https://etherscan.io/tx/0xb94c3d0477afdd08e63e22d746fdb2372122c09b80662c9d76a093be1c2e3d47
+#     https://etherscan.io/tx/0xd2b7fa4453b211198cc35da91b0480ce7ce1c354d4a3305210c9f74e8cf083f1
+#     The transfers between Lighter accounts in steps 5 to 7 happen on
+#     Lighter, not Ethereum, so they have no Etherscan link.
+#   Step 8, arb L1 withdrawal request and claim into the Safe
+#     https://etherscan.io/tx/0x2e05ad2a75d529125bee9a48f435d4e584eabfc067f5a9ea173f8d859e2717a0
+#     https://etherscan.io/tx/0x15fe80fb7afc6ead5c5d81c4b1cdef650956fccfdefbb7ddfe644adfaaa82f34
+#   Step 9, trend L1 withdrawal request and claim into the Safe
+#     https://etherscan.io/tx/0x69c745744bda1b90d40bbaeea44ad25ac46b22c2e33bde974efea64d08769cb1
+#     https://etherscan.io/tx/0x044ed4f0f51693bcc7c134bffdc6c0797efd45839b66c286a74da53250d757c5
+#   Step 10, claim of the master's secure withdrawal into the Safe; the
+#   request itself is signed with the master's key on Lighter
+#     https://etherscan.io/tx/0x54f491e8038fe2a8552daeaebcd5f445c3ba3ee6974e90955a4ae2c26bf6a483
+#   Step 11, NAV posting, redemption settlement and claim
+#     https://etherscan.io/tx/0x4f80f3f3f6eca9bb676a709e00ddec5ffbe4255db1447c31d7d45e2eeb034612
+#     https://etherscan.io/tx/0x68a6739bb0d028e94b81c0afcf2cd1eae5d9ef6fe9cce4f33b8de0b4c39ebc6a
+#     https://etherscan.io/tx/0xa038d97cbdbf30c14744b052e34b570ae63574e25c60b9f282bc3c0212cb205c
 #
 # Real money, Ethereum mainnet only: Lighter's sequencer cannot run on a
 # fork, so there is no simulation mode. The deployer needs ETH for a full
@@ -609,7 +654,7 @@ fi
 # claim-shares are the investor's, outside the executor, so they are done
 # by the testing module. All three are safe to rerun.
 
-if step 4 "Subscribe $SUBSCRIPTION_USDC USDC to the vault and claim the shares"; then
+if step 4 "Subscribe $SUBSCRIPTION_USDC USDC to the vault and claim the shares" "about 5 minutes: five Ethereum transactions"; then
     LAST_COMMAND="lighter_manual request-deposit"
     deposit_status="$(run poetry run python -m tradeexecutor.testing.lighter_manual request-deposit "$SUBSCRIPTION_USDC" --marker "$RUN_DIR/deposit-requested")"
     log "Subscription status: $deposit_status"
