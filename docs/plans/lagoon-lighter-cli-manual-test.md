@@ -555,6 +555,30 @@ now diagnosed; and recovery commands lacked the run's environment, now
 this plan's prompt list, and to fork coverage of all three withdrawals,
 including the master's secure withdrawal through `lighter-move-funds`.
 
+## Live run
+
+The script passed on Ethereum mainnet on 2026-10-28, run directory
+`lighter-cli-20261028-130827`, in 1 hour 55 minutes:
+
+| Step | Duration | Result |
+|------|----------|--------|
+| 1. Deploy, master 764640, trend 281474976447040, arb 281474976447039 | 14m 44s | Keys backed up before registration, removed after the records |
+| 4. Subscribe 10 USDC with `lagoon-settle` | about 1 minute | Shares claimed, Safe 10 USDC |
+| 5. and 6. `perform-test-trade --pair ... --buy-only --amount 2` | about 3 minutes each | No transfer fee |
+| 7. `perform-test-trade --lighter-transfer trend:arb --buy-only --amount 1` | 1 minute | Signed with trend's key |
+| 8. and 9. sub-account L1 withdrawals, 3 and 1 USDC | 29m 31s and 28m 45s | Claimed into the Safe |
+| 10. master secure withdrawal, 1 USDC | 24m 14s | Claimed into the Safe |
+| 11. `lagoon-redeem` 11 LCLI | 4m 14s | 11 USDC back to the deployer |
+| 12. Sweep and reconcile | 13s | Unexplained difference 0, gas 0.0074 ETH |
+
+A first attempt stopped at deployment before sending anything: with a
+strategy file, `lagoon-deploy-vault` connects to every chain with a
+`JSON_RPC_*` variable, and the test shell exported eleven. The script now
+keeps only `JSON_RPC_ETHEREUM`. The run also showed two observability
+faults, both fixed: a captured command waited up to a minute for the
+heartbeat's `sleep`, and the guard's expected balance mismatches were
+printed as failures.
+
 ## Open questions
 
 1. Should `lagoon-settle` be fixed in this work or in its own pull request,

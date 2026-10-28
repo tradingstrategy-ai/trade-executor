@@ -155,6 +155,11 @@ as the investor's deposit request and share claim, are subcommands of
 `tests/lagoon/test_lagoon_lighter_cli_manual_e2e.py` runs the same commands
 in the same order on an Ethereum fork with a simulated Lighter sequencer.
 
+It passed live on 2026-10-28 in 1 hour 55 minutes: deployment took 15
+minutes, the two sub-account L1 withdrawals 28 and 27 minutes and the
+master's secure withdrawal 23 minutes. Lighter charged no transfer fee, the
+deployer got all 11 USDC back, and the run spent 0.0074 ETH of gas.
+
 ## Pair a compatible strategy module
 
 Pair the vault with a passive exchange-account strategy. It declares the public

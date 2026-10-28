@@ -243,8 +243,14 @@ heartbeat() {
 # Run one command: echo it, show a heartbeat while it runs, report how it
 # ended and how long it took. "--stdin TEXT" answers the command's prompts;
 # without it the command gets no input, so a prompt fails instead of hanging.
+# "--probe" marks a balance check whose mismatch is an expected answer, not
+# an error, so it is reported as "no match" rather than as a failure.
 run() {
-    local input=""
+    local input="" probe=0
+    if [ "$1" = "--probe" ]; then
+        probe=1
+        shift
+    fi
     if [ "$1" = "--stdin" ]; then
         input="$2"
         shift 2
@@ -256,7 +262,9 @@ run() {
         log "→ $LAST_COMMAND"
     fi
     local started=$SECONDS status=0
-    heartbeat "$(describe "$@")" </dev/null &
+    # Standard output to /dev/null: inside plan="$(run ...)" the heartbeat's
+    # sleep would otherwise hold the capture open for up to a heartbeat.
+    heartbeat "$(describe "$@")" </dev/null >/dev/null &
     local heartbeat_pid=$!
     if [ -n "$input" ]; then
         printf '%b' "$input" | "$@" || status=$?
@@ -267,6 +275,8 @@ run() {
     wait "$heartbeat_pid" 2>/dev/null || true
     if [ "$status" -eq 0 ]; then
         log "✓ finished in $(format_duration $((SECONDS - started)))"
+    elif [ "$probe" -eq 1 ]; then
+        log "· no match"
     else
         log "✗ failed with exit code $status after $(format_duration $((SECONDS - started)))"
     fi
@@ -368,34 +378,34 @@ guard_money_step() {
         # perform-test-trade saves the state only when it finishes, so an
         # interrupted step leaves moved money unbooked. Say which state it is in.
         # shellcheck disable=SC2086
-        if run "${LIGHTER_MANUAL[@]}" expect-balances --quiet $target >/dev/null; then
+        if run --probe "${LIGHTER_MANUAL[@]}" expect-balances --quiet $target >/dev/null; then
             fail "Step $number moved its money in an earlier run but did not save it. Book it: source $ENV_FILE && printf 'y\\n' | poetry run trade-executor correct-accounts, then rerun this script."
         fi
         # shellcheck disable=SC2086
-        if [ -n "$halfway" ] && run "${LIGHTER_MANUAL[@]}" expect-balances --quiet $halfway >/dev/null; then
+        if [ -n "$halfway" ] && run --probe "${LIGHTER_MANUAL[@]}" expect-balances --quiet $halfway >/dev/null; then
             fail "Step $number stopped halfway in an earlier run: the deposit reached the master but the transfer to the sub-account did not happen. Book the deposit: source $ENV_FILE && printf 'y\\n' | poetry run trade-executor correct-accounts, then rerun this script; it then gives the command that completes the transfer."
         fi
         fail "The books do not match the chain before step $number; see the check-accounts output above."
     fi
     # shellcheck disable=SC2086  # The expectations are separate words on purpose.
-    if run "${LIGHTER_MANUAL[@]}" expect-balances --quiet $target >/dev/null; then
+    if run --probe "${LIGHTER_MANUAL[@]}" expect-balances --quiet $target >/dev/null; then
         log "The target balances already hold: an earlier run moved this step's money. Nothing is moved again."
         done_step "$number"
         GUARD_RESULT="done"
         return
     fi
     # shellcheck disable=SC2086
-    if run "${LIGHTER_MANUAL[@]}" expect-balances --quiet $start >/dev/null; then
+    if run --probe "${LIGHTER_MANUAL[@]}" expect-balances --quiet $start >/dev/null; then
         log "The start balances hold; running step $number."
         GUARD_RESULT="run"
         return
     fi
     # shellcheck disable=SC2086
-    if [ -n "$halfway" ] && run "${LIGHTER_MANUAL[@]}" expect-balances --quiet $halfway >/dev/null; then
+    if [ -n "$halfway" ] && run --probe "${LIGHTER_MANUAL[@]}" expect-balances --quiet $halfway >/dev/null; then
         fail "Step $number stopped halfway in an earlier run: the deposit reached the master and is booked, but the transfer to the sub-account did not happen. Complete it: source $ENV_FILE && poetry run trade-executor perform-test-trade $completion, then rerun this script."
     fi
     # shellcheck disable=SC2086
-    run "${LIGHTER_MANUAL[@]}" expect-balances $start >/dev/null || true
+    run --probe "${LIGHTER_MANUAL[@]}" expect-balances $start >/dev/null || true
     fail "The balances match neither the start nor the target of step $number; see the table above and inspect with trade-executor check-accounts."
 }
 

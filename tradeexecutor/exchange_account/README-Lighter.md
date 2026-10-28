@@ -327,7 +327,8 @@ final sweep are subcommands of
 [`lighter_manual.py`](../testing/lighter_manual.py), which the Python
 tutorials share for the sweep and the reconciliation. It is live only;
 `tests/lagoon/test_lagoon_lighter_cli_manual_e2e.py` runs its command
-sequence on the fork. See
+sequence on the fork. It passed live on 2026-10-28: every USDC came back
+to the deployer, no Lighter transfer fee, 0.0074 ETH of gas. See
 [the deployment guide](../../docs/lagoon-lighter-deployment.md#test-from-the-command-line).
 
 [`scripts/lagoon/manual-trade-executor-lighter-transfers.py`](../../scripts/lagoon/manual-trade-executor-lighter-transfers.py)
