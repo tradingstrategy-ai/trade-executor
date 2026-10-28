@@ -1169,7 +1169,9 @@ def make_lighter_transfer_test_trade(
     :param amount:
         USDC credited to the destination; Lighter's minimum is 1 USDC.
     :param buy_only:
-        Leave the funds on the destination.
+        Leave the funds on the destination. Otherwise the destination
+        returns ``amount`` plus Lighter's fee, if any, so it must already
+        hold the fee.
     """
     ts = native_datetime_utc_now()
     position_manager = PositionManager(ts, universe, state, pricing_model)

@@ -39,7 +39,6 @@ the `~/code/strategies` deployment scripts expect.
 | `TRADING_STRATEGY_API_KEY` | Yes | The Trading Strategy client every command creates. The strategy has no market data, but the commands are only tested with a client. |
 | `LIGHTER_RUN_DIR` | No | Resume an earlier run: state, artefacts, records and step markers live here. Default `~/.tradingstrategy/examples/lighter-cli-<timestamp>`. |
 | `SUBSCRIPTION_USDC` | No | Test capital subscribed after deployment. Default `10`. |
-| `LIGHTER_API_KEY_INDEX` | No | API key slot on the master and each sub-account. Default `4`. |
 
 The operator asked for `LIGHTER_TEST_API_KEY`; the repository and the test
 environment name the deployer key `LIGHTER_TEST_PRIVATE_KEY`, and the script
@@ -506,11 +505,14 @@ Deviations from the plan:
   `requested`, `pending`, `claimable` or `settled`: the deployment's
   activation subscription can leave the deployer holding shares, so share
   ownership cannot tell whether this run already subscribed.
-- The script has six helpers and the heartbeat loop, not three helpers and
-  no loops, to provide the observability.
-- Step 1 does not deploy again when the deployment artefact exists, or
-  when the master's key record exists without it: an interruption after a
-  successful deployment would otherwise deploy a second vault.
+- The script has the helpers listed in "Observability" and a heartbeat
+  loop, not three helpers and no loops, to provide the observability.
+- Step 1 skips the deployment when the deployment artefact exists, and
+  stops when its `deploy-started` marker exists without the artefact: an
+  interrupted deployment may already have created a vault and registered
+  keys, so deploying again could strand them.
+- The API key slot is fixed at 4 for the master and each sub-account
+  rather than read from `LIGHTER_API_KEY_INDEX`.
 - `TRADING_STRATEGY_API_KEY` is required, as every test of these commands
   runs with a Trading Strategy client.
 
@@ -565,9 +567,9 @@ The script passed on Ethereum mainnet on 2026-10-28, run directory
 | Step | Duration | Result |
 |------|----------|--------|
 | 1. Deploy, master 764640, trend 281474976447040, arb 281474976447039 | 14m 44s | Keys backed up before registration, removed after the records |
-| 4. Subscribe 10 USDC with `lagoon-settle` | about 1 minute | Shares claimed, Safe 10 USDC |
-| 5. and 6. `perform-test-trade --pair ... --buy-only --amount 2` | about 3 minutes each | No transfer fee |
-| 7. `perform-test-trade --lighter-transfer trend:arb --buy-only --amount 1` | 1 minute | Signed with trend's key |
+| 4. Subscribe 10 USDC with `lagoon-settle` | 4m 49s | Shares claimed, Safe 10 USDC |
+| 5. and 6. `perform-test-trade --pair ... --buy-only --amount 2` | 3m 11s and 3m 13s | No transfer fee |
+| 7. `perform-test-trade --lighter-transfer trend:arb --buy-only --amount 1` | 1m 02s | Signed with trend's key |
 | 8. and 9. sub-account L1 withdrawals, 3 and 1 USDC | 29m 31s and 28m 45s | Claimed into the Safe |
 | 10. master secure withdrawal, 1 USDC | 24m 14s | Claimed into the Safe |
 | 11. `lagoon-redeem` 11 LCLI | 4m 14s | 11 USDC back to the deployer |

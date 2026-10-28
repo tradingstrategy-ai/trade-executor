@@ -361,6 +361,9 @@ write_env_file() {
         echo "# Configuration of the run in $RUN_DIR. From the repository root: source $ENV_FILE"
         echo "# Needs JSON_RPC_ETHEREUM, LIGHTER_TEST_PRIVATE_KEY and TRADING_STRATEGY_API_KEY exported in your shell."
         echo 'export PRIVATE_KEY="$LIGHTER_TEST_PRIVATE_KEY"'
+        echo '# As the script does: only the Ethereum RPC, and the master account from the records.'
+        echo 'unset $(env | sed -n "s/^\(JSON_RPC_[A-Za-z0-9_]*\)=.*/\1/p" | grep -vx JSON_RPC_ETHEREUM) 2>/dev/null'
+        echo 'unset LIGHTER_ACCOUNT_INDEX'
         local name
         for name in EXECUTOR_ID STRATEGY_FILE STATE_FILE SIMULATE LOG_LEVEL CACHE_PATH MIN_GAS_BALANCE VAULT_RECORD_FILE \
             LIGHTER_KEY_BACKUP_DIR LIGHTER_OPERATOR_RECORD_FILE LIGHTER_SUB_ACCOUNT_OPERATOR_RECORD_FILES \

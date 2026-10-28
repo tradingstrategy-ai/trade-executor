@@ -96,10 +96,10 @@ def perform_test_trade(
     lighter_sub_account_operator_record_files: str | None = shared_options.lighter_sub_account_operator_record_files,
     lighter_withdrawal_timeout: int = shared_options.lighter_withdrawal_timeout,
     lighter_transfer_timeout: int = shared_options.lighter_transfer_timeout,
-    lighter_transfer: Optional[str] = Option(
+    lighter_transfer: str | None = Option(
         None,
         "--lighter-transfer",
-        help="Move --amount USDC between two Lighter accounts of the vault, given as SOURCE:DESTINATION account ids such as trend:arb or master:trend, and back again unless --buy-only.",
+        help="Move --amount USDC between two Lighter accounts of the vault, given as SOURCE:DESTINATION account ids such as trend:arb or master:trend, and back again unless --buy-only. Any Lighter fee is charged on top of each leg, so a round trip needs the destination to cover the return fee.",
     ),
 ):
     """Perform a small test swap.
@@ -342,18 +342,24 @@ def perform_test_trade(
         if lighter_transfer:
             source, destination = lighter_transfer_accounts
             logger.info("Lighter transfer test trade: %s USDC from %s to %s%s", amount, source, destination, "" if buy_only else " and back")
-            make_lighter_transfer_test_trade(
-                execution_model,
-                state,
-                universe,
-                runner.routing_model,
-                routing_state,
-                pricing_model,
-                source=source,
-                destination=destination,
-                amount=Decimal(str(amount)),
-                buy_only=buy_only,
-            )
+            try:
+                make_lighter_transfer_test_trade(
+                    execution_model,
+                    state,
+                    universe,
+                    runner.routing_model,
+                    routing_state,
+                    pricing_model,
+                    source=source,
+                    destination=destination,
+                    amount=Decimal(str(amount)),
+                    buy_only=buy_only,
+                )
+            except Exception:
+                # Keep an executed outward leg in the books when the return leg fails.
+                if not simulate:
+                    store.sync(state)
+                raise
         elif all_vaults:
             logger.info("Testing all vaults")
 
