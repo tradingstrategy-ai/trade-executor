@@ -1,5 +1,6 @@
 """Containment for the October Tortoise withdrawal incident."""
 
+import datetime
 from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -89,22 +90,27 @@ def test_full_close_leaves_minimum_remainder() -> None:
 def test_tiny_close_is_expired_before_execution() -> None:
     """Expire a close that cannot withdraw above the minimum remainder instead of halting.
 
-    1. Mock the equity read because the preflight needs no network to decide.
-    2. Verify an 8.00 USDC position is expired and an 8.01 USDC position proceeds.
+    1. Mock the equity and liquidity reads because the preflight needs no network to decide.
+    2. Verify an 8.00 USDC position or a 6.60 USDC liquidity cap expires, and 8.01 USDC proceeds.
     3. Verify partial sells are not read at all.
     """
-    # 1. Mock the equity read because the preflight needs no network to decide.
+    # 1. Mock the equity and liquidity reads because the preflight needs no network to decide.
     routing = object.__new__(HypercoreVaultRouting)
     routing.lagoon_vault = MagicMock()
     routing._session = MagicMock()
     routing.simulate = False
     pair = SimpleNamespace(pool_address="0xvault")
     close = SimpleNamespace(other_data={}, pair=pair, flags={TradeFlag.close}, is_sell=lambda: True, is_buy=lambda: False)
-    # 2. Verify an 8.00 USDC position is expired and an 8.01 USDC position proceeds.
-    with patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity", return_value=SimpleNamespace(equity=Decimal("8.00"))):
-        assert "minimum remainder" in routing.check_trade_before_execution(close)
-    with patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity", return_value=SimpleNamespace(equity=Decimal("8.01"))):
-        assert routing.check_trade_before_execution(close) is None
+    # 2. Verify an 8.00 USDC position or a 6.60 USDC liquidity cap expires, and 8.01 USDC proceeds.
+    def check(equity: str, max_withdrawable: str) -> str | None:
+        with (
+            patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity", return_value=SimpleNamespace(equity=Decimal(equity))),
+            patch("tradeexecutor.ethereum.vault.hypercore_routing.HyperliquidVault.fetch_info", return_value=SimpleNamespace(max_withdrawable=Decimal(max_withdrawable))),
+        ):
+            return routing.check_trade_before_execution(close)
+    assert "minimum remainder" in check("8.00", "1000")
+    assert "minimum remainder" in check("13.20", "6.60")
+    assert check("8.01", "1000") is None
     # 3. Verify partial sells are not read at all.
     partial = SimpleNamespace(other_data={}, pair=pair, flags=set(), is_sell=lambda: True, is_buy=lambda: False)
     with patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity", side_effect=AssertionError("read")):
@@ -114,9 +120,9 @@ def test_tiny_close_is_expired_before_execution() -> None:
 def test_repair_clears_rejected_phase1_marker() -> None:
     """Clear a false stranded marker only when the vault kept the requested funds.
 
-    1. Build the 28 October failed sell, a sell whose vault paid the request and
-       a phase-2 failure after a verified payout whose NAV later recovered.
-    2. Mock the equity read, because the decision depends only on the snapshot comparison.
+    1. Build the 28 October failed sell, a sell whose vault paid the request,
+       a phase-2 failure and a late phase-1 payout hidden by a NAV gain.
+    2. Mock the equity and ledger reads, because the decision depends only on that evidence.
     3. Verify only the rejected phase-1 sell is cleared and becomes repairable.
     """
     # 1. Build the 28 October failed sell, a paid sell and a phase-2 failure.
@@ -132,23 +138,30 @@ def test_repair_clears_rejected_phase1_marker() -> None:
             },
             pair=SimpleNamespace(pool_address=str(equity_now), is_hyperliquid_vault=lambda: True),
             is_sell=lambda: True,
+            started_at=datetime.datetime(2026, 10, 28, 2, 53),
             get_status=lambda: TradeStatus.failed,
             add_note=MagicMock(),
         )
     rejected = make_trade(1833, Decimal("19.836442"))
     paid = make_trade(1834, Decimal("1.500012"))
     phase2 = make_trade(1835, Decimal("19.836442"), phase="phase2_spot_wait")
+    late_payout = make_trade(1836, Decimal("19.836443"))
     assert vault_kept_requested_funds(Decimal("19.83643"), Decimal("19.836442"), 18_336_430)
     assert not vault_kept_requested_funds(Decimal("19.83643"), Decimal("1.500012"), 18_336_430)
     # A 100 USDC payout from 10,000 USDC followed by a 60 USDC NAV gain is not "kept".
     assert not vault_kept_requested_funds(Decimal("10000"), Decimal("9960"), 100_000_000)
     # A request inside the drift margin cannot prove anything either way.
     assert not vault_kept_requested_funds(Decimal("8.01"), Decimal("8.01"), 1_510_000)
-    # 2. Mock the equity read, because the decision depends only on the snapshot comparison.
+    # 2. Mock the equity and ledger reads, because the decision depends only on that evidence.
     def fetch(session, user, vault_address, bypass_cache):
         return SimpleNamespace(equity=Decimal(vault_address))
-    with patch("tradeexecutor.ethereum.vault.hypercore_withdrawal_recovery.fetch_user_vault_equity", side_effect=fetch):
-        cleared = clear_rejected_first_stage_withdrawals([rejected, paid, phase2], safe_address="0xsafe", session=MagicMock())
+    def ledger(safe_address, vault_address, since):
+        return [{"type": "vaultWithdraw", "vault": vault_address}] if vault_address == "19.836443" else []
+    with (
+        patch("tradeexecutor.ethereum.vault.hypercore_withdrawal_recovery.fetch_user_vault_equity", side_effect=fetch),
+        patch("tradeexecutor.ethereum.vault.hypercore_withdrawal_recovery.fetch_vault_withdrawals_since", side_effect=ledger),
+    ):
+        cleared = clear_rejected_first_stage_withdrawals([rejected, paid, phase2, late_payout], safe_address="0xsafe", session=MagicMock())
     # 3. Verify only the rejected sell is cleared and becomes repairable.
     assert cleared == [rejected]
     assert not has_unresolved_hypercore_accounting(rejected)
@@ -156,3 +169,4 @@ def test_repair_clears_rejected_phase1_marker() -> None:
     assert rejected.other_data["hypercore_rejected_withdrawal_cleared"]["equity_now"] == "19.836442"
     assert has_unresolved_hypercore_accounting(paid)
     assert has_unresolved_hypercore_accounting(phase2)
+    assert has_unresolved_hypercore_accounting(late_payout)

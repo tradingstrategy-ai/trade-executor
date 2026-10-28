@@ -384,13 +384,13 @@ def vault_kept_requested_funds(
 
     HyperCore can reject a withdrawal after the EVM wrapper succeeds, for
     example with ``Vault deposits must be at least $5.`` On 2026-10-28 the
-    executor read an unchanged vault equity and still recorded the amount as
-    stranded in perp, which blocked ``repair`` and invited a transit recovery
-    of USDC that had never left the vault. Compare the pre-phase-1 snapshot
-    with the fresh read: the equity must match within the normal NAV-drift
-    margin, and the request must be large enough that a payout could not hide
-    inside that margin. Only use this for phase-1 failures; a later phase can
-    fail after a verified payout.
+    executor then recorded the untouched amount as stranded in perp. Live
+    routing keeps writing that fail-closed marker; ``repair`` uses this check,
+    together with HyperCore ledger evidence, before clearing it. The equity
+    must match the pre-phase-1 snapshot within the normal NAV-drift margin,
+    and the request must be large enough that a payout could not hide inside
+    that margin. Only use this for phase-1 failures; a later phase can fail
+    after a verified payout.
 
     :param equity_before: Vault equity read just before phase 1.
     :param equity_after: Vault equity read after the perp wait timed out.
@@ -701,18 +701,26 @@ class HypercoreVaultRouting(RoutingModel):
         """
         if not trade.is_sell() or TradeFlag.close not in trade.flags or trade.other_data.get("hypercore_small_position_cleanup"):
             return None
+        vault_address = self._get_vault_address(trade)
         equity = fetch_user_vault_equity(
             self._get_session(),
             user=self.safe_address,
-            vault_address=self._get_vault_address(trade),
+            vault_address=vault_address,
             bypass_cache=True,
         )
         if equity is None:
             return "Hyperliquid vault equity lookup returned no position before full close"
-        if equity.equity <= HYPERCORE_ACCEPTED_RESIDUAL_USD:
+        # Setup can resize the request down to the vault's live liquidity cap,
+        # so the smaller of the two decides whether a close is verifiable.
+        max_withdrawable = HyperliquidVault(session=self._get_session(), vault_address=vault_address).fetch_info(
+            user=self.safe_address,
+        ).max_withdrawable
+        withdrawable = min(equity.equity, max_withdrawable)
+        if withdrawable <= HYPERCORE_ACCEPTED_RESIDUAL_USD:
             return (
-                f"Hyperliquid vault equity {equity.equity} USDC cannot fund a verifiable withdrawal "
-                f"above the {raw_to_usdc(HYPERCORE_FULL_CLOSE_MIN_REMAINDER_RAW)} USDC minimum remainder"
+                f"Hyperliquid vault equity {equity.equity} USDC, withdrawable {max_withdrawable} USDC, "
+                f"cannot fund a verifiable withdrawal above the "
+                f"{raw_to_usdc(HYPERCORE_FULL_CLOSE_MIN_REMAINDER_RAW)} USDC minimum remainder"
             )
         return None
 
@@ -1215,9 +1223,12 @@ class HypercoreVaultRouting(RoutingModel):
                     f"{vault_info.max_withdrawable} USDC."
                 )
 
-        if effective_requested_raw <= 0:
-            # Defensive guard: if the live cap ever rounds down to zero, do not
-            # build a meaningless HyperCore withdrawal action.
+        # A normal request below the 1.50 USDC drift floor can lose its whole
+        # movement to the follow-up tolerance and bridge fee margin, then fail
+        # sale settlement after USDC has left the vault. The execution preflight
+        # expires such closes; this catches a cap that moved between the reads.
+        minimum_raw = 1 if trade.other_data.get("hypercore_small_position_cleanup") else HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_FLOOR_RAW
+        if effective_requested_raw < minimum_raw:
             raise HypercoreWithdrawalPreflightError(
                 f"Hypercore withdrawal blocked for Safe {self.safe_address} in vault {vault_address}: "
                 f"effective withdrawal after live cap is {raw_to_usdc(effective_requested_raw)} USDC."
@@ -3746,23 +3757,9 @@ class HypercoreVaultRouting(RoutingModel):
                                 current_vault_equity = None
 
                     if not retry_succeeded:
-                        # A rejected action leaves the vault equity where the
-                        # pre-phase-1 snapshot read it. Do not record such a
-                        # request as stranded perp USDC: that marker blocks
-                        # repair and points recovery at cash that never moved.
-                        vault_kept_funds = (
-                            has_pre_phase1_vault_equity_snapshot
-                            and current_vault_equity is not None
-                            and vault_kept_requested_funds(
-                                vault_equity_before_phase1_snapshot,
-                                current_vault_equity,
-                                expected_raw,
-                            )
-                        )
                         if (
                             not trade.other_data.get("hypercore_small_position_cleanup")
                             and last_retry_wait_error is not None
-                            and not vault_kept_funds
                         ):
                             self._mark_stranded_usdc(trade, expected_raw, "hypercore_perp")
                             self.diagnose_hyperliquid_vault_redemption_failure(
@@ -3779,23 +3776,7 @@ class HypercoreVaultRouting(RoutingModel):
                             trade.trade_id, e,
                         )
 
-                        if vault_kept_funds:
-                            logger.error(
-                                "Not marking %s raw USDC as stranded in perp for trade %s because "
-                                "fresh vault equity %s USDC still matches the pre-phase-1 snapshot "
-                                "%s USDC. HyperCore rejected or no-opped the vaultTransfer; "
-                                "check the action error on the HyperCore explorer.",
-                                expected_raw,
-                                trade.trade_id,
-                                current_vault_equity,
-                                vault_equity_before_phase1_snapshot,
-                            )
-                            trade.add_note(
-                                f"HyperCore vaultTransfer rejected or no-opped: fresh vault equity "
-                                f"{current_vault_equity} USDC still matches the pre-phase-1 snapshot "
-                                f"{vault_equity_before_phase1_snapshot} USDC; nothing left the vault"
-                            )
-                        elif current_vault_equity is not None and usdc_to_raw(current_vault_equity) < expected_raw:
+                        if current_vault_equity is not None and usdc_to_raw(current_vault_equity) < expected_raw:
                             logger.error(
                                 "Not marking %s raw USDC as stranded in perp for trade %s because "
                                 "fresh vault equity %s USDC is below the requested phase-1 amount "

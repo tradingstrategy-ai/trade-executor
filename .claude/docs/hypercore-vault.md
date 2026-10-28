@@ -807,10 +807,12 @@ margin were rejected with `Vault deposits must be at least $5.`, although
 earlier closes leaving the same remainder had succeeded. A normal full close
 therefore leaves at least `HYPERCORE_FULL_CLOSE_MIN_REMAINDER_USD` (6.50 USDC)
 in the vault, and `check_trade_before_execution()` expires a close whose equity
-cannot fund a verifiable withdrawal above it. When the post-timeout equity still
-matches the pre-phase-1 snapshot, routing records a rejected or no-opped action
-instead of stranded perp USDC, and `repair` clears such a marker from an older
-state after a fresh equity read.
+cannot fund a verifiable withdrawal above it (8 USDC or less, using the smaller
+of equity and the vault's live `max_withdrawable`). A phase-1 timeout still
+writes the fail-closed stranded-perp marker. `repair` clears it only for a
+phase-1 perp-wait failure whose equity still matches the pre-phase-1 snapshot
+and whose Safe has no `vaultWithdraw` ledger row from that vault since the
+trade started.
 
 The [withdrawal recovery runbook](../../docs/hyper-ai-withdrawal-recovery.md)
 documents the evidence file, repair/correction sequence and interruption limits.

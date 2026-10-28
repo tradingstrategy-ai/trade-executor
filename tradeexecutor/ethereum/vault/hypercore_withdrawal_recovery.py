@@ -4,6 +4,7 @@ The operator supplies the two HyperCore execution hashes. We verify those
 specific actions rather than searching for a superficially matching transfer.
 """
 
+import datetime
 import logging
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -45,6 +46,28 @@ class PartialWithdrawalRecovery:
     retry_before_signing: bool = False
 
 
+def fetch_vault_withdrawals_since(safe_address: str, vault_address: str, since: datetime.datetime) -> list[dict]:
+    """Return the Safe's HyperCore ``vaultWithdraw`` ledger rows for one vault.
+
+    A paid ``vaultTransfer`` withdrawal always writes such a row, so their
+    absence is action-specific evidence that a timed-out request never paid.
+
+    :param safe_address: Safe whose ledger is read.
+    :param vault_address: HyperCore vault the trade withdrew from.
+    :param since: Naive UTC time before the withdrawal was broadcast.
+    :return: Matching ledger deltas, newest last.
+    """
+    start_ms = int((since - datetime.datetime(1970, 1, 1)).total_seconds() * 1000)
+    response = requests.post("https://api.hyperliquid.xyz/info", json={
+        "type": "userNonFundingLedgerUpdates", "user": safe_address, "startTime": start_ms,
+    }, timeout=15)
+    response.raise_for_status()
+    return [
+        row["delta"] for row in response.json()
+        if row["delta"].get("type") == "vaultWithdraw" and row["delta"].get("vault", "").lower() == vault_address.lower()
+    ]
+
+
 def clear_rejected_first_stage_withdrawals(
     trades: Iterable[TradeExecution],
     safe_address: str,
@@ -57,8 +80,11 @@ def clear_rejected_first_stage_withdrawals(
     when HyperCore rejects the action after a successful EVM receipt. That
     marker defers ``repair`` and makes ``correct-accounts`` look for sale
     proceeds in perp. Re-read the vault equity: when the vault kept the
-    request, the trade is an ordinary failed sell that moved no funds, so
-    ``repair`` may make its counter trade and unfreeze the position.
+    request and the HyperCore ledger has no ``vaultWithdraw`` from that vault
+    since the trade started, the trade is an ordinary failed sell that moved
+    no funds, so ``repair`` may make its counter trade and unfreeze the
+    position. An equity comparison alone cannot exclude a late payout hidden
+    by a NAV gain.
 
     :param trades: Trades to inspect, normally every trade in the state.
     :param safe_address: Safe whose vault equity is read.
@@ -81,6 +107,7 @@ def clear_rejected_first_stage_withdrawals(
             and marker.get("location") == "hypercore_perp"
             and "hypercore_phase1_vault_equity_usdc" in metadata
             and "hypercore_first_stage_requested_raw" in metadata
+            and trade.started_at is not None
         ):
             continue
         if session is None:
@@ -88,10 +115,14 @@ def clear_rejected_first_stage_withdrawals(
         before = Decimal(metadata["hypercore_phase1_vault_equity_usdc"])
         requested_raw = int(metadata["hypercore_first_stage_requested_raw"])
         equity = fetch_user_vault_equity(session, user=safe_address, vault_address=trade.pair.pool_address, bypass_cache=True)
-        if equity is None or not vault_kept_requested_funds(before, equity.equity, requested_raw):
+        withdrawals = fetch_vault_withdrawals_since(
+            safe_address, trade.pair.pool_address, trade.started_at - datetime.timedelta(minutes=1),
+        )
+        if withdrawals or equity is None or not vault_kept_requested_funds(before, equity.equity, requested_raw):
             logger.warning(
-                "Trade #%s keeps its stranded marker: vault equity %s USDC against pre-phase-1 %s USDC; reconcile with correct-accounts",
-                trade.trade_id, equity.equity if equity else None, before,
+                "Trade #%s keeps its stranded marker: vault equity %s USDC against pre-phase-1 %s USDC, "
+                "%d vaultWithdraw ledger row(s) since the trade started; reconcile with correct-accounts",
+                trade.trade_id, equity.equity if equity else None, before, len(withdrawals),
             )
             continue
         trade.other_data.pop(HYPERCORE_STRANDED_USDC_KEY)
@@ -100,11 +131,13 @@ def clear_rejected_first_stage_withdrawals(
             "equity_before": str(before),
             "equity_now": str(equity.equity),
             "requested_raw": requested_raw,
+            "vault_withdraw_ledger_rows": 0,
             "cleared_at": native_datetime_utc_now().isoformat(),
         }
         trade.add_note(
             f"Stranded marker cleared: vault equity {equity.equity} USDC still matches pre-phase-1 "
-            f"{before} USDC, so the {raw_to_usdc(requested_raw)} USDC withdrawal never left the vault"
+            f"{before} USDC and no vaultWithdraw ledger row exists, so the {raw_to_usdc(requested_raw)} "
+            "USDC withdrawal never left the vault"
         )
         logger.info("Cleared rejected HyperCore withdrawal marker from trade #%s", trade.trade_id)
         cleared.append(trade)

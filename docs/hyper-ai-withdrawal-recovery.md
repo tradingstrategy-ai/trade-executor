@@ -20,16 +20,18 @@ A normal full close now leaves at least `HYPERCORE_FULL_CLOSE_MIN_REMAINDER_USD`
 ($5 minimum plus the $1.50 NAV-drift floor) in the vault, and the accepted
 residual boundary rises to $8 so that such a close still settles as closed. A
 close whose equity cannot fund a verifiable withdrawal above the remainder is
-expired before execution and the position stays open. Routing no longer records
-a phase-1 request as stranded perp USDC when the vault equity still matches the
-pre-phase-1 snapshot. Small-position cleanup keeps its 0.10 USDC margin, has
-not been validated against this rejection and must remain disabled.
+expired before execution and the position stays open. Small-position cleanup
+keeps its 0.10 USDC margin, has not been validated against this rejection and
+must remain disabled.
 
-For a state saved before this change, `repair` clears a persisted phase-1
-stranded marker when a fresh equity read shows the vault kept the requested
-funds, then repairs the failed sell as an ordinary no-funds-moved failure. Check
-the perp balance before `correct-accounts`: unrelated vault distributions can
-land there and must not be attributed to the rejected sell.
+A phase-1 timeout still records the request as stranded perp USDC, so the
+executor stops fail-closed. `repair` clears that marker only for a persisted
+phase-1 perp-wait failure whose vault equity still matches the pre-phase-1
+snapshot and whose Safe has no HyperCore `vaultWithdraw` ledger row from that
+vault since the trade started. It then repairs the failed sell as an ordinary
+failure with no funds moved, and the restart guard skips the expired slot.
+Check the perp balance before `correct-accounts`: unrelated vault distributions
+can land there and must not be attributed to the rejected sell.
 
 `repair` recognises persisted ambiguous second-stage phases even when a crash
 preceded the final stranded marker. It repairs untouched sibling trades and
@@ -38,7 +40,7 @@ final state save. Arbitrary exceptions do not acquire this behaviour.
 
 ## Evidence and command sequence
 
-Use the [production maintenance shell](docker.md#production-maintenance-shell).
+Run the commands as [production CLI commands](docker.md#production-cli-commands).
 Stop the executor, verify its image revision, preserve the JSON state, recorder
 files and logs, and confirm the service's existing state/vault/Safe identity.
 Use a release containing these changes; v1470 cannot reconcile this sell.
@@ -59,13 +61,24 @@ first-leg ledger entry. It requires an explicit second execution rejection.
 This is a narrow mainnet two-leg withdrawal path, not a general transaction
 resumer. Evidence is read-only; the command does not discover candidate actions.
 
-Inside the service maintenance shell:
+From `~/strategies`, with the service stopped:
 
 ```shell
-poetry run trade-executor repair --id hyper-ai --state-file state/hyper-ai.json
-poetry run trade-executor correct-accounts --id hyper-ai --state-file state/hyper-ai.json \
+docker compose run --rm --no-deps hyper-ai repair
+docker compose run --rm --no-deps hyper-ai correct-accounts \
   --dry-run --no-cleanup-hypercore-small-positions \
   --hypercore-withdrawal-evidence state/hyper-ai-withdrawal-evidence.json
+```
+
+The 28 October rejected close needs no evidence file. Run `repair`, then the
+preview without `--hypercore-withdrawal-evidence`:
+
+```shell
+docker compose run --rm --no-deps hyper-ai repair
+docker compose run --rm --no-deps hyper-ai correct-accounts --dry-run --no-cleanup-hypercore-small-positions
+docker compose run --rm --no-deps hyper-ai correct-accounts --no-cleanup-hypercore-small-positions \
+  && docker compose run --rm --no-deps hyper-ai check-accounts \
+  && docker compose up -d --no-deps --force-recreate hyper-ai
 ```
 
 `repair` changes accounting state and has no dry-run flag. For a rehearsal, use

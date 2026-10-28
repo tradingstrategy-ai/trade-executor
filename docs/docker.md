@@ -46,6 +46,44 @@ docker run -ti --entrypoint /bin/bash ghcr.io/tradingstrategy-ai/trade-executor:
 This standalone container does **not** have the production Compose service's
 state or cache volumes. Do not use it for production repairs or migrations.
 
+## Production CLI commands
+
+The image entrypoint runs `trade-executor "$@"`, and the Compose service
+supplies the executor ID, strategy file, state file, RPC endpoints and keys from
+its env files. Run a production CLI command by naming the service and the
+subcommand. Pass only the command's own options; do not repeat `--id`,
+`--strategy-file` or `--state-file`.
+
+From the deployment checkout, with the service stopped:
+
+```shell
+cd ~/strategies
+export COMPOSE_FILE=docker-compose-yubi.yml
+export TRADE_EXECUTOR_VERSION="<deployed-tag>"
+docker compose stop hyper-ai
+
+docker compose run --rm --no-deps hyper-ai repair
+docker compose run --rm --no-deps hyper-ai correct-accounts --dry-run --no-cleanup-hypercore-small-positions
+
+docker compose run --rm --no-deps hyper-ai correct-accounts --no-cleanup-hypercore-small-positions \
+  && docker compose run --rm --no-deps hyper-ai check-accounts \
+  && docker compose up -d --no-deps --force-recreate hyper-ai
+```
+
+- `--rm` removes the one-off container; `--no-deps` starts no other service.
+- `docker compose run` attaches a terminal, so confirmation prompts such as
+  `repair`'s work as usual.
+- `docker compose run --rm --no-deps hyper-ai <command> --help` lists the
+  options of the deployed image's command.
+- `-e NAME=value` before the service name overrides one environment variable
+  for that run only.
+- Chain the final steps with `&&` so the service only restarts after the
+  correction and account check succeed.
+
+`docker compose run` starts a separate container and does not stop the live
+service, so stop it first whenever a command may write state. Use the
+maintenance shell below for repository scripts that are not CLI commands.
+
 ## Production maintenance shell
 
 Run production repairs and migrations through the deployment's Docker Compose
