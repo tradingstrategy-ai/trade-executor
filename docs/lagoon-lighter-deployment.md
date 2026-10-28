@@ -133,11 +133,15 @@ returns the capital to the deployer.
 | `LIGHTER_RUN_DIR` | No | An earlier run's directory, to resume it |
 | `HEARTBEAT_SECONDS` | No | Progress interval while a command runs, default 60 |
 
+The script unsets every other `JSON_RPC_*` variable before it runs a command:
+`lagoon-deploy-vault --strategy-file` connects to each one it finds and
+refuses to deploy when they differ from the chains the strategy declares.
+
 The deployer needs `1 + SUBSCRIPTION_USDC` native USDC and ETH for the
 deployment, its contract verification and about 20 further transactions;
 the comparable live tutorial run on 2026-10-26 spent about 0.011 ETH of gas.
 The USDC comes back apart from any Lighter transfer fee and dust below the
-1 USDC withdrawal minimum. A run takes about one and a half hours, most of it the three
+1 USDC withdrawal minimum. A run takes about two hours, most of it the three
 Lighter withdrawals. The script prints a timestamped banner per step, every
 command before it runs and how long it took, a heartbeat while a command
 runs, and the balances after every money step, all also written to

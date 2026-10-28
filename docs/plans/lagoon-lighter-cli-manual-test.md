@@ -364,11 +364,13 @@ cycle also executes whatever else the strategy decides.
   `step`, `done_step`, `run`, `guard_money_step` and the failure trap.
 - Numbered sections 0 to 12 as in the table, each a short comment paragraph
   explaining what the step does to the vault and why, then the commands.
-  Every command is a `run poetry run trade-executor ...` or
+  Every step command is a `run poetry run trade-executor ...` or
   `run poetry run python -m tradeexecutor.testing.lighter_manual ...` line,
   with options spelled out rather than hidden in variables, so the script
-  reads as the deployment runbook.
-- No loops and no inline Python.
+  reads as the deployment runbook. Only the shared helpers abbreviate the
+  helper module as `"${LIGHTER_MANUAL[@]}"`.
+- No inline Python. The only loops are housekeeping: unsetting the other
+  `JSON_RPC_*` variables, writing `env.sh` and the heartbeat.
 
 Private material stays in `$RUN_DIR` with mode 0700 and the mode-0600
 records; the script never echoes `PRIVATE_KEY`, the RPC URL or a record's
@@ -579,9 +581,12 @@ faults, both fixed: a captured command waited up to a minute for the
 heartbeat's `sleep`, and the guard's expected balance mismatches were
 printed as failures.
 
-## Open questions
+## Resolved questions
 
-1. Should `lagoon-settle` be fixed in this work or in its own pull request,
-   with the script using `correct-accounts --process-redemption` meanwhile?
-2. Is `expect-balances` with a 0.01 USDC tolerance the right guard, or
-   should the resume guard compare booked trades in the state instead?
+1. `lagoon-settle` was fixed in this work: it now builds the universe with
+   the state and the strategy parameters, so a vault with sub-accounts
+   settles without `correct-accounts --process-redemption`.
+2. `expect-balances` with a 0.01 USDC tolerance stays the resume guard. It
+   checks the balances on the chain and on Lighter, which is what a resumed
+   money step depends on; the state may lag behind them after an
+   interruption.
