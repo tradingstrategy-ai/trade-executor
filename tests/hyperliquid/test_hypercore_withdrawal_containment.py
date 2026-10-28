@@ -9,7 +9,7 @@ from tradeexecutor.cli.commands.start import should_save_failed_execution
 from tradeexecutor.strategy.dust import HYPERCORE_ACCEPTED_RESIDUAL_USD, HYPERCORE_FULL_CLOSE_MIN_REMAINDER_USD
 from tradeexecutor.strategy.execution_model import ExecutionHaltableIssue
 from tradeexecutor.ethereum.vault.hypercore_routing import HypercoreVaultRouting, vault_kept_requested_funds
-from tradeexecutor.ethereum.vault.hypercore_withdrawal_recovery import clear_rejected_first_stage_withdrawals
+from tradeexecutor.ethereum.vault.hypercore_withdrawal_recovery import clear_rejected_first_stage_withdrawals, fetch_vault_withdrawals_since
 from tradeexecutor.state.trade import TradeFlag, TradeStatus, has_unresolved_hypercore_accounting
 
 
@@ -170,3 +170,27 @@ def test_repair_clears_rejected_phase1_marker() -> None:
     assert has_unresolved_hypercore_accounting(paid)
     assert has_unresolved_hypercore_accounting(phase2)
     assert has_unresolved_hypercore_accounting(late_payout)
+
+
+def test_retry_and_ledger_evidence_cover_small_and_paged_cases() -> None:
+    """Refuse an unverifiable retry and read every ledger page before clearing a marker.
+
+    1. Size a no-op retry for a normal close and for cleanup after equity falls to 6.705 USDC.
+    2. Mock two ledger pages, because the API caps time-range responses at 500 rows.
+    3. Verify the paid withdrawal on the second page is found.
+    """
+    # 1. Size a no-op retry for a normal close and for cleanup after equity falls to 6.705 USDC.
+    routing = object.__new__(HypercoreVaultRouting)
+    assert routing._get_phase1_noop_retry_raw(Decimal("6.705"), 1_510_000, 6_500_000, minimum_raw=1_500_000) is None
+    assert routing._get_phase1_noop_retry_raw(Decimal("6.705"), 1_510_000, 6_500_000) == 205_000
+    # 2. Mock two ledger pages, because the API caps time-range responses at 500 rows.
+    other = {"time": 1, "delta": {"type": "deposit"}}
+    paid = {"time": 2, "delta": {"type": "vaultWithdraw", "vault": "0xVault"}}
+    pages = [[other] * 500, [paid]]
+    responses = [MagicMock(json=MagicMock(return_value=page)) for page in pages]
+    with patch("tradeexecutor.ethereum.vault.hypercore_withdrawal_recovery.requests.post", side_effect=responses) as post:
+        withdrawals = fetch_vault_withdrawals_since("0xsafe", "0xvault", datetime.datetime(2026, 10, 28))
+    # 3. Verify the paid withdrawal on the second page is found.
+    assert withdrawals == [paid["delta"]]
+    assert post.call_count == 2
+    assert post.call_args_list[1].kwargs["json"]["startTime"] == 2

@@ -1702,6 +1702,7 @@ class HypercoreVaultRouting(RoutingModel):
         current_vault_equity: Decimal,
         previous_raw: int,
         safety_margin_raw: int,
+        minimum_raw: int = HYPERCORE_FOLLOW_UP_PHASE_TOLERANCE_RAW + 1,
     ) -> int | None:
         """Return a smaller phase-1 retry amount after a suspected silent no-op.
 
@@ -1732,7 +1733,11 @@ class HypercoreVaultRouting(RoutingModel):
         # encoder enforces it, while encode_vault_withdraw() has no equivalent
         # check. A retry becomes invalid when its expected movement is no
         # longer larger than the follow-up phase verification tolerance.
-        if retry_raw <= HYPERCORE_FOLLOW_UP_PHASE_TOLERANCE_RAW:
+        #
+        # Normal closes pass the 1.50 USDC drift floor as ``minimum_raw``: a
+        # smaller retry can lose its whole movement to the follow-up tolerance
+        # and the bridge fee margin, then fail sale settlement after paying.
+        if retry_raw <= HYPERCORE_FOLLOW_UP_PHASE_TOLERANCE_RAW or retry_raw < minimum_raw:
             return None
 
         # Only retry when the fresh-equity-based amount is actually smaller
@@ -3651,6 +3656,11 @@ class HypercoreVaultRouting(RoutingModel):
                             current_vault_equity=current_vault_equity,
                             previous_raw=expected_raw,
                             safety_margin_raw=retry_safety_margin_raw,
+                            minimum_raw=(
+                                HYPERCORE_FOLLOW_UP_PHASE_TOLERANCE_RAW + 1
+                                if trade.other_data.get("hypercore_small_position_cleanup")
+                                else HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_FLOOR_RAW
+                            ),
                         )
                         if retry_raw is None:
                             break

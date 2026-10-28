@@ -26,6 +26,9 @@ from tradeexecutor.state.trade import HYPERCORE_STRANDED_USDC_KEY, TradeExecutio
 
 logger = logging.getLogger(__name__)
 
+#: Row cap of Hyperliquid time-range info responses; a full page means more rows follow.
+HYPERLIQUID_INFO_PAGE_ROWS = 500
+
 #: ``hypercore_failure_diagnosis`` prefixes written when phase 1 never reached perp.
 PHASE1_PERP_WAIT_DIAGNOSES = ("HyperCore phase1_perp_wait:", "HyperCore phase1_retry_perp_wait:")
 
@@ -58,14 +61,22 @@ def fetch_vault_withdrawals_since(safe_address: str, vault_address: str, since: 
     :return: Matching ledger deltas, newest last.
     """
     start_ms = int((since - datetime.datetime(1970, 1, 1)).total_seconds() * 1000)
-    response = requests.post("https://api.hyperliquid.xyz/info", json={
-        "type": "userNonFundingLedgerUpdates", "user": safe_address, "startTime": start_ms,
-    }, timeout=15)
-    response.raise_for_status()
-    return [
-        row["delta"] for row in response.json()
-        if row["delta"].get("type") == "vaultWithdraw" and row["delta"].get("vault", "").lower() == vault_address.lower()
-    ]
+    withdrawals = []
+    # Time-range info responses are capped at 500 rows; page forward from the
+    # last timestamp so a paid withdrawal cannot fall outside the first page.
+    while True:
+        response = requests.post("https://api.hyperliquid.xyz/info", json={
+            "type": "userNonFundingLedgerUpdates", "user": safe_address, "startTime": start_ms,
+        }, timeout=15)
+        response.raise_for_status()
+        rows = response.json()
+        withdrawals += [
+            row["delta"] for row in rows
+            if row["delta"].get("type") == "vaultWithdraw" and row["delta"].get("vault", "").lower() == vault_address.lower()
+        ]
+        if len(rows) < HYPERLIQUID_INFO_PAGE_ROWS:
+            return withdrawals
+        start_ms = rows[-1]["time"] + 1
 
 
 def clear_rejected_first_stage_withdrawals(
