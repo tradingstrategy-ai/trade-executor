@@ -133,7 +133,7 @@ def test_hypercore_residual_boundaries_are_fixed():
     """
     # 1-2. Neither boundary depends on strategy capital.
     assert HYPERLIQUID_VAULT_CLOSE_EPSILON == Decimal("2.00")
-    assert HYPERCORE_ACCEPTED_RESIDUAL_USD == Decimal("5.00")
+    assert HYPERCORE_ACCEPTED_RESIDUAL_USD == Decimal("8.00")
 
 
 def test_destruction_limit_sits_above_the_largest_legitimate_dust():
@@ -241,7 +241,8 @@ def test_close_epsilon_is_expressed_in_share_units():
     assert epsilon < Decimal("1")
 
     position.other_data["hypercore_close_residual_status"] = HYPERCORE_CLOSE_RESIDUAL_STATUS_ACCEPTED
-    assert position.get_close_epsilon() == pytest.approx(Decimal("0.391"), abs=Decimal("0.001"))
+    # 8 USD accepted residual / 12.78 USD per share
+    assert position.get_close_epsilon() == pytest.approx(Decimal("0.626"), abs=Decimal("0.001"))
 
 
 def test_close_position_refuses_to_destroy_value():

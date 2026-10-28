@@ -10,7 +10,9 @@ from . import shared_options
 from .app import app
 from ..bootstrap import prepare_executor_id, create_execution_and_sync_model, resolve_deployment_file, prepare_cache, create_web3_config, create_client, configure_default_chain, backup_state
 from ..log import setup_logging
+from ...ethereum.lagoon.vault import LagoonVaultSyncModel
 from ...ethereum.rebroadcast import rebroadcast_all
+from ...ethereum.vault.hypercore_withdrawal_recovery import clear_rejected_first_stage_withdrawals
 from ...ethereum.velvet.execution import VelvetExecution
 from ...ethereum.velvet.vault import VelvetVaultSyncModel
 from ...ethereum.velvet.velvet_enso_routing import VelvetEnsoRouting
@@ -164,6 +166,22 @@ def repair(
             "Reconciled %d completed external-account transfer(s)",
             len(reconciled_transfers),
         )
+
+    # A HyperCore withdrawal rejected after its EVM receipt may carry a
+    # stranded-perp marker although the vault kept the funds. Clear it from
+    # a fresh equity read so the failed sell is repaired below instead of
+    # being deferred to a transit recovery that has nothing to recover.
+    if isinstance(sync_model, LagoonVaultSyncModel):
+        cleared_withdrawals = clear_rejected_first_stage_withdrawals(
+            state.portfolio.get_all_trades(),
+            safe_address=sync_model.get_token_storage_address(),
+        )
+        if cleared_withdrawals:
+            store.sync(state)
+            logger.info(
+                "Cleared rejected HyperCore withdrawal marker(s) from trade(s) %s",
+                [trade.trade_id for trade in cleared_withdrawals],
+            )
 
     # Set up the strategy engine
     factory = make_factory_from_strategy_mod(mod)

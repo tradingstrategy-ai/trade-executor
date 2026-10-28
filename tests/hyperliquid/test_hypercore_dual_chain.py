@@ -1525,7 +1525,7 @@ def test_withdrawal_phase1_retry_handles_silent_noop_from_equity_drift(
 
     from eth_defi.hyperliquid.vault import estimate_max_withdrawal_commission
     from tradeexecutor.ethereum.vault.hypercore_routing import (
-        HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW,
+        HYPERCORE_FULL_CLOSE_MIN_REMAINDER_RAW,
         HypercoreWithdrawalVerificationError,
         raw_to_usdc,
         usdc_to_raw,
@@ -1540,7 +1540,7 @@ def test_withdrawal_phase1_retry_handles_silent_noop_from_equity_drift(
     state.portfolio.get_position_by_id.return_value.get_quantity.return_value = Decimal("11.790353")
     mock_block_ts.return_value = datetime.datetime(2026, 4, 15, 13, 44, 29)
     current_equity = Decimal("11.725107")
-    retry_raw = usdc_to_raw(current_equity) - HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW
+    retry_raw = usdc_to_raw(current_equity) - HYPERCORE_FULL_CLOSE_MIN_REMAINDER_RAW
     receipts = {HexBytes("0xabc"): {"status": 1, "blockNumber": 100}}
 
     phase1_retry_tx = MagicMock(tx_hash="0xretry")

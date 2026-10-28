@@ -5,6 +5,7 @@ specific actions rather than searching for a superficially matching transfer.
 """
 
 import logging
+from collections.abc import Iterable
 from dataclasses import dataclass
 from decimal import Decimal
 
@@ -16,11 +17,11 @@ from eth_defi.hyperliquid.api import fetch_user_vault_equity
 from eth_defi.hyperliquid.session import create_hyperliquid_session, HyperliquidSession
 
 from tradeexecutor.ethereum.vault import hypercore_transit_recovery as transit
-from tradeexecutor.ethereum.vault.hypercore_routing import raw_to_usdc
+from tradeexecutor.ethereum.vault.hypercore_routing import RETAIN_RESERVE_ALLOCATION_ON_FAILURE_KEY, raw_to_usdc, vault_kept_requested_funds
 from tradeexecutor.ethereum.lagoon.vault import LagoonVaultSyncModel
 from tradeexecutor.state.store import StateStore
 from tradeexecutor.state.state import State
-from tradeexecutor.state.trade import TradeExecution, TradeStatus
+from tradeexecutor.state.trade import HYPERCORE_STRANDED_USDC_KEY, TradeExecution, TradeStatus
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +40,68 @@ class PartialWithdrawalRecovery:
 
     #: Explicit operator attestation for the legacy unsynchronised-nonce failure.
     retry_before_signing: bool = False
+
+
+def clear_rejected_first_stage_withdrawals(
+    trades: Iterable[TradeExecution],
+    safe_address: str,
+    session: HyperliquidSession | None = None,
+) -> list[TradeExecution]:
+    """Clear stranded-perp markers from phase-1 withdrawals the vault never paid.
+
+    Before 2026-10-28 routing recorded a timed-out phase-1 request as USDC
+    stranded in perp even when the vault equity had not moved, which happens
+    when HyperCore rejects the action after a successful EVM receipt. That
+    marker defers ``repair`` and makes ``correct-accounts`` look for sale
+    proceeds in perp. Re-read the vault equity: when the vault kept the
+    request, the trade is an ordinary failed sell that moved no funds, so
+    ``repair`` may make its counter trade and unfreeze the position.
+
+    :param trades: Trades to inspect, normally every trade in the state.
+    :param safe_address: Safe whose vault equity is read.
+    :param session: Hyperliquid API session; created on first use when omitted.
+    :return: Trades whose markers were cleared.
+    """
+    cleared = []
+    for trade in trades:
+        metadata = trade.other_data or {}
+        marker = metadata.get(HYPERCORE_STRANDED_USDC_KEY)
+        if not (
+            trade.is_sell()
+            and trade.pair.is_hyperliquid_vault()
+            and trade.get_status() == TradeStatus.failed
+            and isinstance(marker, dict)
+            and marker.get("location") == "hypercore_perp"
+            and "hypercore_phase1_vault_equity_usdc" in metadata
+            and "hypercore_first_stage_requested_raw" in metadata
+        ):
+            continue
+        if session is None:
+            session = create_hyperliquid_session()
+        before = Decimal(metadata["hypercore_phase1_vault_equity_usdc"])
+        requested_raw = int(metadata["hypercore_first_stage_requested_raw"])
+        equity = fetch_user_vault_equity(session, user=safe_address, vault_address=trade.pair.pool_address, bypass_cache=True)
+        if equity is None or not vault_kept_requested_funds(before, equity.equity, requested_raw):
+            logger.warning(
+                "Trade #%s keeps its stranded marker: vault equity %s USDC against pre-phase-1 %s USDC; reconcile with correct-accounts",
+                trade.trade_id, equity.equity if equity else None, before,
+            )
+            continue
+        trade.other_data.pop(HYPERCORE_STRANDED_USDC_KEY)
+        trade.other_data.pop(RETAIN_RESERVE_ALLOCATION_ON_FAILURE_KEY, None)
+        trade.other_data["hypercore_rejected_withdrawal_cleared"] = {
+            "equity_before": str(before),
+            "equity_now": str(equity.equity),
+            "requested_raw": requested_raw,
+            "cleared_at": native_datetime_utc_now().isoformat(),
+        }
+        trade.add_note(
+            f"Stranded marker cleared: vault equity {equity.equity} USDC still matches pre-phase-1 "
+            f"{before} USDC, so the {raw_to_usdc(requested_raw)} USDC withdrawal never left the vault"
+        )
+        logger.info("Cleared rejected HyperCore withdrawal marker from trade #%s", trade.trade_id)
+        cleared.append(trade)
+    return cleared
 
 
 def inspect_partial_withdrawal(

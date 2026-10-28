@@ -792,16 +792,25 @@ configured 0.5%/1.50 USDC tolerance still fails loudly.
 
 Separately, automatic dust cleanup first identifies a dust-sized position and
 then skips it if it has no successful trade or has a planned, started, or
-broadcast trade. Verified settlement may accept a residual of up to 5 USDC
-after a full close; this is distinct from the 2 USDC transaction-dust rule and
-never widens the close threshold for a fresh position. `correct-accounts`
-ignores untracked HyperCore equity at or below 5 USDC, since it cannot safely
-distinguish a retained account-scoped residual from an external micro-deposit.
-Optional same-cycle second withdrawals are disabled pending protocol validation.
-The first verified proceeds settle as a partial fill and the residual shares
-remain valued. First-stage sizing and cleanup margins are unchanged. A successful
-EVM receipt does not prove a HyperCore action succeeded; the October rejection
-alone does not establish a universal $5 withdrawal remainder floor.
+broadcast trade. Verified settlement may accept a residual of up to
+`HYPERCORE_ACCEPTED_RESIDUAL_USD` (8 USDC) after a full close; this is distinct
+from the 2 USDC transaction-dust rule and never widens the close threshold for
+a fresh position. `correct-accounts` ignores untracked HyperCore equity at or
+below that boundary, since it cannot safely distinguish a retained
+account-scoped residual from an external micro-deposit. Optional same-cycle
+second withdrawals are disabled pending protocol validation. The first verified
+proceeds settle as a partial fill and the residual shares remain valued. A
+successful EVM receipt does not prove a HyperCore action succeeded.
+
+Two October 2026 Tortoise Fund withdrawals that would have left the 1.50 USDC
+margin were rejected with `Vault deposits must be at least $5.`, although
+earlier closes leaving the same remainder had succeeded. A normal full close
+therefore leaves at least `HYPERCORE_FULL_CLOSE_MIN_REMAINDER_USD` (6.50 USDC)
+in the vault, and `check_trade_before_execution()` expires a close whose equity
+cannot fund a verifiable withdrawal above it. When the post-timeout equity still
+matches the pre-phase-1 snapshot, routing records a rejected or no-opped action
+instead of stranded perp USDC, and `repair` clears such a marker from an older
+state after a fresh equity read.
 
 The [withdrawal recovery runbook](../../docs/hyper-ai-withdrawal-recovery.md)
 documents the evidence file, repair/correction sequence and interruption limits.

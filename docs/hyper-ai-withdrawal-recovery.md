@@ -10,14 +10,26 @@ remainder may explain the rejection; the protocol boundary is not verified.
 
 Optional same-cycle second withdrawals are disabled pending protocol validation.
 The verified first withdrawal continues through the existing transit sweep and
-settles as a partial fill; remaining shares stay valued. First-stage withdrawal
-rules, NAV safety margins and accounting write-off thresholds are unchanged.
+settles as a partial fill; remaining shares stay valued.
 
-The observed rejection does not establish a universal $5 minimum remainder.
-Applying that assumption to first-stage withdrawals would also block ordinary
-small closes. Small-position cleanup has not been validated against this failure
-and must remain disabled during incident recovery. This change contains the
-optional-leg failure; it does not guarantee every future small exit will succeed.
+On 28 October 2026 the next cycle closed the $19.84 residual itself. Its first
+and only withdrawal, 18.336430 USDC leaving $1.50, was rejected with the same
+`Vault deposits must be at least $5.` error and no USDC moved. Earlier closes
+leaving $1.50 had succeeded, so the remainder rule is observed, not documented.
+A normal full close now leaves at least `HYPERCORE_FULL_CLOSE_MIN_REMAINDER_USD`
+($5 minimum plus the $1.50 NAV-drift floor) in the vault, and the accepted
+residual boundary rises to $8 so that such a close still settles as closed. A
+close whose equity cannot fund a verifiable withdrawal above the remainder is
+expired before execution and the position stays open. Routing no longer records
+a phase-1 request as stranded perp USDC when the vault equity still matches the
+pre-phase-1 snapshot. Small-position cleanup keeps its 0.10 USDC margin, has
+not been validated against this rejection and must remain disabled.
+
+For a state saved before this change, `repair` clears a persisted phase-1
+stranded marker when a fresh equity read shows the vault kept the requested
+funds, then repairs the failed sell as an ordinary no-funds-moved failure. Check
+the perp balance before `correct-accounts`: unrelated vault distributions can
+land there and must not be attributed to the rejected sell.
 
 `repair` recognises persisted ambiguous second-stage phases even when a crash
 preceded the final stranded marker. It repairs untouched sibling trades and

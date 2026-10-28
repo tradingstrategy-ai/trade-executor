@@ -145,6 +145,7 @@ from tradeexecutor.strategy.dust import (
     HYPERCORE_ACCEPTED_RESIDUAL_USD,
     HYPERCORE_CLOSE_RESIDUAL_STATUS_ACCEPTED,
     HYPERCORE_CLOSE_RESIDUAL_STATUS_PENDING_RETRY,
+    HYPERCORE_FULL_CLOSE_MIN_REMAINDER_USD,
     HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_FLOOR,
     HYPERCORE_SMALL_POSITION_CLEANUP_CLOSE_EPSILON,
     HYPERCORE_SMALL_POSITION_CLEANUP_PENDING_REDEEM,
@@ -200,6 +201,16 @@ HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_FLOOR_RAW = int(
 #: external tooling. New withdrawal code calculates the effective margin.
 HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW = (
     HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_FLOOR_RAW
+)
+
+#: Smallest equity a normal full close leaves in the vault, in raw USDC.
+#:
+#: See :py:data:`tradeexecutor.strategy.dust.HYPERCORE_FULL_CLOSE_MIN_REMAINDER_USD`
+#: for the October 2026 ``Vault deposits must be at least $5.`` rejections.
+#: ``correct-accounts`` small-position cleanup keeps its own 0.10 USDC margin
+#: and has not been validated against that rejection.
+HYPERCORE_FULL_CLOSE_MIN_REMAINDER_RAW = int(
+    HYPERCORE_FULL_CLOSE_MIN_REMAINDER_USD * 10**USDC_DECIMALS
 )
 
 #: Floor for acceptable planning-to-preflight cap drift in raw USDC.
@@ -362,6 +373,29 @@ def usdc_to_raw(amount: Decimal) -> int:
 def raw_to_usdc(raw: int) -> Decimal:
     """Convert a raw 6-decimal USDC integer to human-readable Decimal."""
     return Decimal(raw) / Decimal(10**USDC_DECIMALS)
+
+
+def vault_kept_requested_funds(
+    equity_before: Decimal,
+    equity_after: Decimal,
+    requested_raw: int,
+) -> bool:
+    """Decide whether a phase-1 ``vaultTransfer`` left the vault equity intact.
+
+    HyperCore can reject a withdrawal after the EVM wrapper succeeds, for
+    example with ``Vault deposits must be at least $5.`` On 2026-10-28 the
+    executor read an unchanged vault equity and still recorded the amount as
+    stranded in perp, which blocked ``repair`` and invited a transit recovery
+    of USDC that had never left the vault. Compare the pre-phase-1 snapshot
+    with the fresh read: a vault that lost less than half of the request did
+    not pay it out.
+
+    :param equity_before: Vault equity read just before phase 1.
+    :param equity_after: Vault equity read after the perp wait timed out.
+    :param requested_raw: Phase-1 request in raw USDC.
+    :return: ``True`` when nothing material left the vault.
+    """
+    return usdc_to_raw(equity_before) - usdc_to_raw(equity_after) < requested_raw // 2
 
 
 def calculate_hypercore_bridge_fee(
@@ -613,14 +647,21 @@ class HypercoreVaultRouting(RoutingModel):
         ``vaultDetails`` catches a permission or leader-share change since
         sizing. A block, missing flags, or an API request/decoding failure
         returns a reason that causes the executor to expire the planned buy.
-        Sells and simulate mode proceed without this read. The executor skips
-        this check when rebroadcasting an already-started trade.
+
+        A full close is expired when the live equity cannot fund a verifiable
+        withdrawal above :py:data:`HYPERCORE_FULL_CLOSE_MIN_REMAINDER_RAW`.
+        Such a position stays open and valued instead of halting the executor
+        in :py:meth:`_get_live_withdrawal_amount_for_close`. Other sells and
+        simulate mode proceed without a read. The executor skips this check
+        when rebroadcasting an already-started trade.
 
         :param trade: Still-planned HyperCore vault trade.
-        :return: No-trade reason for a blocked or unknown buy, else ``None``.
+        :return: No-trade reason for a blocked or unknown trade, else ``None``.
         """
-        if not trade.is_buy() or self.simulate:
+        if self.simulate:
             return None
+        if not trade.is_buy():
+            return self._check_full_close_before_execution(trade)
         vault = HyperliquidVault(session=self._get_session(), vault_address=self._get_vault_address(trade))
         try:
             info = vault.fetch_metadata()
@@ -638,6 +679,30 @@ class HypercoreVaultRouting(RoutingModel):
             return "Hyperliquid vault deposit permission flags unavailable before execution"
         if status.max_deposit == 0:
             return status.capacity_warning
+        return None
+
+    def _check_full_close_before_execution(self, trade: TradeExecution) -> str | None:
+        """Expire a full close whose live equity cannot be withdrawn verifiably.
+
+        :param trade: Still-planned HyperCore vault sell.
+        :return: No-trade reason, or ``None`` for partial sells, cleanup and fundable closes.
+        """
+        if not trade.is_sell() or TradeFlag.close not in trade.flags or trade.other_data.get("hypercore_small_position_cleanup"):
+            return None
+        equity = fetch_user_vault_equity(
+            self._get_session(),
+            user=self.safe_address,
+            vault_address=self._get_vault_address(trade),
+            bypass_cache=True,
+        )
+        if equity is None:
+            return "Hyperliquid vault equity lookup returned no position before full close"
+        withdrawable_raw = usdc_to_raw(equity.equity) - HYPERCORE_FULL_CLOSE_MIN_REMAINDER_RAW
+        if withdrawable_raw <= HYPERCORE_FOLLOW_UP_PHASE_TOLERANCE_RAW:
+            return (
+                f"Hyperliquid vault equity {equity.equity} USDC cannot fund a verifiable withdrawal "
+                f"above the {raw_to_usdc(HYPERCORE_FULL_CLOSE_MIN_REMAINDER_RAW)} USDC minimum remainder"
+            )
         return None
 
     # ------------------------------------------------------------------
@@ -975,14 +1040,14 @@ class HypercoreVaultRouting(RoutingModel):
         trade: TradeExecution,
         available_raw: int,
     ) -> int:
-        """Return the NAV-drift margin for a full-close redemption.
+        """Return the equity a full-close redemption leaves in the vault.
 
-        Normal strategy withdrawals use max(0.5% of the available amount,
-        1.50 USDC).
+        Normal strategy withdrawals leave max(0.5% of the available amount,
+        1.50 USDC) for NAV drift, and never less than
+        :py:data:`HYPERCORE_FULL_CLOSE_MIN_REMAINDER_RAW`, because HyperCore
+        rejects a withdrawal whose remainder falls under its 5 USDC minimum.
         ``correct-accounts`` cleanup uses a fixed 0.10 USDC margin and rejects
         amounts that cannot produce verifiable movement in every later phase.
-        These margins protect against NAV drift, not protocol minimums.
-        They do not establish a universally valid small-position exit.
         """
         if trade.other_data.get("hypercore_small_position_cleanup"):
             if available_raw <= HYPERCORE_SMALL_POSITION_CLEANUP_MIN_REDEMPTION_RAW:
@@ -992,8 +1057,9 @@ class HypercoreVaultRouting(RoutingModel):
                     "USDC is required to verify every withdrawal phase"
                 )
             return HYPERCORE_SMALL_POSITION_CLEANUP_INITIAL_SAFETY_MARGIN_RAW
-        return usdc_to_raw(
-            get_hypercore_withdrawal_safety_margin(raw_to_usdc(available_raw))
+        return max(
+            usdc_to_raw(get_hypercore_withdrawal_safety_margin(raw_to_usdc(available_raw))),
+            HYPERCORE_FULL_CLOSE_MIN_REMAINDER_RAW,
         )
 
     def _get_withdrawal_cap_drift_tolerance_raw(
@@ -3669,9 +3735,23 @@ class HypercoreVaultRouting(RoutingModel):
                                 current_vault_equity = None
 
                     if not retry_succeeded:
+                        # A rejected action leaves the vault equity where the
+                        # pre-phase-1 snapshot read it. Do not record such a
+                        # request as stranded perp USDC: that marker blocks
+                        # repair and points recovery at cash that never moved.
+                        vault_kept_funds = (
+                            has_pre_phase1_vault_equity_snapshot
+                            and current_vault_equity is not None
+                            and vault_kept_requested_funds(
+                                vault_equity_before_phase1_snapshot,
+                                current_vault_equity,
+                                expected_raw,
+                            )
+                        )
                         if (
                             not trade.other_data.get("hypercore_small_position_cleanup")
                             and last_retry_wait_error is not None
+                            and not vault_kept_funds
                         ):
                             self._mark_stranded_usdc(trade, expected_raw, "hypercore_perp")
                             self.diagnose_hyperliquid_vault_redemption_failure(
@@ -3688,7 +3768,23 @@ class HypercoreVaultRouting(RoutingModel):
                             trade.trade_id, e,
                         )
 
-                        if current_vault_equity is not None and usdc_to_raw(current_vault_equity) < expected_raw:
+                        if vault_kept_funds:
+                            logger.error(
+                                "Not marking %s raw USDC as stranded in perp for trade %s because "
+                                "fresh vault equity %s USDC still matches the pre-phase-1 snapshot "
+                                "%s USDC. HyperCore rejected or no-opped the vaultTransfer; "
+                                "check the action error on the HyperCore explorer.",
+                                expected_raw,
+                                trade.trade_id,
+                                current_vault_equity,
+                                vault_equity_before_phase1_snapshot,
+                            )
+                            trade.add_note(
+                                f"HyperCore vaultTransfer rejected or no-opped: fresh vault equity "
+                                f"{current_vault_equity} USDC still matches the pre-phase-1 snapshot "
+                                f"{vault_equity_before_phase1_snapshot} USDC; nothing left the vault"
+                            )
+                        elif current_vault_equity is not None and usdc_to_raw(current_vault_equity) < expected_raw:
                             logger.error(
                                 "Not marking %s raw USDC as stranded in perp for trade %s because "
                                 "fresh vault equity %s USDC is below the requested phase-1 amount "

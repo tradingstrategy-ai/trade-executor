@@ -22,6 +22,7 @@ from tradeexecutor.ethereum.vault.hypercore_routing import (
     HypercoreWithdrawalPreflightError,
     calculate_hypercore_bridge_fee,
     compute_spot_to_evm_withdrawal_amount,
+    HYPERCORE_FULL_CLOSE_MIN_REMAINDER_RAW,
     usdc_to_raw,
 )
 from tradeexecutor.state.trade import TradeFlag
@@ -404,7 +405,7 @@ def test_withdrawal_uses_live_equity_on_close():
         locked_until=datetime.datetime(2020, 1, 1),
     )
     live_raw = 7_128_756
-    expected_withdrawal_raw = live_raw - usdc_to_raw(get_hypercore_withdrawal_safety_margin(live_equity.equity))
+    expected_withdrawal_raw = live_raw - max(usdc_to_raw(get_hypercore_withdrawal_safety_margin(live_equity.equity)), HYPERCORE_FULL_CLOSE_MIN_REMAINDER_RAW)
 
     # 2. Mock the equity fetch and tx building.
     with patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity", return_value=live_equity):
@@ -507,7 +508,7 @@ def test_withdrawal_logs_large_equity_mismatch_but_uses_live_amount(caplog):
         equity=Decimal("90.0"),
         locked_until=datetime.datetime(2020, 1, 1),
     )
-    expected_withdrawal_raw = 90_000_000 - usdc_to_raw(get_hypercore_withdrawal_safety_margin(live_equity.equity))
+    expected_withdrawal_raw = 90_000_000 - max(usdc_to_raw(get_hypercore_withdrawal_safety_margin(live_equity.equity)), HYPERCORE_FULL_CLOSE_MIN_REMAINDER_RAW)
 
     # Step 2: Mock the live equity so the drift warning path is exercised.
     with caplog.at_level("WARNING"):

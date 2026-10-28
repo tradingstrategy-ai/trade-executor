@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 #: any real position, so a mis-scaled threshold cannot quietly delete one.
 #:
 #: The binding constraint is
-#: :py:data:`tradeexecutor.strategy.dust.HYPERCORE_ACCEPTED_RESIDUAL_USD` (5 USD),
+#: :py:data:`tradeexecutor.strategy.dust.HYPERCORE_ACCEPTED_RESIDUAL_USD` (8 USD),
 #: the most a *verified* Hypercore residual can be worth and still count as dust. 100 USD leaves a
 #: clear margin above it while still catching the failure this guard exists for: a 8,963 USD
 #: position closed as "dust" because a USD threshold was compared against a share count.

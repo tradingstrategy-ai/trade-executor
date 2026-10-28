@@ -7,6 +7,8 @@ We need to deal with these rounding artifacts by checking for "dust".
 """
 from decimal import Decimal, ROUND_CEILING
 
+from eth_defi.hyperliquid.core_writer import MINIMUM_VAULT_DEPOSIT
+
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.types import Percent, USDollarPrice
 from tradeexecutor.utils.accuracy import COLLATERAL_EPSILON
@@ -64,11 +66,27 @@ DEFAULT_VAULT_EPSILON = Decimal(10 ** -6)
 #:     threshold 25.56 USD instead of 2.00 USD.
 HYPERLIQUID_VAULT_CLOSE_EPSILON = Decimal("2.00")
 
+#: Minimum NAV-drift headroom left when withdrawing from a HyperCore vault.
+HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_FLOOR = Decimal("1.50")
+
+#: Smallest vault equity a normal full close deliberately leaves behind.
+#:
+#: HyperCore rejected two Tortoise Fund withdrawals on 2026-10-26 and
+#: 2026-10-28 with ``Vault deposits must be at least $5.`` Both would have
+#: left only the 1.50 USDC safety margin in the vault, so the withdrawal
+#: action appears to apply the minimum deposit to the equity that stays
+#: behind. Leave that minimum plus the NAV-drift floor, so a small downward
+#: move before HyperCore processes the queued action cannot take the remainder
+#: under the minimum.
+HYPERCORE_FULL_CLOSE_MIN_REMAINDER_USD = Decimal(MINIMUM_VAULT_DEPOSIT).scaleb(-6) + HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_FLOOR
+
 #: Maximum verified HyperCore equity we deliberately leave on-chain after a
 #: withdrawal close. This is larger than the transaction dust threshold above:
 #: positions in the interval are locally closed only after routing records a
-#: verified accepted residual.
-HYPERCORE_ACCEPTED_RESIDUAL_USD = Decimal("5.00")
+#: verified accepted residual. It must exceed the deliberate remainder, with
+#: room for an upward NAV move, or a verified close would retry forever
+#: against a remainder it can never withdraw.
+HYPERCORE_ACCEPTED_RESIDUAL_USD = HYPERCORE_FULL_CLOSE_MIN_REMAINDER_USD + HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_FLOOR
 
 #: Persisted status values for a HyperCore close residual observation.
 HYPERCORE_CLOSE_RESIDUAL_STATUS_PENDING_RETRY = "pending_retry"
@@ -84,10 +102,7 @@ HYPERCORE_SMALL_POSITION_CLEANUP_PENDING_REDEEM = (
     "hypercore_small_position_cleanup_pending_redeem"
 )
 
-assert HYPERLIQUID_VAULT_CLOSE_EPSILON < HYPERCORE_ACCEPTED_RESIDUAL_USD
-
-#: Minimum NAV-drift headroom left when withdrawing from a HyperCore vault.
-HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_FLOOR = Decimal("1.50")
+assert HYPERLIQUID_VAULT_CLOSE_EPSILON < HYPERCORE_FULL_CLOSE_MIN_REMAINDER_USD < HYPERCORE_ACCEPTED_RESIDUAL_USD
 
 #: Relative NAV-drift headroom left when withdrawing from a HyperCore vault.
 #:
