@@ -280,6 +280,21 @@ status and saved hashes, exits 1 and still prints the balance table. Then:
   request, waits for it, claims it into the Safe and completes the
   accounting, for automatic and manual withdrawals alike, without sending a
   second request.
+- **Withdrawal started without a recorded request:** `lighter-move-funds`
+  saves the withdrawal trade before it sends the request and records the
+  request id after, so an interruption in between leaves a pending trade
+  with no `lighter_withdrawal_request_id`. Rerunning would wait for a
+  request that may never have been sent, and `repair` cannot verify it,
+  as it needs the claim evidence. No command resolves this case. Check
+  whether the request was sent: for a sub-account, an L1 `withdraw` from the
+  Safe on Etherscan; for the master, the account's withdrawal history on
+  Lighter. If it was not sent, nothing moved: mark the trade failed in the
+  state, for example from `trade-executor console`. If it was, record its
+  hash in the trade's `other_data["lighter_withdrawal_request_id"]` and
+  rerun `lighter-move-funds` for the account to resume it. Back up the state
+  file first. `withdrawal-plan` in
+  [`lighter_manual.py`](../testing/lighter_manual.py) reports this case as
+  `unconfirmed`.
 - **Withdrawal whose Safe claim was broadcast:** `correct-accounts` or
   `repair` reconciles it from the claim receipt.
 - **Transfer the halted cycle never started:** `correct-accounts` or
