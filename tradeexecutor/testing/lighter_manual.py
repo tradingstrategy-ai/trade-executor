@@ -47,6 +47,7 @@ from tradeexecutor.exchange_account import lighter as lighter_reads
 from tradeexecutor.exchange_account.lighter import LIGHTER_DUST_USDC
 from tradeexecutor.exchange_account.sub_account import get_lighter_account_resolution
 from tradeexecutor.state.state import State
+from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.testing.lighter_report import get_lighter_funding_fees
 
 #: Fixed name: run with ``python -m`` the module is ``__main__``, which would drop its INFO progress.
@@ -67,6 +68,11 @@ DEFAULT_TOLERANCE_USDC = Decimal("0.01")
 
 #: ``name=value`` or ``name<=value`` in ``expect-balances``.
 EXPECTATION_PATTERN = re.compile(r"^(?P<name>[A-Za-z0-9_-]+)(?P<operator><=|=)(?P<value>[0-9.]+)$")
+
+#: Default least ETH the deployer needs: the comparable tutorial run on
+#: 2026-10-26 spent about 0.011 ETH of gas, and lagoon-redeem refuses to
+#: start below 0.001 ETH.
+DEFAULT_MIN_ETH = Decimal("0.02")
 
 #: USDC precision used for amounts passed back to the shell.
 USDC_QUANTUM = Decimal("0.000001")
@@ -205,9 +211,10 @@ def command_check_funds(args: argparse.Namespace) -> int:
         return 0
     usdc_balance = usdc.fetch_balance_of(deployer.address)
     eth_wei = web3.eth.get_balance(deployer.address)
-    logger.info("Deployer %s holds %s USDC and %s ETH", deployer.address, usdc_balance, Decimal(eth_wei) / Decimal(10**18))
-    if eth_wei == 0:
-        raise ManualTestError(f"Deployer {deployer.address} has no ETH for gas")
+    eth = Decimal(eth_wei) / Decimal(10**18)
+    logger.info("Deployer %s holds %s USDC and %s ETH", deployer.address, usdc_balance, eth)
+    if eth < args.min_eth:
+        raise ManualTestError(f"Deployer {deployer.address} has {eth} ETH but the run needs at least {args.min_eth} ETH for gas")
     if usdc_balance < args.usdc:
         raise ManualTestError(f"Deployer {deployer.address} has {usdc_balance} USDC but the run needs {args.usdc} USDC")
     start_file.write_text(f"START_USDC={usdc_balance}\nSTART_ETH_WEI={eth_wei}\nDEPLOYER_ADDRESS={deployer.address}\n")
@@ -335,29 +342,41 @@ def command_expect_balances(args: argparse.Namespace) -> int:
     return 0 if ok else 1
 
 
-def has_pending_lighter_transfer(state: State, account_index: int) -> bool:
-    """Check whether the state has an unfinished custody transfer on one Lighter account."""
+def find_pending_lighter_transfer(state: State, account_index: int) -> TradeExecution | None:
+    """Return the unfinished custody transfer on one Lighter account, if any."""
     for position in state.portfolio.get_all_positions():
         if position.pair.is_exchange_account() and int(position.pair.get_exchange_account_id()) == account_index:
-            if any(trade.is_exchange_account_transfer_pending() for trade in position.trades.values()):
-                return True
-    return False
+            for trade in position.trades.values():
+                if trade.is_exchange_account_transfer_pending():
+                    return trade
+    return None
 
 
 def command_withdrawal_plan(args: argparse.Namespace) -> int:
     """Decide how to withdraw one Lighter account: resume, withdraw an amount, or skip.
 
-    A withdrawal ``lighter-move-funds`` submitted earlier is persisted as a
-    pending trade, and the account's equity already reads zero while the
-    USDC waits on the ZkLighter contract. Equity alone would therefore skip
-    it; the pending trade decides first.
+    ``lighter-move-funds`` saves a withdrawal as a pending trade before it
+    submits the request and records the request id after. A submitted
+    withdrawal already reads as zero equity while the USDC waits on the
+    ZkLighter contract, so the pending trade decides first:
 
-    Prints ``resume``, ``withdraw <amount>`` or ``skip``.
+    - with a recorded request id, ``lighter-move-funds`` resumes it: it waits,
+      claims and books it without sending a second request;
+    - without one, the command stopped between saving the trade and
+      recording the request, and only Lighter's or Ethereum's history can
+      tell whether the request was sent. Nothing here may send another.
+
+    Prints ``resume``, ``unconfirmed <trade id>``, ``withdraw <amount>`` or ``skip``.
     """
     state = State.read_json_file(Path(require_env("STATE_FILE")))
-    if has_pending_lighter_transfer(state, args.account_index):
-        logger.info("Lighter account %d has a withdrawal in flight; lighter-move-funds resumes and claims it", args.account_index)
-        print("resume")
+    pending = find_pending_lighter_transfer(state, args.account_index)
+    if pending is not None:
+        if (pending.other_data or {}).get("lighter_withdrawal_request_id"):
+            logger.info("Lighter account %d has withdrawal trade #%d in flight; lighter-move-funds resumes and claims it", args.account_index, pending.trade_id)
+            print("resume")
+        else:
+            logger.warning("Lighter account %d has transfer trade #%d started without a recorded request; check the history before anything else", args.account_index, pending.trade_id)
+            print(f"unconfirmed {pending.trade_id}")
         return 0
     web3, _deployer, _usdc = connect()
     account = fetch_lighter_equity(get_vault(web3).safe_address).get(args.account_index)
@@ -487,6 +506,7 @@ def create_parser() -> argparse.ArgumentParser:
 
     check_funds = commands.add_parser("check-funds", help="Check the deployer's ETH and USDC and record the starting balances.")
     check_funds.add_argument("--usdc", type=parse_usdc, required=True, help="USDC the run needs.")
+    check_funds.add_argument("--min-eth", type=parse_usdc, default=DEFAULT_MIN_ETH, help="Least ETH the deployer needs for gas.")
     check_funds.add_argument("--start-file", type=Path, required=True, help="File to record the starting balances in.")
     check_funds.set_defaults(handler=command_check_funds)
 
@@ -508,7 +528,7 @@ def create_parser() -> argparse.ArgumentParser:
     expect_balances.add_argument("--quiet", action="store_true", help="Log a mismatch at INFO, for probing checks.")
     expect_balances.set_defaults(handler=command_expect_balances)
 
-    withdrawal_plan = commands.add_parser("withdrawal-plan", help="Print resume, withdraw <amount> or skip for one Lighter account.")
+    withdrawal_plan = commands.add_parser("withdrawal-plan", help="Print resume, unconfirmed <trade id>, withdraw <amount> or skip for one Lighter account.")
     withdrawal_plan.add_argument("account_index", type=int, help="Lighter account index.")
     withdrawal_plan.set_defaults(handler=command_withdrawal_plan)
 

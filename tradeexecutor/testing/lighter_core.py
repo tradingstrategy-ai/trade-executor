@@ -238,8 +238,12 @@ class FakeLighterCore:
         self.withdrawals.append(("api_secure_withdrawal", self.master_index, amount))
         return self._new_hash("wd")
 
-    async def wait_for_lighter_withdrawal_claimable(self, operator: Any, amount: Decimal, timeout: int, requested_at: int, request_id: str) -> Decimal:
-        """Make a master secure withdrawal claimable onchain."""
+    async def wait_for_lighter_withdrawal_claimable(self, operator: Any, amount: Decimal, timeout: int, requested_at: int, request_id: str | None = None) -> Decimal:
+        """Make a master secure withdrawal claimable onchain.
+
+        ``request_id`` is passed by the routing layer and not by
+        ``lighter-move-funds``; the fake does not need it.
+        """
         self._credit_pending_balance(amount)
         return amount
 
@@ -359,6 +363,8 @@ class FakeLighterCore:
             ("tradeexecutor.cli.commands.lighter_move_funds.fetch_lighter_account_by_index", self.fetch_lighter_account_by_index),
             ("tradeexecutor.cli.commands.lighter_move_funds.fetch_lighter_withdrawal_delay", self.fetch_lighter_withdrawal_delay),
             ("tradeexecutor.cli.commands.lighter_move_funds.request_usdc_withdrawal_from_lighter_account", self.request_usdc_withdrawal_from_lighter_account),
+            ("tradeexecutor.cli.commands.lighter_move_funds.request_lighter_withdrawal", self.request_lighter_withdrawal),
+            ("tradeexecutor.cli.commands.lighter_move_funds.wait_for_lighter_withdrawal_claimable", self.wait_for_lighter_withdrawal_claimable),
         ]
 
 

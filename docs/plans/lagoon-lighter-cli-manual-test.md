@@ -187,16 +187,19 @@ options for the command are optional scope.
 
 ## Interactive checkpoints
 
-Two commands ask for confirmation when `UNIT_TESTING` is not set, and the
-script runs without it so that backups and prompts behave as in production:
+Three commands prompt when `UNIT_TESTING` is not set, and the script runs
+without it so that backups and prompts behave as in production:
 
-- `lagoon-deploy-vault` asks `Ok [y/n]?` before deploying, and again before
-  creating the Lighter account and API key.
-- `correct-accounts` prints each correction and requires an exact `y`.
+- `lagoon-deploy-vault` asks once to confirm the deployment, including the
+  Lighter account and key creation.
+- `correct-accounts` prints each correction and requires an exact `y`; it
+  does not prompt when there is nothing to correct.
+- `lighter-move-funds` asks for the direction, the amount and a
+  confirmation, unless it resumes a saved withdrawal, which does not prompt.
 
-The script pipes `y` answers to both and says so in a comment above each
-command, so an operator copying the commands by hand knows a prompt is
-coming. Nothing else in the flow prompts.
+The script answers through `run --stdin` and prints the answers with the
+command. Every other command gets `/dev/null` as standard input, so an
+unexpected prompt fails instead of hanging.
 
 ## Testing module called from the shell
 
@@ -231,55 +234,69 @@ deployer's deposit request stops being pending once settled. Completed-step
 markers alone would therefore repeat a money movement after an interruption:
 a rerun of a step whose command moved funds but never saved. The script
 guards the money-moving steps with observed balances and idempotent
-commands instead.
+commands instead, and it never moves money in a state it cannot name.
+
+**Recovering by hand.** The script writes `env.sh` in the run directory
+with the run's public configuration. Every recovery instruction it prints
+starts with `source $RUN_DIR/env.sh`, so a command run by hand acts on this
+run and not on whatever the operator's shell held. Secrets are not stored:
+the file refers to `LIGHTER_TEST_PRIVATE_KEY`, `JSON_RPC_ETHEREUM` and
+`TRADING_STRATEGY_API_KEY` in the operator's shell.
+
+**Deployment, step 1.** The deployment spends gas and the 1 USDC activation
+deposit before it generates any key, so neither key files nor records can
+show that an attempt was made. The script writes `deploy-started` before
+running `lagoon-deploy-vault`. A rerun skips the step when the deployment
+artefact exists, and stops when only the marker exists: the operator
+recovers or abandons that deployment and starts a new run directory.
 
 **Subscription, step 4.** All three commands are safe to rerun and run on
-every pass: `request-deposit` does nothing when a request is pending, a
-deposit is claimable or the shares are held; `lagoon-settle` runs only when
-`request-deposit` reports `requested` or `pending`; `claim-shares` is a
-no-op when the shares are held. The step is marked done only when
-`claim-shares` reports the shares held and `expect-balances` shows the
-subscription in the Safe, so an interruption between settlement and the
-claim is completed by the rerun rather than skipped.
+every pass: `request-deposit` records its request in a marker file and does
+not request again; `lagoon-settle` runs only when `request-deposit` reports
+`requested` or `pending`; `claim-shares` is a no-op when nothing is
+claimable. An interruption between settlement and the claim is completed by
+the rerun.
 
-**Funding and transfer, steps 5 to 7.** Each `perform-test-trade` call here
-is `--buy-only`, so no withdrawal can be interrupted. Before the command:
+**Funding and transfer, steps 5 to 7.** Each `perform-test-trade` call is
+`--buy-only`, so no withdrawal can be interrupted. Before the command:
 
-1. `check-accounts` must pass. If it fails, an unbooked deposit or transfer
-   is booked by `printf 'y\n' | correct-accounts`, and the operator reruns
-   the script.
+1. `check-accounts` must pass. When it fails, the script names the state
+   before it stops: the step's target balances mean its money moved but was
+   not saved, and halfway balances mean a funding stopped after its Safe
+   deposit. Either way the instruction is to book the movement with
+   `correct-accounts` and rerun.
 2. `expect-balances` with the step's **target** balances. If they already
    hold, the step is marked done and skipped: its money already moved.
 3. Otherwise `expect-balances` with the step's **starting** balances must
    hold.
-4. Any other state is one the script names: a funding step interrupted
-   between its Safe deposit and the master-to-sub-account transfer leaves
-   the amount on the master, `(8, 3, 0, 0)` for step 5. After
-   `correct-accounts` has booked the deposit, the operator completes the
-   step with `perform-test-trade --lighter-transfer master:trend --buy-only
-   --amount 2`, and the rerun then finds the target balances. The script
-   prints this command when it sees that state.
+4. With halfway balances, `(8, 3, 0, 0)` for step 5, the deposit is booked
+   and only the transfer is missing: the script prints
+   `perform-test-trade --lighter-transfer master:trend --buy-only --amount 2`
+   for the operator to run, and the next rerun finds the target balances.
+5. Any other state stops the script with the balance table.
 
 After the command, `check-accounts` and `expect-balances` with the target
 balances must pass before the marker is written.
 
-**Withdrawals, steps 8 to 10.** A withdrawal that `lighter-move-funds`
-submitted is persisted in the state as a pending trade, and
-`check-accounts` fails while it is pending, so the `check-accounts`
-precondition does not apply here. Each withdrawal step runs in this order:
+**Withdrawals, steps 8 to 10.** `lighter-move-funds` saves a withdrawal as
+a pending trade before it submits the request and records the request id
+after, and `check-accounts` fails while it is pending, so the
+`check-accounts` precondition does not apply here. `withdrawal-plan` decides:
 
-1. `expect-balances` with the target: already withdrawn, mark done and skip.
-2. `lighter-move-funds` with the account's index. It resumes a persisted
-   pending withdrawal, claiming it into the Safe, before it prompts; a fresh
-   call gets the stdin answers with the amount `withdrawal-plan` reports.
-3. `check-accounts` and `expect-balances` with the target.
+- a pending withdrawal with a recorded request id: `resume`, and
+  `lighter-move-funds` waits, claims and books it without a second request;
+- a pending withdrawal without one: `unconfirmed`, and the script stops.
+  Only the Safe's transactions (sub-account L1 withdraw) or the master's
+  Lighter withdrawal history can tell whether it was sent, and README-Lighter
+  "Recovery" applies;
+- otherwise `withdraw <amount>` with the account's free USDC, or `skip`
+  below the 1 USDC minimum.
 
-Each withdrawal is its own step with its own marker and reads its own amount
-from `withdrawal-plan`, so a second withdrawal never repeats a completed one
-and never reuses another account's amount. If `withdrawal-plan` reports `skip`,
-the account is below the 1 USDC minimum: the script skips the withdrawal,
-the target uses the `<=` form and `lagoon-redeem` writes the remainder off
-in step 11.
+Each withdrawal is its own step with its own marker and reads its own
+amount, so a second withdrawal never repeats a completed one and never
+reuses another account's amount. A skipped account's balance is left to
+`lagoon-redeem`, which leaves Lighter balances totalling under 5 USDC out
+of the NAV.
 
 ## Test steps
 
@@ -293,7 +310,7 @@ activation leaves 1 USDC on the master and the Safe empty.
 
 | # | Step | Command or action | Expected balances afterwards (Safe, master, trend, arb) |
 |---|------|-------------------|---------------------------------------------------------|
-| 0 | Check prerequisites | Shell: required variables set, `jq` and `poetry` found, `SIMULATE` not `true`; `lighter_manual check-funds --usdc 11`, which writes `start.env`. | Deployer has ETH and 11 USDC or more. |
+| 0 | Check prerequisites | Shell: required variables set, `jq` and `poetry` found, `SIMULATE` not `true`; `lighter_manual check-funds --usdc 11`, which also requires 0.02 ETH by default and writes `start.env`. | Deployer has 0.02 ETH and 11 USDC or more. |
 | 1 | Deploy the vault with two keyed sub-accounts | `printf 'y\ny\n' \| trade-executor lagoon-deploy-vault --strategy-file strategies/test_only/lighter_multi_subaccount_strategy.py --generate-lighter-api-key --lighter-api-key-index 4 --lighter-sub-account-api-key-index 4 --vault-record-file "$RUN_DIR/vault-record.txt" --lighter-key-backup-dir "$RUN_DIR/key-backup" --fund-name "Lighter CLI test" --fund-symbol LCLI --multisig-owners "$DEPLOYER" --any-asset --performance-fee 0 --management-fee 0 --etherscan-api-key "$ETHERSCAN_API_KEY"` with `EXECUTOR_ID=lighter-cli`, `STATE_FILE=$RUN_DIR/state/lighter-cli.json`, `PRIVATE_KEY`, `JSON_RPC_ETHEREUM`, `SIMULATE=false`. | 0, 1, 0, 0. Records and the artefact written as in the layout table. |
 | 2 | Read the deployment | `jq` on `$RUN_DIR/state/lighter-cli.deployment.json` writes `deployment.env`: `VAULT_ADDRESS`, `VAULT_ADAPTER_ADDRESS` (module), `LIGHTER_MASTER_INDEX`, `LIGHTER_TREND_INDEX`, `LIGHTER_ARB_INDEX`; the script sources it and exports `ASSET_MANAGEMENT_MODE=lagoon`, `LIGHTER_OPERATOR_RECORD_FILE`, `LIGHTER_SUB_ACCOUNT_OPERATOR_RECORD_FILES`. | Every later command has its configuration. |
 | 3 | Initialise state and account for the activation | `trade-executor init`; `printf 'y\n' \| trade-executor correct-accounts --process-redemption`; `trade-executor check-accounts`. | 0, 1, 0, 0. State has one position per account; the 1 USDC activation flow is booked. |
@@ -525,6 +542,18 @@ a funding step interrupted between its deposit and its transfer had no
 recovery, so `--lighter-transfer master:<id>` completes it. It also fixed
 the unwind rows: each withdrawal reads its own amount, withdrawals send the
 given amount in full, and the sub-minimum case uses an explicit `<=` target.
+
+An implementation review by Codex with the GPT 6.1 Sol model on
+2026-10-28 found four gaps, all fixed: an interruption before any key was
+generated left no evidence of a deployment attempt, now the
+`deploy-started` marker; a withdrawal saved before its request was recorded
+was resumed as if submitted, now reported as `unconfirmed`; an interrupted
+funding stopped at `check-accounts` without saying which state it was in,
+now diagnosed; and recovery commands lacked the run's environment, now
+`env.sh`. It also led to a minimum ETH check (`lagoon-redeem` refuses below
+0.001 ETH), to unsetting an inherited `LIGHTER_ACCOUNT_INDEX`, to correcting
+this plan's prompt list, and to fork coverage of all three withdrawals,
+including the master's secure withdrawal through `lighter-move-funds`.
 
 ## Open questions
 

@@ -142,8 +142,13 @@ Lighter withdrawals. The script prints a timestamped banner per step, every
 command before it runs and how long it took, a heartbeat while a command
 runs, and the balances after every money step, all also written to
 `run.log` in the run directory. A rerun with `LIGHTER_RUN_DIR` skips the
-completed steps and checks the balances before any money step, so an
-interrupted step is never repeated. The actions outside the executor, such
+completed steps and checks the books and the balances before any money
+step, so money is never moved twice. When an interruption left a state the
+script cannot resolve itself, such as a transfer that moved but was not
+saved, a withdrawal whose request was not recorded, or a deployment that
+did not complete, it stops and prints what to do; commands to run by hand
+start with `source <run directory>/env.sh`, which loads the run's public
+configuration. The actions outside the executor, such
 as the investor's deposit request and share claim, are subcommands of
 `python -m tradeexecutor.testing.lighter_manual`.
 

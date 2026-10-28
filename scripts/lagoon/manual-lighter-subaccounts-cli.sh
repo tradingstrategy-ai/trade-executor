@@ -50,9 +50,13 @@
 #
 # Resuming: everything a run writes lives in its run directory. Rerun with
 # LIGHTER_RUN_DIR set to that directory; completed steps are skipped, and a
-# money-moving step first checks the balances, so an interrupted step is
-# never repeated. If the script stops, its last lines say what failed and
-# how to continue.
+# money-moving step first checks the books and the balances, so money is
+# never moved twice. Where an interruption left a state the script cannot
+# resolve by itself, such as a transfer that moved but was not saved or a
+# withdrawal whose request was not recorded, it stops and prints what to do;
+# commands to run by hand start with "source <run directory>/env.sh", which
+# loads this run's configuration. If the script stops, its last lines say
+# what failed and how to continue.
 #
 # Run from anywhere:
 #
@@ -162,6 +166,11 @@ export LIGHTER_WITHDRAW_TIMEOUT=3600
 # Longest wait for a transfer between Lighter accounts to appear in history.
 export LIGHTER_TRANSFER_TIMEOUT=600
 
+# lighter-move-funds acts on the account this selects; the withdrawal steps
+# pass --lighter-account-index explicitly, so a value inherited from the
+# shell must not redirect the master's withdrawal.
+unset LIGHTER_ACCOUNT_INDEX
+
 # Progress interval while a command runs.
 HEARTBEAT_SECONDS="${HEARTBEAT_SECONDS:-60}"
 
@@ -211,8 +220,6 @@ format_duration() {
 # Short name of a command for the heartbeat: "trade-executor lagoon-settle".
 describe() {
     local args=("$@")
-    if [ "${args[0]}" = "env" ]; then args=("${args[@]:1}"); fi
-    while [[ "${args[0]}" == *=* ]]; do args=("${args[@]:1}"); done
     if [ "${args[0]}" = "poetry" ]; then args=("${args[@]:2}"); fi
     if [ "${args[0]}" = "python" ]; then args=("${args[@]:2}"); fi
     echo "${args[0]##*.} ${args[1]:-}"
@@ -282,12 +289,32 @@ done_step() {
     log "════ Step $1/12 done in $(format_duration $((SECONDS - STEP_STARTED)))"
 }
 
+# Write env.sh: this run's public configuration, so an operator can run its
+# commands by hand. Secrets stay in the operator's shell: the file refers to
+# JSON_RPC_ETHEREUM, LIGHTER_TEST_PRIVATE_KEY and TRADING_STRATEGY_API_KEY
+# without storing them.
+ENV_FILE="$RUN_DIR/env.sh"
+write_env_file() {
+    {
+        echo "# Configuration of the run in $RUN_DIR. From the repository root: source $ENV_FILE"
+        echo "# Needs JSON_RPC_ETHEREUM, LIGHTER_TEST_PRIVATE_KEY and TRADING_STRATEGY_API_KEY exported in your shell."
+        echo 'export PRIVATE_KEY="$LIGHTER_TEST_PRIVATE_KEY"'
+        local name
+        for name in EXECUTOR_ID STRATEGY_FILE STATE_FILE SIMULATE LOG_LEVEL CACHE_PATH MIN_GAS_BALANCE VAULT_RECORD_FILE \
+            LIGHTER_KEY_BACKUP_DIR LIGHTER_OPERATOR_RECORD_FILE LIGHTER_SUB_ACCOUNT_OPERATOR_RECORD_FILES \
+            LIGHTER_WITHDRAWAL_TIMEOUT LIGHTER_WITHDRAW_TIMEOUT LIGHTER_TRANSFER_TIMEOUT \
+            ASSET_MANAGEMENT_MODE VAULT_ADDRESS VAULT_ADAPTER_ADDRESS; do
+            if [ -n "${!name:-}" ]; then printf 'export %s=%q\n' "$name" "${!name}"; fi
+        done
+    } > "$ENV_FILE"
+}
+
 # What to do after a failure in each step.
 recovery_hint() {
     case "$CURRENT_STEP" in
-        1) echo "If the deployment failed after generating keys, they are in $LIGHTER_KEY_BACKUP_DIR and a rerun refuses to deploy again: inspect $RUN_LOG and the Safe first." ;;
-        5|6|7) echo "If check-accounts reports an unbooked deposit or transfer, book it with: printf 'y\\n' | poetry run trade-executor correct-accounts" ;;
-        8|9|10) echo "A submitted withdrawal is saved in the state; rerunning resumes and claims it with lighter-move-funds." ;;
+        1) echo "A rerun does not deploy again while $RUN_DIR/deploy-started exists without a deployment artefact. Generated keys, if any, are in $LIGHTER_KEY_BACKUP_DIR. Inspect $RUN_LOG and the Safe first." ;;
+        5|6|7) echo "If check-accounts reports an unbooked deposit or transfer: source $ENV_FILE && printf 'y\\n' | poetry run trade-executor correct-accounts, then rerun." ;;
+        8|9|10) echo "A withdrawal with a recorded request is resumed by rerunning. One without is reported as unconfirmed; see README-Lighter.md, Recovery." ;;
         11) echo "lagoon-redeem resumes a pending or claimable redemption when rerun." ;;
         *) echo "Fix the cause shown above, then rerun." ;;
     esac
@@ -330,7 +357,19 @@ show_balances() {
 guard_money_step() {
     local number="$1" start="$2" target="$3" halfway="${4:-}" completion="${5:-}"
     log "Resume guard for step $number: the books must match the chain, then the balances must be the step's start or its target"
-    run poetry run trade-executor check-accounts
+    if ! run poetry run trade-executor check-accounts; then
+        # perform-test-trade saves the state only when it finishes, so an
+        # interrupted step leaves moved money unbooked. Say which state it is in.
+        # shellcheck disable=SC2086
+        if run "${LIGHTER_MANUAL[@]}" expect-balances --quiet $target >/dev/null; then
+            fail "Step $number moved its money in an earlier run but did not save it. Book it: source $ENV_FILE && printf 'y\\n' | poetry run trade-executor correct-accounts, then rerun this script."
+        fi
+        # shellcheck disable=SC2086
+        if [ -n "$halfway" ] && run "${LIGHTER_MANUAL[@]}" expect-balances --quiet $halfway >/dev/null; then
+            fail "Step $number stopped halfway in an earlier run: the deposit reached the master but the transfer to the sub-account did not happen. Book the deposit: source $ENV_FILE && printf 'y\\n' | poetry run trade-executor correct-accounts, then rerun this script; it then gives the command that completes the transfer."
+        fi
+        fail "The books do not match the chain before step $number; see the check-accounts output above."
+    fi
     # shellcheck disable=SC2086  # The expectations are separate words on purpose.
     if run "${LIGHTER_MANUAL[@]}" expect-balances --quiet $target >/dev/null; then
         log "The target balances already hold: an earlier run moved this step's money. Nothing is moved again."
@@ -346,7 +385,7 @@ guard_money_step() {
     fi
     # shellcheck disable=SC2086
     if [ -n "$halfway" ] && run "${LIGHTER_MANUAL[@]}" expect-balances --quiet $halfway >/dev/null; then
-        fail "Step $number stopped halfway in an earlier run: the deposit reached the master but the transfer to the sub-account did not happen. Complete it with: poetry run trade-executor perform-test-trade $completion, then rerun this script."
+        fail "Step $number stopped halfway in an earlier run: the deposit reached the master and is booked, but the transfer to the sub-account did not happen. Complete it: source $ENV_FILE && poetry run trade-executor perform-test-trade $completion, then rerun this script."
     fi
     # shellcheck disable=SC2086
     run "${LIGHTER_MANUAL[@]}" expect-balances $start >/dev/null || true
@@ -367,32 +406,41 @@ finish_money_step() {
 # Withdraw one Lighter account to the Safe (steps 8 to 10). The decision
 # comes from withdrawal-plan: resume a withdrawal an earlier run submitted,
 # withdraw the account's free USDC, or skip an account below Lighter's
-# 1 USDC withdrawal minimum.
+# 1 USDC withdrawal minimum. A withdrawal an earlier run started without
+# recording its request stops the script: only Lighter's or Ethereum's
+# history can tell whether it was sent, and sending another could withdraw twice.
 #
 #   withdraw_account N NAME INDEX [sub-account]
 withdraw_account() {
     local number="$1" name="$2" index="$3" kind="${4:-master}" plan amount
+    local account=()
+    if [ "$kind" = "sub-account" ]; then
+        # Without the option lighter-move-funds acts on the master.
+        account=(--lighter-account-index "$index")
+    fi
     LAST_COMMAND="lighter_manual withdrawal-plan $index"
     plan="$(run "${LIGHTER_MANUAL[@]}" withdrawal-plan "$index")"
     log "Withdrawal plan for $name (account $index): $plan"
-    local environment=()
-    if [ "$kind" = "sub-account" ]; then
-        # LIGHTER_ACCOUNT_INDEX selects a sub-account; without it lighter-move-funds acts on the master.
-        environment=(env "LIGHTER_ACCOUNT_INDEX=$index")
-    fi
     case "$plan" in
         resume)
             log "Resuming the withdrawal an earlier run submitted; lighter-move-funds waits until it is claimable and claims it into the Safe."
-            run "${environment[@]}" poetry run trade-executor lighter-move-funds
+            run poetry run trade-executor lighter-move-funds "${account[@]}"
             ;;
         withdraw\ *)
             amount="${plan#withdraw }"
             log "Withdrawing $amount USDC from $name to the Safe at $(date -u '+%H:%M UTC'); Lighter makes it claimable after its withdrawal delay."
             # lighter-move-funds asks for the direction (w), the amount and a confirmation (y).
-            run --stdin "w\n$amount\ny\n" "${environment[@]}" poetry run trade-executor lighter-move-funds
+            run --stdin "w\n$amount\ny\n" poetry run trade-executor lighter-move-funds "${account[@]}"
             ;;
         skip)
             log "$name holds less than Lighter's 1 USDC withdrawal minimum; nothing to withdraw. lagoon-redeem leaves it out of the final NAV."
+            ;;
+        unconfirmed\ *)
+            local history="the master's withdrawal history on Lighter"
+            if [ "$kind" = "sub-account" ]; then
+                history="the Safe's transactions on Etherscan for an L1 withdraw from account $index"
+            fi
+            fail "lighter-move-funds started withdrawal trade ${plan#unconfirmed } for $name in an earlier run but did not record its request. Check $history, then follow README-Lighter.md, Recovery, before rerunning. Do not withdraw again until you know whether it was sent."
             ;;
         *)
             fail "Unexpected withdrawal plan for $name: $plan"
@@ -404,6 +452,7 @@ withdraw_account() {
     done_step "$number"
 }
 
+write_env_file
 log "Lighter sub-account manual test, run directory $RUN_DIR"
 log "Log of this run: $RUN_LOG"
 log "Repository commit $(git rev-parse --short HEAD 2>/dev/null || echo unknown), subscription $SUBSCRIPTION_USDC USDC"
@@ -451,11 +500,12 @@ DEPLOYMENT_FILE="$RUN_DIR/state/$EXECUTOR_ID.deployment.json"
 if step 1 "Deploy the Lagoon vault, the Lighter master account and the sub-accounts trend and arb" "10 to 20 minutes: contract deployment and verification, then Lighter activation"; then
     if [ -s "$DEPLOYMENT_FILE" ]; then
         log "$DEPLOYMENT_FILE exists: an earlier run deployed the vault before it was interrupted. Not deploying again."
-    elif [ -e "$LIGHTER_OPERATOR_RECORD_FILE" ]; then
-        fail "$LIGHTER_OPERATOR_RECORD_FILE exists but $DEPLOYMENT_FILE does not: the deployment was interrupted after writing its key records. Recover the deployment from $VAULT_RECORD_FILE and the log before deploying again."
-    elif [ -n "$(ls -A "$LIGHTER_KEY_BACKUP_DIR" 2>/dev/null)" ]; then
-        fail "$LIGHTER_KEY_BACKUP_DIR holds keys from an earlier deployment attempt that did not complete. Inspect them and the Safe before deploying again."
+    elif [ -e "$RUN_DIR/deploy-started" ]; then
+        # The deployment spends gas and the 1 USDC activation deposit before it
+        # generates any key, so only this marker shows an attempt was made.
+        fail "A deployment started at $(cat "$RUN_DIR/deploy-started") did not complete. Find its Safe and vault in $RUN_LOG; generated keys, if any, are in $LIGHTER_KEY_BACKUP_DIR. Recover or abandon that deployment, then start a new run in a new directory."
     else
+        date -u '+%Y-%m-%d %H:%M:%S UTC' > "$RUN_DIR/deploy-started"
         run --stdin "y\n" poetry run trade-executor lagoon-deploy-vault \
             --strategy-file "$STRATEGY_FILE" \
             --generate-lighter-api-key \
@@ -497,6 +547,8 @@ source "$RUN_DIR/deployment.env"
 export VAULT_ADDRESS VAULT_ADAPTER_ADDRESS
 # From here on every command acts on the deployed Lagoon vault.
 export ASSET_MANAGEMENT_MODE=lagoon
+write_env_file
+log "Commands of this run can be run by hand after: source $ENV_FILE"
 
 log "Vault:  https://etherscan.io/address/$VAULT_ADDRESS"
 log "Safe:   https://etherscan.io/address/$SAFE_ADDRESS"

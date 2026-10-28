@@ -8,13 +8,16 @@ subscription through ``lagoon-settle``, sub-account funding with
 sub-accounts, the unwind through ``lighter-move-funds`` and
 ``lagoon-redeem``, and the ``lighter_manual`` helpers the script calls.
 
-The fake sequencer charges a 0.5 USDC transfer fee, so the master and the
-``trend`` sub-account end below Lighter's 1 USDC withdrawal minimum and the
-unwind takes both its withdraw and its skip path.
+The fake sequencer charges a 0.5 USDC transfer fee. The amounts are larger
+than the script's, and the master gets a 1 USDC top-up, so every account
+ends above Lighter's 1 USDC withdrawal minimum and the unwind withdraws all
+three: two sub-accounts with the key-free L1 withdrawal and the master with
+the secure withdrawal, all through ``lighter-move-funds`` as the script does.
 """
 
 import io
 import os
+import shutil
 from decimal import Decimal
 from pathlib import Path
 
@@ -26,6 +29,9 @@ from eth_defi.testing.fork_blocks import ETHEREUM_MIDNIGHT_BLOCK
 from eth_defi.token import USDC_WHALE
 from pytest import CaptureFixture, MonkeyPatch
 
+from eth_defi.compat import native_datetime_utc_now
+
+from tradeexecutor.exchange_account.state import create_exchange_account_transfer
 from tradeexecutor.state.state import State
 from tradeexecutor.testing import lighter_manual
 from tradeexecutor.testing.lighter_tutorial import (
@@ -56,8 +62,10 @@ pytestmark = [
 
 #: Test capital, as in the script's default.
 SUBSCRIPTION_USDC = Decimal(10)
-#: USDC each sub-account is funded with.
-FUNDING_USDC = Decimal(2)
+#: USDC each sub-account is funded with; more than the script's 2, so both stay above the withdrawal minimum after the fees.
+FUNDING_USDC = Decimal(3)
+#: USDC deposited to the master after the fees emptied it, so its secure withdrawal is tested too.
+MASTER_TOP_UP_USDC = Decimal(1)
 #: USDC moved from trend to arb.
 TRANSFER_USDC = Decimal(1)
 #: The simulated fee of one transfer between Lighter accounts.
@@ -123,8 +131,9 @@ def test_cli_manual_lighter_sub_accounts_flow(tutorial: Tutorial, tmp_path: Path
     5. Fund trend and arb with perform-test-trade --pair --buy-only
     6. Check --lighter-transfer refuses before moving anything without every signer
     7. Move USDC from trend to arb with --lighter-transfer and check the booking
-    8. Unwind: withdraw arb with lighter-move-funds answered over stdin, skip the accounts below the minimum
-    9. Redeem every share, sweep the Safe and reconcile the deployer's balances
+    8. Check a withdrawal started without a recorded request is reported as unconfirmed, not resumed
+    9. Top up the master, then withdraw every account with lighter-move-funds answered over stdin
+    10. Redeem every share, sweep the Safe and reconcile the deployer's balances
     """
     run_dir = tutorial.config.run_dir
     start_file = run_dir / "start.env"
@@ -134,6 +143,7 @@ def test_cli_manual_lighter_sub_accounts_flow(tutorial: Tutorial, tmp_path: Path
     # 1. Record the deployer's starting balances with check-funds
     assert manual(capsys, "check-funds", "--usdc", str(SUBSCRIPTION_USDC + 1), "--start-file", str(start_file)) == "ok"
     assert manual(capsys, "check-funds", "--usdc", "1", "--start-file", str(start_file)) == "recorded", "A rerun must keep the original start balances"
+    assert lighter_manual.main(["check-funds", "--usdc", "1", "--min-eth", "100000000", "--start-file", str(run_dir / "short.env")]) == 1, "Too little ETH must fail"
 
     # 2. Deploy with a key backup directory and check the backups are removed after success
     deploy(tutorial, "Lighter CLI test", "LCLI")
@@ -190,18 +200,36 @@ def test_cli_manual_lighter_sub_accounts_flow(tutorial: Tutorial, tmp_path: Path
     assert int(booked.pair.get_exchange_account_id()) == arb and int(booked.other_data["funding_source_account_id"]) == trend
     assert booked.executed_quantity == pytest.approx(TRANSFER_USDC) and Decimal(booked.other_data["funding_fee_usdc"]) == FEE
 
-    # 8. Unwind: withdraw arb with lighter-move-funds answered over stdin, skip the accounts below the minimum
-    plan = manual(capsys, "withdrawal-plan", str(arb))
-    assert plan == f"withdraw {lighter_manual.format_usdc(FUNDING_USDC + TRANSFER_USDC)}"
-    monkeypatch.setattr("sys.stdin", io.StringIO(f"w\n{plan.removeprefix('withdraw ')}\ny\n"))
-    run_cli(["lighter-move-funds"], {**env, "LIGHTER_ACCOUNT_INDEX": str(arb)})
-    assert manual(capsys, "withdrawal-plan", str(arb)) == "skip"
-    assert manual(capsys, "withdrawal-plan", str(trend)) == "skip"
-    assert manual(capsys, "withdrawal-plan", str(master)) == "skip"
-    run_cli(["check-accounts"], env)
-    expect(capsys, safe=SUBSCRIPTION_USDC - 2 * FUNDING_USDC + FUNDING_USDC + TRANSFER_USDC, arb=Decimal(0))
+    # 8. Check a withdrawal started without a recorded request is reported as unconfirmed, not resumed
+    saved = tmp_path / "state-before-unconfirmed.json"
+    shutil.copyfile(tutorial.state_file, saved)
+    state = State.read_json_file(tutorial.state_file)
+    arb_position = next(position for position in state.portfolio.open_positions.values() if position.pair.is_exchange_account() and int(position.pair.get_exchange_account_id()) == arb)
+    started = create_exchange_account_transfer(state=state, position=arb_position, strategy_cycle_at=native_datetime_utc_now(), reserve_currency=arb_position.reserve_currency, amount=Decimal(1), deposit=False, notes="Interrupted before submission", metadata={})
+    state.start_execution(native_datetime_utc_now(), started)
+    state.write_json_file(tutorial.state_file)
+    assert manual(capsys, "withdrawal-plan", str(arb)) == f"unconfirmed {started.trade_id}"
+    shutil.copyfile(saved, tutorial.state_file)
 
-    # 9. Redeem every share, sweep the Safe and reconcile the deployer's balances
+    # 9. Top up the master, then withdraw every account with lighter-move-funds answered over stdin
+    run_cli(["perform-test-trade", "--single-pair", "--buy-only", "--amount", str(MASTER_TOP_UP_USDC)], env)
+    expect(capsys, master=MASTER_TOP_UP_USDC, trend=trend_left, arb=FUNDING_USDC + TRANSFER_USDC)
+    safe = SUBSCRIPTION_USDC - 2 * FUNDING_USDC - MASTER_TOP_UP_USDC
+    for name, index, amount, options in (
+        ("arb", arb, FUNDING_USDC + TRANSFER_USDC, ["--lighter-account-index", str(arb)]),
+        ("trend", trend, trend_left, ["--lighter-account-index", str(trend)]),
+        ("master", master, MASTER_TOP_UP_USDC, []),
+    ):
+        plan = manual(capsys, "withdrawal-plan", str(index))
+        assert plan == f"withdraw {lighter_manual.format_usdc(amount)}", name
+        monkeypatch.setattr("sys.stdin", io.StringIO(f"w\n{plan.removeprefix('withdraw ')}\ny\n"))
+        run_cli(["lighter-move-funds", *options], env)
+        run_cli(["check-accounts"], env)
+        safe += amount
+        assert manual(capsys, "withdrawal-plan", str(index)) == "skip"
+        expect(capsys, safe=safe, **{name: Decimal(0)})
+
+    # 10. Redeem every share, sweep the Safe and reconcile the deployer's balances
     assert manual(capsys, "redeem-status") == "redeem"
     run_cli(["lagoon-redeem"], env)
     assert manual(capsys, "redeem-status") == "done"
