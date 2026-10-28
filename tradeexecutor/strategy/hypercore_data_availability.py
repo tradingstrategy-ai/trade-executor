@@ -86,15 +86,21 @@ def calculate_hypercore_slot_schedule(
 
     pending_slot = state.pending_data_availability_slot
     if pending_slot is not None:
-        # Repaired trades, their zero-value counter trades and expired trades
-        # left no executed effect, so a slot holding only those is resumed or
-        # skipped like an unexecuted one. Hyper-AI's 2026-10-28 slot needed
-        # this after repair undid its rejected Tortoise close and the untouched
-        # sibling buys; any successful or unrepaired trade still blocks.
+        # Accounting repairs, their counter trades and expired trades with no
+        # executed quantity or reserve left no executed effect, so a slot
+        # holding only those is resumed or skipped like an unexecuted one.
+        # Hyper-AI's 2026-10-28 slot needed this after repair undid its
+        # rejected Tortoise close and the untouched sibling buys. Receipt
+        # repair and rebroadcast also set ``repaired_at`` but keep the real
+        # execution, so those trades, like any successful or unrepaired trade,
+        # still block.
         if any(
             trade.opened_at == pending_slot
-            and trade.get_status() not in (TradeStatus.repaired, TradeStatus.expired)
-            and not trade.repaired_trade_id
+            and not (
+                (trade.get_status() in (TradeStatus.repaired, TradeStatus.expired) or trade.repaired_trade_id)
+                and not trade.executed_quantity
+                and not trade.executed_reserve
+            )
             for trade in state.portfolio.get_all_trades()
         ):
             raise RuntimeError(

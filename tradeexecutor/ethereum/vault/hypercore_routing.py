@@ -387,15 +387,20 @@ def vault_kept_requested_funds(
     executor read an unchanged vault equity and still recorded the amount as
     stranded in perp, which blocked ``repair`` and invited a transit recovery
     of USDC that had never left the vault. Compare the pre-phase-1 snapshot
-    with the fresh read: a vault that lost less than half of the request did
-    not pay it out.
+    with the fresh read: the equity must match within the normal NAV-drift
+    margin, and the request must be large enough that a payout could not hide
+    inside that margin. Only use this for phase-1 failures; a later phase can
+    fail after a verified payout.
 
     :param equity_before: Vault equity read just before phase 1.
     :param equity_after: Vault equity read after the perp wait timed out.
     :param requested_raw: Phase-1 request in raw USDC.
     :return: ``True`` when nothing material left the vault.
     """
-    return usdc_to_raw(equity_before) - usdc_to_raw(equity_after) < requested_raw // 2
+    tolerance_raw = usdc_to_raw(get_hypercore_withdrawal_safety_margin(equity_before))
+    if requested_raw <= 2 * tolerance_raw:
+        return False
+    return abs(usdc_to_raw(equity_before) - usdc_to_raw(equity_after)) <= tolerance_raw
 
 
 def calculate_hypercore_bridge_fee(
@@ -684,6 +689,13 @@ class HypercoreVaultRouting(RoutingModel):
     def _check_full_close_before_execution(self, trade: TradeExecution) -> str | None:
         """Expire a full close whose live equity cannot be withdrawn verifiably.
 
+        A close that would leave the 6.50 USDC remainder must also withdraw at
+        least the 1.50 USDC drift floor. Smaller requests can lose their whole
+        movement to the 0.20 USDC follow-up tolerance and the bridge fee
+        margin, then fail sale settlement. That limit equals the 8 USDC
+        accepted residual, so an expired close only ever keeps a position that
+        a verified close would have written off anyway.
+
         :param trade: Still-planned HyperCore vault sell.
         :return: No-trade reason, or ``None`` for partial sells, cleanup and fundable closes.
         """
@@ -697,8 +709,7 @@ class HypercoreVaultRouting(RoutingModel):
         )
         if equity is None:
             return "Hyperliquid vault equity lookup returned no position before full close"
-        withdrawable_raw = usdc_to_raw(equity.equity) - HYPERCORE_FULL_CLOSE_MIN_REMAINDER_RAW
-        if withdrawable_raw <= HYPERCORE_FOLLOW_UP_PHASE_TOLERANCE_RAW:
+        if equity.equity <= HYPERCORE_ACCEPTED_RESIDUAL_USD:
             return (
                 f"Hyperliquid vault equity {equity.equity} USDC cannot fund a verifiable withdrawal "
                 f"above the {raw_to_usdc(HYPERCORE_FULL_CLOSE_MIN_REMAINDER_RAW)} USDC minimum remainder"

@@ -90,7 +90,7 @@ def test_tiny_close_is_expired_before_execution() -> None:
     """Expire a close that cannot withdraw above the minimum remainder instead of halting.
 
     1. Mock the equity read because the preflight needs no network to decide.
-    2. Verify a 6.60 USDC position is expired and a 19.84 USDC position proceeds.
+    2. Verify an 8.00 USDC position is expired and an 8.01 USDC position proceeds.
     3. Verify partial sells are not read at all.
     """
     # 1. Mock the equity read because the preflight needs no network to decide.
@@ -100,10 +100,10 @@ def test_tiny_close_is_expired_before_execution() -> None:
     routing.simulate = False
     pair = SimpleNamespace(pool_address="0xvault")
     close = SimpleNamespace(other_data={}, pair=pair, flags={TradeFlag.close}, is_sell=lambda: True, is_buy=lambda: False)
-    # 2. Verify a 6.60 USDC position is expired and a 19.84 USDC position proceeds.
-    with patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity", return_value=SimpleNamespace(equity=Decimal("6.60"))):
+    # 2. Verify an 8.00 USDC position is expired and an 8.01 USDC position proceeds.
+    with patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity", return_value=SimpleNamespace(equity=Decimal("8.00"))):
         assert "minimum remainder" in routing.check_trade_before_execution(close)
-    with patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity", return_value=SimpleNamespace(equity=Decimal("19.83643"))):
+    with patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity", return_value=SimpleNamespace(equity=Decimal("8.01"))):
         assert routing.check_trade_before_execution(close) is None
     # 3. Verify partial sells are not read at all.
     partial = SimpleNamespace(other_data={}, pair=pair, flags=set(), is_sell=lambda: True, is_buy=lambda: False)
@@ -114,12 +114,13 @@ def test_tiny_close_is_expired_before_execution() -> None:
 def test_repair_clears_rejected_phase1_marker() -> None:
     """Clear a false stranded marker only when the vault kept the requested funds.
 
-    1. Build the 28 October failed sell and a sell whose vault paid the request.
+    1. Build the 28 October failed sell, a sell whose vault paid the request and
+       a phase-2 failure after a verified payout whose NAV later recovered.
     2. Mock the equity read, because the decision depends only on the snapshot comparison.
-    3. Verify only the rejected sell is cleared and becomes repairable.
+    3. Verify only the rejected phase-1 sell is cleared and becomes repairable.
     """
-    # 1. Build the 28 October failed sell and a sell whose vault paid the request.
-    def make_trade(trade_id: int, equity_now: Decimal) -> SimpleNamespace:
+    # 1. Build the 28 October failed sell, a paid sell and a phase-2 failure.
+    def make_trade(trade_id: int, equity_now: Decimal, phase: str = "phase1_perp_wait") -> SimpleNamespace:
         return SimpleNamespace(
             trade_id=trade_id,
             other_data={
@@ -127,6 +128,7 @@ def test_repair_clears_rejected_phase1_marker() -> None:
                 "retain_reserve_allocation_on_failure": True,
                 "hypercore_phase1_vault_equity_usdc": "19.83643",
                 "hypercore_first_stage_requested_raw": 18_336_430,
+                "hypercore_failure_diagnosis": f"HyperCore {phase}: diagnosis",
             },
             pair=SimpleNamespace(pool_address=str(equity_now), is_hyperliquid_vault=lambda: True),
             is_sell=lambda: True,
@@ -135,16 +137,22 @@ def test_repair_clears_rejected_phase1_marker() -> None:
         )
     rejected = make_trade(1833, Decimal("19.836442"))
     paid = make_trade(1834, Decimal("1.500012"))
+    phase2 = make_trade(1835, Decimal("19.836442"), phase="phase2_spot_wait")
     assert vault_kept_requested_funds(Decimal("19.83643"), Decimal("19.836442"), 18_336_430)
     assert not vault_kept_requested_funds(Decimal("19.83643"), Decimal("1.500012"), 18_336_430)
+    # A 100 USDC payout from 10,000 USDC followed by a 60 USDC NAV gain is not "kept".
+    assert not vault_kept_requested_funds(Decimal("10000"), Decimal("9960"), 100_000_000)
+    # A request inside the drift margin cannot prove anything either way.
+    assert not vault_kept_requested_funds(Decimal("8.01"), Decimal("8.01"), 1_510_000)
     # 2. Mock the equity read, because the decision depends only on the snapshot comparison.
     def fetch(session, user, vault_address, bypass_cache):
         return SimpleNamespace(equity=Decimal(vault_address))
     with patch("tradeexecutor.ethereum.vault.hypercore_withdrawal_recovery.fetch_user_vault_equity", side_effect=fetch):
-        cleared = clear_rejected_first_stage_withdrawals([rejected, paid], safe_address="0xsafe", session=MagicMock())
+        cleared = clear_rejected_first_stage_withdrawals([rejected, paid, phase2], safe_address="0xsafe", session=MagicMock())
     # 3. Verify only the rejected sell is cleared and becomes repairable.
     assert cleared == [rejected]
     assert not has_unresolved_hypercore_accounting(rejected)
     assert "retain_reserve_allocation_on_failure" not in rejected.other_data
     assert rejected.other_data["hypercore_rejected_withdrawal_cleared"]["equity_now"] == "19.836442"
     assert has_unresolved_hypercore_accounting(paid)
+    assert has_unresolved_hypercore_accounting(phase2)

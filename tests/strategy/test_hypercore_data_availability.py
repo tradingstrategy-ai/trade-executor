@@ -290,12 +290,18 @@ def test_hypercore_restart_refuses_persisted_trades() -> None:
     # 3. No unsafe automatic completion or state clearing occurred.
     assert state.pending_data_availability_slot == slot
 
-    # 4. A slot whose trades were all repaired left no executed effect, so it
-    # resumes inside its window and is skipped after it.
-    for trade in state.portfolio.get_all_trades():
-        if trade.opened_at == slot and not trade.repaired_trade_id:
-            trade.repaired_at = slot
-            assert trade.get_status() == TradeStatus.repaired
+    # 4. A receipt repair keeps its execution and still blocks. An accounting
+    # repair zeroes it like repair_trade(), so the slot resumes inside its
+    # window and is skipped after it.
+    slot_trades = [trade for trade in state.portfolio.get_all_trades() if trade.opened_at == slot]
+    for trade in slot_trades:
+        trade.repaired_at = slot
+    with pytest.raises(RuntimeError, match="reconcile"):
+        calculate_hypercore_slot_schedule(slot, CycleDuration.cycle_2d, state)
+    for trade in slot_trades:
+        trade.executed_quantity = 0
+        trade.executed_reserve = 0
+        assert trade.get_status() == TradeStatus.success if trade.repaired_trade_id else TradeStatus.repaired
     assert calculate_hypercore_slot_schedule(slot, CycleDuration.cycle_2d, state) == slot
     assert calculate_hypercore_slot_schedule(slot + datetime.timedelta(days=4), CycleDuration.cycle_2d, state) > slot
 

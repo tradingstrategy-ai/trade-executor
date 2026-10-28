@@ -25,6 +25,9 @@ from tradeexecutor.state.trade import HYPERCORE_STRANDED_USDC_KEY, TradeExecutio
 
 logger = logging.getLogger(__name__)
 
+#: ``hypercore_failure_diagnosis`` prefixes written when phase 1 never reached perp.
+PHASE1_PERP_WAIT_DIAGNOSES = ("HyperCore phase1_perp_wait:", "HyperCore phase1_retry_perp_wait:")
+
 
 @dataclass
 class PartialWithdrawalRecovery:
@@ -66,10 +69,14 @@ def clear_rejected_first_stage_withdrawals(
     for trade in trades:
         metadata = trade.other_data or {}
         marker = metadata.get(HYPERCORE_STRANDED_USDC_KEY)
+        # Only a phase-1 perp wait can fail before any payout. Phase 2 and 3
+        # write the same perp marker after a verified withdrawal, and a vault
+        # NAV move must never be able to erase that sale.
         if not (
             trade.is_sell()
             and trade.pair.is_hyperliquid_vault()
             and trade.get_status() == TradeStatus.failed
+            and str(metadata.get("hypercore_failure_diagnosis", "")).startswith(PHASE1_PERP_WAIT_DIAGNOSES)
             and isinstance(marker, dict)
             and marker.get("location") == "hypercore_perp"
             and "hypercore_phase1_vault_equity_usdc" in metadata
