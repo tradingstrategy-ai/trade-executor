@@ -17,7 +17,7 @@ from eth_defi.lighter.api_key import LighterApiKey
 
 from tradeexecutor.cli.commands.lagoon_deploy_vault import LighterKeyBackup
 from tradeexecutor.cli.testtrade import parse_lighter_transfer
-from tradeexecutor.testing.lighter_manual import ManualTestError, check_expectations, explain_deployer_change, format_usdc, parse_expectations
+from tradeexecutor.testing.lighter_manual import ManualTestError, check_expectations, format_usdc, parse_expectations
 
 #: The manual test script.
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "lagoon" / "manual-lighter-subaccounts-cli.sh"
@@ -32,7 +32,7 @@ def test_lighter_manual_building_blocks(tmp_path: Path) -> None:
     """The helpers parse, compare and back up as the script expects, and the script parses.
 
     1. Parse balance expectations and compare them, including the <= form for dust
-    2. Explain the deployer's balance change and format amounts for the shell
+    2. Format amounts for the shell
     3. Parse --lighter-transfer account pairs
     4. Back up two keys with private modes and remove them
     5. Check the shell script parses, and passes shellcheck when it is installed
@@ -44,8 +44,7 @@ def test_lighter_manual_building_blocks(tmp_path: Path) -> None:
     rows = check_expectations(expectations, {"safe": Decimal(6), "master": Decimal("0.5"), "trend": Decimal("1.5"), "arb": Decimal(3)}, Decimal("0.01"))
     assert [row[0] for row in rows if not row[4]] == ["master", "trend"]
 
-    # 2. Explain the deployer's balance change and format amounts for the shell
-    assert explain_deployer_change(Decimal(11), Decimal(9), Decimal("1.5"), Decimal("0.5")) == 0
+    # 2. Format amounts for the shell
     assert format_usdc(Decimal("3.0000009")) == "3.000000"
     assert format_usdc(Decimal("1E+1")) == "10.000000"
 

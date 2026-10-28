@@ -36,7 +36,7 @@ the `~/code/strategies` deployment scripts expect.
 | `JSON_RPC_ETHEREUM` | Yes | Ethereum mainnet archive RPC; `lagoon-deploy-vault` and every later command. Several space-separated URLs are allowed. |
 | `LIGHTER_TEST_PRIVATE_KEY` | Yes | Funded deployer, sole Safe owner and asset manager. Exported as `PRIVATE_KEY` for every command; never printed. The existing tutorials and `.local-test.env` already use this name. |
 | `ETHERSCAN_API_KEY` | Yes | Contract verification during `lagoon-deploy-vault`, as in `deploy-lighter-ai.sh`. |
-| `TRADING_STRATEGY_API_KEY` | No | Passed through when set; the strategy has no market data, but the client is created. |
+| `TRADING_STRATEGY_API_KEY` | Yes | The Trading Strategy client every command creates. The strategy has no market data, but the commands are only tested with a client. |
 | `LIGHTER_RUN_DIR` | No | Resume an earlier run: state, artefacts, records and step markers live here. Default `~/.tradingstrategy/examples/lighter-cli-<timestamp>`. |
 | `SUBSCRIPTION_USDC` | No | Test capital subscribed after deployment. Default `10`. |
 | `LIGHTER_API_KEY_INDEX` | No | API key slot on the master and each sub-account. Default `4`. |
@@ -51,7 +51,7 @@ The deployer must hold:
 
 | Asset | Amount | Why |
 |-------|--------|-----|
-| ETH | Enough for roughly 15 mainnet transactions | Safe and vault deployment, Lighter activation, three `changePubKey` calls, deposits, L1 withdrawals, settlement and redemption. |
+| ETH | A full vault deployment with verification plus about 20 transactions; about 0.011 ETH in the comparable 2026-10-26 tutorial run | Safe, vault and guard deployment, Lighter activation, three `changePubKey` calls, deposits, L1 withdrawals, settlement and redemption. |
 | Native Ethereum USDC | `1 + SUBSCRIPTION_USDC`, 11 by default | 1 USDC is the fixed Lighter activation subscription made by the deployment; the rest is the test capital. |
 
 `USDC` means native Ethereum USDC, `0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48`.
@@ -467,6 +467,15 @@ Implemented on 2026-10-28:
   "not in the strategy universe". `tests/lagoon/test_lighter_manual_cli_units.py`
   covers parsing, the key backup and the script's syntax.
 
+Simplifications made with it:
+
+- The Python tutorials deploy with `--lighter-key-backup-dir` instead of
+  patching eth_defi's key generator, which removed their own backup helpers.
+- The Safe sweep, the deployer reconciliation and the Lighter equity read
+  live once, in `lighter_manual`; the tutorials call them.
+- `perform-test-trade`'s account test trade and transfer test trade share
+  one executor for a single custody trade.
+
 Deviations from the plan:
 
 - `lighter-equity` became `withdrawal-plan`, and `redeem-status` was added,
@@ -480,6 +489,11 @@ Deviations from the plan:
   ownership cannot tell whether this run already subscribed.
 - The script has six helpers and the heartbeat loop, not three helpers and
   no loops, to provide the observability.
+- Step 1 does not deploy again when the deployment artefact exists, or
+  when the master's key record exists without it: an interruption after a
+  successful deployment would otherwise deploy a second vault.
+- `TRADING_STRATEGY_API_KEY` is required, as every test of these commands
+  runs with a Trading Strategy client.
 
 ## Review history
 

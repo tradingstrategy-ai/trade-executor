@@ -23,10 +23,12 @@
 # 12. Sweep the Safe and reconcile the deployer's balances
 #
 # Real money, Ethereum mainnet only: Lighter's sequencer cannot run on a
-# fork, so there is no simulation mode. The deployer needs ETH for about
-# 15 transactions and 1 + SUBSCRIPTION_USDC native USDC (11 by default).
-# It gets everything back apart from gas and any Lighter dust below the
-# 1 USDC withdrawal minimum.
+# fork, so there is no simulation mode. The deployer needs ETH for a full
+# Lagoon vault deployment with contract verification plus about 20 more
+# transactions (the comparable tutorial run on 2026-10-26 spent about
+# 0.011 ETH of gas), and 1 + SUBSCRIPTION_USDC native USDC (11 by default). It
+# gets the USDC back apart from Lighter transfer fees, if Lighter charges
+# any, and dust below Lighter's 1 USDC withdrawal minimum.
 #
 # Inputs (export before running):
 #
@@ -34,7 +36,7 @@
 #   LIGHTER_TEST_PRIVATE_KEY  Funded deployer; becomes the sole Safe owner
 #                             and the asset manager. Never printed.
 #   ETHERSCAN_API_KEY         Contract verification at deployment
-#   TRADING_STRATEGY_API_KEY  Optional, passed through
+#   TRADING_STRATEGY_API_KEY  Trading Strategy client every command creates
 #   SUBSCRIPTION_USDC         Optional test capital, whole USDC, default 10
 #   LIGHTER_RUN_DIR           Optional; set to an earlier run's directory to
 #                             resume it
@@ -69,6 +71,9 @@ set -Eeuo pipefail
 : "${JSON_RPC_ETHEREUM:?Set JSON_RPC_ETHEREUM to an Ethereum mainnet archive RPC}"
 : "${LIGHTER_TEST_PRIVATE_KEY:?Set LIGHTER_TEST_PRIVATE_KEY to the funded deployer key}"
 : "${ETHERSCAN_API_KEY:?Set ETHERSCAN_API_KEY for contract verification}"
+# The strategy builds its universe in code, but the commands are only tested with a Trading Strategy client.
+: "${TRADING_STRATEGY_API_KEY:?Set TRADING_STRATEGY_API_KEY}"
+export TRADING_STRATEGY_API_KEY
 
 if [ "${SIMULATE:-false}" != "false" ]; then
     echo "Lighter activation needs live Ethereum and Lighter state; this script runs on mainnet only. Unset SIMULATE."
@@ -140,12 +145,13 @@ export VAULT_RECORD_FILE="$RUN_DIR/vault-record.txt"
 # and deleted once every record is written. Kept if the deployment fails.
 export LIGHTER_KEY_BACKUP_DIR="$RUN_DIR/key-backup"
 
-# The master's API key: perform-test-trade, lighter-move-funds and
-# check-accounts sign and read Lighter with it.
+# The master's API key: perform-test-trade and lighter-move-funds sign with
+# it, and check-accounts and correct-accounts read its transfer history.
 export LIGHTER_OPERATOR_RECORD_FILE="$RUN_DIR/vault-record.json"
 
 # The sub-accounts' keys: a transfer sent from a sub-account (step 7) is
-# signed with that sub-account's own key.
+# signed with that sub-account's own key, and the accounting commands read
+# the sub-accounts' transfer history with them. The files exist from step 1.
 export LIGHTER_SUB_ACCOUNT_OPERATOR_RECORD_FILES="$RUN_DIR/vault-record.nautilus.trend.json,$RUN_DIR/vault-record.nautilus.arb.json"
 
 # Longest wait for a Lighter withdrawal to become claimable: one hour.
@@ -159,8 +165,8 @@ export LIGHTER_TRANSFER_TIMEOUT=600
 # Progress interval while a command runs.
 HEARTBEAT_SECONDS="${HEARTBEAT_SECONDS:-60}"
 
-# Short names for the two command families, used only by the helpers below;
-# every step spells its commands out in full.
+# The testing module's command, used by the helpers below; every step
+# spells its commands out in full.
 LIGHTER_MANUAL=(poetry run python -m tradeexecutor.testing.lighter_manual)
 
 # Amounts of the custody steps, in whole USDC.
@@ -168,7 +174,10 @@ FUNDING_USDC=2
 TRANSFER_USDC=1
 
 # Expected balances after each step, as safe, master, trend and arb.
-# The 1 USDC activation deposit stays on the master until step 10.
+# The 1 USDC activation deposit stays on the master until step 10. They
+# assume no fee for a transfer between accounts of one owner, as Lighter
+# charged none on 2026-10-26; with a fee, the balance checks stop the run
+# after the transfer and show the difference, with the books still correct.
 SAFE_AFTER_SUBSCRIPTION=$SUBSCRIPTION_USDC
 SAFE_AFTER_TREND=$((SUBSCRIPTION_USDC - FUNDING_USDC))
 SAFE_AFTER_ARB=$((SUBSCRIPTION_USDC - 2 * FUNDING_USDC))
@@ -276,7 +285,7 @@ done_step() {
 # What to do after a failure in each step.
 recovery_hint() {
     case "$CURRENT_STEP" in
-        1) echo "If the deployment failed after generating keys, they are in $LIGHTER_KEY_BACKUP_DIR. Do not rerun step 1: inspect $RUN_LOG and the Safe first." ;;
+        1) echo "If the deployment failed after generating keys, they are in $LIGHTER_KEY_BACKUP_DIR and a rerun refuses to deploy again: inspect $RUN_LOG and the Safe first." ;;
         5|6|7) echo "If check-accounts reports an unbooked deposit or transfer, book it with: printf 'y\\n' | poetry run trade-executor correct-accounts" ;;
         8|9|10) echo "A submitted withdrawal is saved in the state; rerunning resumes and claims it with lighter-move-funds." ;;
         11) echo "lagoon-redeem resumes a pending or claimable redemption when rerun." ;;
@@ -436,23 +445,31 @@ log "Deployer: https://etherscan.io/address/$DEPLOYER_ADDRESS"
 #
 # The command asks once to confirm the deployment; the script answers y.
 
+# Written last by a successful deployment, so its presence means step 1 ran.
+DEPLOYMENT_FILE="$RUN_DIR/state/$EXECUTOR_ID.deployment.json"
+
 if step 1 "Deploy the Lagoon vault, the Lighter master account and the sub-accounts trend and arb" "10 to 20 minutes: contract deployment and verification, then Lighter activation"; then
-    if [ -n "$(ls -A "$LIGHTER_KEY_BACKUP_DIR" 2>/dev/null)" ]; then
+    if [ -s "$DEPLOYMENT_FILE" ]; then
+        log "$DEPLOYMENT_FILE exists: an earlier run deployed the vault before it was interrupted. Not deploying again."
+    elif [ -e "$LIGHTER_OPERATOR_RECORD_FILE" ]; then
+        fail "$LIGHTER_OPERATOR_RECORD_FILE exists but $DEPLOYMENT_FILE does not: the deployment was interrupted after writing its key records. Recover the deployment from $VAULT_RECORD_FILE and the log before deploying again."
+    elif [ -n "$(ls -A "$LIGHTER_KEY_BACKUP_DIR" 2>/dev/null)" ]; then
         fail "$LIGHTER_KEY_BACKUP_DIR holds keys from an earlier deployment attempt that did not complete. Inspect them and the Safe before deploying again."
+    else
+        run --stdin "y\n" poetry run trade-executor lagoon-deploy-vault \
+            --strategy-file "$STRATEGY_FILE" \
+            --generate-lighter-api-key \
+            --lighter-api-key-index 4 \
+            --lighter-sub-account-api-key-index 4 \
+            --lighter-key-backup-dir "$LIGHTER_KEY_BACKUP_DIR" \
+            --vault-record-file "$VAULT_RECORD_FILE" \
+            --fund-name "Lighter CLI test" \
+            --fund-symbol "LCLI" \
+            --multisig-owners "$DEPLOYER_ADDRESS" \
+            --any-asset \
+            --performance-fee 0 \
+            --management-fee 0
     fi
-    run --stdin "y\n" poetry run trade-executor lagoon-deploy-vault \
-        --strategy-file "$STRATEGY_FILE" \
-        --generate-lighter-api-key \
-        --lighter-api-key-index 4 \
-        --lighter-sub-account-api-key-index 4 \
-        --lighter-key-backup-dir "$LIGHTER_KEY_BACKUP_DIR" \
-        --vault-record-file "$VAULT_RECORD_FILE" \
-        --fund-name "Lighter CLI test" \
-        --fund-symbol "LCLI" \
-        --multisig-owners "$DEPLOYER_ADDRESS" \
-        --any-asset \
-        --performance-fee 0 \
-        --management-fee 0
     done_step 1
 fi
 
@@ -463,8 +480,6 @@ fi
 # The public artefact holds the vault, Safe and guard module addresses and
 # each Lighter account's index. Every later command needs the vault and the
 # module; the unwind needs the account indices. Saved to deployment.env.
-
-DEPLOYMENT_FILE="$RUN_DIR/state/$EXECUTOR_ID.deployment.json"
 
 if step 2 "Read the deployed addresses and Lighter account indices"; then
     jq -r '.deployments.ethereum as $d | [
@@ -634,8 +649,9 @@ fi
 #
 # lagoon-redeem requests redemption of all the deployer's shares, posts NAV,
 # settles the redemption queue and claims the USDC. It finds every Lighter
-# account from the state and leaves Lighter balances below 5 USDC in total
-# out of the NAV, as they cannot be withdrawn.
+# account from the state. Lagoon pays a redemption only from the Safe, so
+# lagoon-redeem leaves Lighter balances that total less than 5 USDC, such as
+# dust below the withdrawal minimum, out of the NAV it posts.
 
 if step 11 "Redeem all shares back to the deployer" "a few minutes"; then
     LAST_COMMAND="lighter_manual redeem-status"

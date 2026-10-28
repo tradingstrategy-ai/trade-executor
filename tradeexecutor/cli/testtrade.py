@@ -1023,6 +1023,25 @@ def _resolve_home_chain_async_settlement(
     return True
 
 
+def _execute_custody_test_trade(
+    execution_model: ExecutionModel,
+    state: State,
+    routing_model: RoutingModel,
+    routing_state: RoutingState,
+    ts: datetime.datetime,
+    trade: TradeExecution,
+) -> None:
+    """Execute one Lighter custody trade on its own and stop the test unless it succeeded.
+
+    Each movement runs alone, so a later one sees the balances the earlier
+    one left, as in a ``start`` cycle.
+    """
+    execution_model.execute_trades(ts, state, [trade], routing_model, routing_state)
+    if not trade.is_success():
+        raise RuntimeError(f"Lighter test trade #{trade.trade_id} did not succeed: {trade.get_status().value}")
+    logger.info("Lighter test trade #%d succeeded: %s", trade.trade_id, trade.notes)
+
+
 def _make_exchange_account_test_trade(
     execution_model: ExecutionModel,
     state: State,
@@ -1059,10 +1078,7 @@ def _make_exchange_account_test_trade(
     position_manager = PositionManager(ts, universe, state, pricing_model)
 
     def execute(trade: TradeExecution) -> None:
-        execution_model.execute_trades(ts, state, [trade], routing_model, routing_state)
-        if not trade.is_success():
-            raise RuntimeError(f"Lighter test trade #{trade.trade_id} did not succeed: {trade.get_status().value}")
-        logger.info("Lighter test trade #%d succeeded: %s", trade.trade_id, trade.notes)
+        _execute_custody_test_trade(execution_model, state, routing_model, routing_state, ts, trade)
 
     if not close_only:
         execute(position_manager.deposit_to_lighter(amount, notes=notes))
@@ -1161,11 +1177,7 @@ def make_lighter_transfer_test_trade(
     for leg_source, leg_destination in legs:
         notes = f"perform-test-trade: {amount} USDC from Lighter account {leg_source} to account {leg_destination}"
         trade = position_manager.transfer_lighter_funds(leg_source, leg_destination, amount, notes=notes)
-        logger.info("Transferring %s USDC from Lighter account %s to account %s, trade #%d", amount, leg_source, leg_destination, trade.trade_id)
-        execution_model.execute_trades(ts, state, [trade], routing_model, routing_state)
-        if not trade.is_success():
-            raise RuntimeError(f"Lighter transfer test trade #{trade.trade_id} did not succeed: {trade.get_status().value}")
-        logger.info("Lighter transfer test trade #%d succeeded: %s", trade.trade_id, trade.notes)
+        _execute_custody_test_trade(execution_model, state, routing_model, routing_state, ts, trade)
 
 
 def make_test_trade(

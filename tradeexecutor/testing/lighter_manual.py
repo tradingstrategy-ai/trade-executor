@@ -33,9 +33,10 @@ from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
 from eth_defi.hotwallet import HotWallet
 from eth_defi.lighter.constants import LIGHTER_USDC_ETHEREUM
 from eth_defi.lighter.session import create_lighter_session
+from eth_defi.lighter.valuation import LighterEquity
 from eth_defi.provider.multi_provider import create_multi_provider_web3
 from eth_defi.provider.receipt import wait_for_transaction_receipt_robust
-from eth_defi.safe.sweep import sweep_safe_to_owner
+from eth_defi.safe.sweep import SafeSweepTransfer, sweep_safe_to_owner
 from eth_defi.token import TokenDetails, fetch_erc20_details
 from eth_defi.vault.base import VaultSpec
 from tabulate import tabulate
@@ -57,7 +58,8 @@ LAGOON_DEPOSIT_REQUEST_ID = 0
 #: Gas limit for the deployer's approval, deposit request and claim.
 DEPLOYER_TRANSACTION_GAS_LIMIT = 1_000_000
 
-#: Largest unexplained change of the deployer's USDC the reconciliation accepts, in raw units.
+#: Largest unexplained change of the deployer's USDC the reconciliation accepts, in raw units:
+#: Lagoon cannot return sub-unit rounding residue.
 MAX_UNEXPLAINED_RAW = 2
 
 #: Default tolerance of ``expect-balances``, in USDC.
@@ -152,6 +154,15 @@ def get_account_labels() -> dict[str, int]:
     return resolution
 
 
+def fetch_lighter_equity(safe_address: str) -> dict[int, LighterEquity]:
+    """Read every Lighter account a Safe owns from one public snapshot, keyed by account index."""
+    session = create_lighter_session()
+    try:
+        return lighter_reads.fetch_lighter_accounts_equity(session, safe_address)
+    finally:
+        session.close()
+
+
 def fetch_balances(web3: Web3, deployer: HotWallet, usdc: TokenDetails, vault: LagoonVault, accounts: dict[str, int]) -> dict[str, dict[str, Decimal]]:
     """Read the deployer's, the Safe's and every Lighter account's balances.
 
@@ -159,11 +170,7 @@ def fetch_balances(web3: Web3, deployer: HotWallet, usdc: TokenDetails, vault: L
         Name to ``{"equity": ..., "free": ...}`` for the Lighter accounts and
         ``{"usdc": ...}`` for the Safe and the deployer, plus the deployer's ``eth``.
     """
-    session = create_lighter_session()
-    try:
-        equity = lighter_reads.fetch_lighter_accounts_equity(session, vault.safe_address)
-    finally:
-        session.close()
+    equity = fetch_lighter_equity(vault.safe_address)
     balances: dict[str, dict[str, Decimal]] = {
         "deployer": {"usdc": usdc.fetch_balance_of(deployer.address), "eth": Decimal(web3.eth.get_balance(deployer.address)) / Decimal(10**18)},
         "safe": {"usdc": usdc.fetch_balance_of(vault.safe_address)},
@@ -353,13 +360,7 @@ def command_withdrawal_plan(args: argparse.Namespace) -> int:
         print("resume")
         return 0
     web3, _deployer, _usdc = connect()
-    vault = get_vault(web3)
-    session = create_lighter_session()
-    try:
-        equity = lighter_reads.fetch_lighter_accounts_equity(session, vault.safe_address)
-    finally:
-        session.close()
-    account = equity.get(args.account_index)
+    account = fetch_lighter_equity(get_vault(web3).safe_address).get(args.account_index)
     available = account.available_balance if account is not None else Decimal(0)
     if available < LIGHTER_DUST_USDC:
         logger.info("Lighter account %d has %s USDC free, below the %s USDC withdrawal minimum; nothing to withdraw", args.account_index, available, LIGHTER_DUST_USDC)
@@ -382,10 +383,16 @@ def command_redeem_status(args: argparse.Namespace) -> int:
     return 0
 
 
-def command_sweep_safe(args: argparse.Namespace) -> int:
-    """Move everything left in the Safe to the deployer, once no investor claim remains."""
-    web3, deployer, usdc = connect()
-    vault = get_vault(web3)
+def sweep_safe_to_deployer(web3: Web3, vault: LagoonVault, deployer: HotWallet, usdc: TokenDetails) -> list[SafeSweepTransfer]:
+    """Move everything left in the Safe to the deployer, once no investor claim remains.
+
+    The deployer must be the Safe's sole owner, as at deployment.
+
+    :return:
+        One transfer per swept token, empty when the Safe held nothing.
+    :raise ManualTestError:
+        If shares are outstanding or a deposit or redemption is still claimable.
+    """
     if vault.vault_contract.functions.totalSupply().call() != 0:
         raise ManualTestError("Vault shares are outstanding; redeem them with trade-executor lagoon-redeem before sweeping")
     if vault.vault_contract.functions.maxRedeem(deployer.address).call() != 0:
@@ -397,6 +404,13 @@ def command_sweep_safe(args: argparse.Namespace) -> int:
         logger.info("Swept %s %s from the Safe to the deployer: %s", transfer.amount, transfer.symbol, transfer.tx_hash)
     if not transfers:
         logger.info("The Safe holds nothing to sweep")
+    return transfers
+
+
+def command_sweep_safe(args: argparse.Namespace) -> int:
+    """Move everything left in the Safe to the deployer."""
+    web3, deployer, usdc = connect()
+    transfers = sweep_safe_to_deployer(web3, get_vault(web3), deployer, usdc)
     print(f"swept {len(transfers)}")
     return 0
 
@@ -408,25 +422,36 @@ def read_start_file(path: Path) -> dict[str, str]:
     return dict(line.split("=", 1) for line in path.read_text().splitlines() if "=" in line)
 
 
-def explain_deployer_change(start_usdc: Decimal, end_usdc: Decimal, fees: Decimal, lighter_dust: Decimal) -> Decimal:
-    """Return the part of the deployer's USDC change that fees and Lighter dust do not explain."""
-    return start_usdc - end_usdc - fees - lighter_dust
+def reconcile_deployer(
+    web3: Web3,
+    deployer: HotWallet,
+    usdc: TokenDetails,
+    start_usdc: Decimal,
+    start_eth_wei: int,
+    fees: Decimal,
+    lighter_dust: Decimal,
+) -> list[tuple[str, Decimal]]:
+    """Explain the deployer's USDC and ETH change over a run, failing on anything unexplained.
 
+    After a full unwind the deployer has paid only Lighter's transfer fees,
+    left only Lighter dust below the withdrawal minimum, and spent gas.
 
-def command_reconcile(args: argparse.Namespace) -> int:
-    """Explain the deployer's USDC and ETH change over the run."""
-    web3, deployer, usdc = connect()
-    vault = get_vault(web3)
-    start = read_start_file(args.start_file)
-    accounts = get_account_labels()
-    state = State.read_json_file(Path(require_env("STATE_FILE")))
-    balances = fetch_balances(web3, deployer, usdc, vault, accounts)
-    fees = get_lighter_funding_fees(state)
-    lighter_dust = sum((balances[name]["equity"] for name in accounts), Decimal(0))
-    start_usdc = Decimal(start["START_USDC"])
-    end_usdc = balances["deployer"]["usdc"]
-    gas_eth = (Decimal(int(start["START_ETH_WEI"])) - Decimal(web3.eth.get_balance(deployer.address))) / Decimal(10**18)
-    unexplained = explain_deployer_change(start_usdc, end_usdc, fees, lighter_dust)
+    :param start_usdc:
+        Deployer USDC before the run.
+    :param start_eth_wei:
+        Deployer ETH before the run, in wei.
+    :param fees:
+        Lighter transfer fees paid during the run.
+    :param lighter_dust:
+        USDC still on the Safe's Lighter accounts.
+    :return:
+        The reconciliation rows, also logged as a table.
+    :raise ManualTestError:
+        If the unexplained USDC difference is larger than :py:data:`MAX_UNEXPLAINED_RAW`.
+    """
+    end_usdc = usdc.fetch_balance_of(deployer.address)
+    gas_eth = Decimal(start_eth_wei - web3.eth.get_balance(deployer.address)) / Decimal(10**18)
+    unexplained = start_usdc - end_usdc - fees - lighter_dust
     rows = [
         ("Deployer USDC at start", start_usdc),
         ("Deployer USDC at end", end_usdc),
@@ -438,6 +463,19 @@ def command_reconcile(args: argparse.Namespace) -> int:
     logger.info("Reconciliation:\n%s", tabulate(rows, headers=["Item", "Amount"], tablefmt="simple"))
     if abs(unexplained) > usdc.convert_to_decimals(MAX_UNEXPLAINED_RAW):
         raise ManualTestError(f"Unexplained USDC difference {unexplained}; inspect the state's trades and balance updates")
+    return rows
+
+
+def command_reconcile(args: argparse.Namespace) -> int:
+    """Explain the deployer's USDC and ETH change since ``check-funds``."""
+    web3, deployer, usdc = connect()
+    vault = get_vault(web3)
+    start = read_start_file(args.start_file)
+    accounts = get_account_labels()
+    state = State.read_json_file(Path(require_env("STATE_FILE")))
+    equity = fetch_lighter_equity(vault.safe_address)
+    lighter_dust = sum((equity[index].get_total() for index in accounts.values() if index in equity), Decimal(0))
+    reconcile_deployer(web3, deployer, usdc, Decimal(start["START_USDC"]), int(start["START_ETH_WEI"]), get_lighter_funding_fees(state), lighter_dust)
     print("ok")
     return 0
 

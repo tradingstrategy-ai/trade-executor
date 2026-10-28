@@ -32,12 +32,11 @@ from tradeexecutor.testing.lighter_tutorial import (
     SIMULATED_TRANSFER_FEE_USDC,
     STRATEGY_DIR,
     Tutorial,
+    deploy,
     get_base_environment,
     get_cli_environment,
-    initialise_state,
     load_tutorial_config,
     prepare_tutorial,
-    record_deployment,
     run_cli,
 )
 
@@ -137,48 +136,38 @@ def test_cli_manual_lighter_sub_accounts_flow(tutorial: Tutorial, tmp_path: Path
     assert manual(capsys, "check-funds", "--usdc", "1", "--start-file", str(start_file)) == "recorded", "A rerun must keep the original start balances"
 
     # 2. Deploy with a key backup directory and check the backups are removed after success
-    backup_dir = run_dir / "key-backup"
-    run_cli(
-        ["lagoon-deploy-vault"],
-        {
-            **get_base_environment(tutorial),
-            "VAULT_RECORD_FILE": str(tutorial.record_file),
-            "FUND_NAME": "Lighter CLI test",
-            "FUND_SYMBOL": "LCLI",
-            "MULTISIG_OWNERS": tutorial.deployer.address,
-            "ANY_ASSET": "true",
-            "PERFORMANCE_FEE": "0",
-            "MANAGEMENT_FEE": "0",
-            "GENERATE_LIGHTER_API_KEY": "true",
-            "LIGHTER_KEY_BACKUP_DIR": str(backup_dir),
-        },
-    )
-    record_deployment(tutorial)
+    deploy(tutorial, "Lighter CLI test", "LCLI")
+    backup_dir = tutorial.key_backup_dir
     assert backup_dir.is_dir() and list(backup_dir.iterdir()) == [], "Every key was backed up, then removed once the records were written"
     assert backup_dir.stat().st_mode & 0o077 == 0
     master, trend, arb = tutorial.account_indices
-    for key, value in get_cli_environment(tutorial).items():
+    # As in the script, every command after deployment gets both sub-account keys.
+    signers = ",".join(str(tutorial.get_handover_file(name)) for name in ("trend", "arb"))
+    env = get_cli_environment(tutorial, LIGHTER_SUB_ACCOUNT_OPERATOR_RECORD_FILES=signers)
+    for key, value in env.items():
         monkeypatch.setenv(key, value)
 
     # 3. Initialise the state and book the activation deposit
-    initialise_state(tutorial)
+    run_cli(["init"], env)
+    run_cli(["correct-accounts", "--process-redemption"], env)
+    run_cli(["check-accounts"], env)
     expect(capsys, safe=Decimal(0), master=Decimal(1), trend=Decimal(0), arb=Decimal(0))
 
     # 4. Subscribe with request-deposit, lagoon-settle and claim-shares, and check a rerun does not subscribe again
     marker = run_dir / "deposit-requested"
     assert manual(capsys, "request-deposit", str(SUBSCRIPTION_USDC), "--marker", str(marker)) == "requested"
     assert manual(capsys, "request-deposit", str(SUBSCRIPTION_USDC), "--marker", str(marker)) == "pending"
-    run_cli(["lagoon-settle"], get_cli_environment(tutorial))
+    run_cli(["lagoon-settle"], env)
     assert manual(capsys, "claim-shares").startswith("held ")
     assert manual(capsys, "request-deposit", str(SUBSCRIPTION_USDC), "--marker", str(marker)) == "settled"
-    run_cli(["check-accounts"], get_cli_environment(tutorial))
+    run_cli(["check-accounts"], env)
     expect(capsys, safe=SUBSCRIPTION_USDC, master=Decimal(1), trend=Decimal(0), arb=Decimal(0))
 
     # 5. Fund trend and arb with perform-test-trade --pair --buy-only
-    for name, master_after in (("trend", Decimal(1) - FEE), ("arb", Decimal(1) - 2 * FEE)):
-        run_cli(["perform-test-trade", "--pair", f"(ethereum, lighter, LIGHTER-{name}, USDC)", "--buy-only", "--amount", str(FUNDING_USDC)], get_cli_environment(tutorial))
-        run_cli(["check-accounts"], get_cli_environment(tutorial))
-    expect(capsys, safe=SUBSCRIPTION_USDC - 2 * FUNDING_USDC, master=master_after, trend=FUNDING_USDC, arb=FUNDING_USDC)
+    for name in ("trend", "arb"):
+        run_cli(["perform-test-trade", "--pair", f"(ethereum, lighter, LIGHTER-{name}, USDC)", "--buy-only", "--amount", str(FUNDING_USDC)], env)
+        run_cli(["check-accounts"], env)
+    expect(capsys, safe=SUBSCRIPTION_USDC - 2 * FUNDING_USDC, master=Decimal(1) - 2 * FEE, trend=FUNDING_USDC, arb=FUNDING_USDC)
 
     # 6. Check --lighter-transfer refuses before moving anything without every signer
     trade_count = len(list(State.read_json_file(tutorial.state_file).portfolio.get_all_trades()))
@@ -191,9 +180,8 @@ def test_cli_manual_lighter_sub_accounts_flow(tutorial: Tutorial, tmp_path: Path
     expect(capsys, trend=FUNDING_USDC, arb=FUNDING_USDC)
 
     # 7. Move USDC from trend to arb with --lighter-transfer and check the booking
-    signers = ",".join(str(tutorial.get_handover_file(name)) for name in ("trend", "arb"))
-    run_cli([*transfer, "--buy-only"], get_cli_environment(tutorial, LIGHTER_SUB_ACCOUNT_OPERATOR_RECORD_FILES=signers))
-    run_cli(["check-accounts"], get_cli_environment(tutorial, LIGHTER_SUB_ACCOUNT_OPERATOR_RECORD_FILES=signers))
+    run_cli([*transfer, "--buy-only"], env)
+    run_cli(["check-accounts"], env)
     trend_left = FUNDING_USDC - TRANSFER_USDC - FEE
     expect(capsys, master=Decimal(0), trend=trend_left, arb=FUNDING_USDC + TRANSFER_USDC)
     state = State.read_json_file(tutorial.state_file)
@@ -206,16 +194,16 @@ def test_cli_manual_lighter_sub_accounts_flow(tutorial: Tutorial, tmp_path: Path
     plan = manual(capsys, "withdrawal-plan", str(arb))
     assert plan == f"withdraw {lighter_manual.format_usdc(FUNDING_USDC + TRANSFER_USDC)}"
     monkeypatch.setattr("sys.stdin", io.StringIO(f"w\n{plan.removeprefix('withdraw ')}\ny\n"))
-    run_cli(["lighter-move-funds"], get_cli_environment(tutorial, LIGHTER_ACCOUNT_INDEX=str(arb)))
+    run_cli(["lighter-move-funds"], {**env, "LIGHTER_ACCOUNT_INDEX": str(arb)})
     assert manual(capsys, "withdrawal-plan", str(arb)) == "skip"
     assert manual(capsys, "withdrawal-plan", str(trend)) == "skip"
     assert manual(capsys, "withdrawal-plan", str(master)) == "skip"
-    run_cli(["check-accounts"], get_cli_environment(tutorial))
+    run_cli(["check-accounts"], env)
     expect(capsys, safe=SUBSCRIPTION_USDC - 2 * FUNDING_USDC + FUNDING_USDC + TRANSFER_USDC, arb=Decimal(0))
 
     # 9. Redeem every share, sweep the Safe and reconcile the deployer's balances
     assert manual(capsys, "redeem-status") == "redeem"
-    run_cli(["lagoon-redeem"], get_cli_environment(tutorial))
+    run_cli(["lagoon-redeem"], env)
     assert manual(capsys, "redeem-status") == "done"
     assert manual(capsys, "sweep-safe").startswith("swept ")
     assert manual(capsys, "reconcile", "--start-file", str(start_file)) == "ok"

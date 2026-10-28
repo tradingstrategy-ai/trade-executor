@@ -140,8 +140,8 @@ trade-executor lagoon-deploy-vault --generate-lighter-api-key \
 
 The files are deleted once every record is written and kept if the
 deployment fails. Each is created exclusively, so a retried deployment never
-overwrites an earlier attempt's keys. The Python tutorials predate the option
-and still save the keys themselves.
+overwrites an earlier attempt's keys. The tutorials deploy with this option,
+backing the keys up in their run directory.
 
 ### Optional: let the executor sign for sub-accounts
 
@@ -302,6 +302,18 @@ tutorials end with the trade table of
 description, status, notes and Ethereum and Lighter hashes. Live runs
 resume from `progress.json` in their run directory; simulated runs always
 start fresh.
+
+[`scripts/lagoon/manual-lighter-subaccounts-cli.sh`](../../scripts/lagoon/manual-lighter-subaccounts-cli.sh)
+does the same lifecycle with command-line commands only, as an operator
+would: deployment, `perform-test-trade` for the sub-account funding and a
+sub-account to sub-account transfer, `lighter-move-funds` for the
+withdrawals and `lagoon-redeem`. Its investor actions, balance checks and
+final sweep are subcommands of
+[`lighter_manual.py`](../testing/lighter_manual.py), which the Python
+tutorials share for the sweep and the reconciliation. It is live only;
+`tests/lagoon/test_lagoon_lighter_cli_manual_e2e.py` runs its command
+sequence on the fork. See
+[the deployment guide](../../docs/lagoon-lighter-deployment.md#test-from-the-command-line).
 
 [`scripts/lagoon/manual-trade-executor-lighter-transfers.py`](../../scripts/lagoon/manual-trade-executor-lighter-transfers.py)
 is the executable specification of the transfer accounting. Its strategy,

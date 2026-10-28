@@ -99,9 +99,9 @@ by id with the `PositionManager` custody methods, see
 
 The live tutorial
 [`manual-trade-executor-lighter-subaccounts.py`](../scripts/lagoon/manual-trade-executor-lighter-subaccounts.py)
-needs 5 USDC plus gas: the 1 USDC bootstrap and a 4 USDC subscription. It
-saves each generated key to a mode-0600 temporary file until deployment
-completes, to work around the limitation above.
+needs 5 USDC plus gas: the 1 USDC bootstrap and a 4 USDC subscription. Its
+deployment saves each generated key with `--lighter-key-backup-dir` in the
+run directory until the records are written.
 [`manual-trade-executor-lighter-transfers.py`](../scripts/lagoon/manual-trade-executor-lighter-transfers.py)
 books every deposit, transfer and withdrawal as its own trade with a scripted
 strategy, including transfers signed by the sub-account keys given to
@@ -128,13 +128,16 @@ returns the capital to the deployer.
 | `JSON_RPC_ETHEREUM` | Yes | Ethereum mainnet archive RPC |
 | `LIGHTER_TEST_PRIVATE_KEY` | Yes | Funded deployer; the sole Safe owner and asset manager |
 | `ETHERSCAN_API_KEY` | Yes | Contract verification at deployment |
-| `TRADING_STRATEGY_API_KEY` | No | Passed through |
+| `TRADING_STRATEGY_API_KEY` | Yes | The Trading Strategy client every command creates |
 | `SUBSCRIPTION_USDC` | No | Test capital in whole USDC, default 10 |
 | `LIGHTER_RUN_DIR` | No | An earlier run's directory, to resume it |
 | `HEARTBEAT_SECONDS` | No | Progress interval while a command runs, default 60 |
 
-The deployer needs ETH for about 15 transactions and `1 + SUBSCRIPTION_USDC`
-native USDC. A run takes about one and a half hours, most of it the three
+The deployer needs `1 + SUBSCRIPTION_USDC` native USDC and ETH for the
+deployment, its contract verification and about 20 further transactions;
+the comparable live tutorial run on 2026-10-26 spent about 0.011 ETH of gas.
+The USDC comes back apart from any Lighter transfer fee and dust below the
+1 USDC withdrawal minimum. A run takes about one and a half hours, most of it the three
 Lighter withdrawals. The script prints a timestamped banner per step, every
 command before it runs and how long it took, a heartbeat while a command
 runs, and the balances after every money step, all also written to
