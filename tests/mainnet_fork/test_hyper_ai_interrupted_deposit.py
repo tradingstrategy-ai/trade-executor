@@ -64,9 +64,11 @@ def anvil(tmp_path: Path) -> Iterator[AnvilLaunch]:
     seed_file.parent.mkdir(parents=True)
     shutil.copyfile(Path(__file__).resolve().parents[1] / "rpc_cache_seed" / relative, seed_file)
     seed_foundry_rpc_cache(seed_root, overwrite=True)
+    # The test reads production deposit transactions mined before the fork block
     fork = launch_anvil(
         os.environ.get("JSON_RPC_HYPERLIQUID") or PUBLIC_HYPEREVM_RPC,
         fork_block_number=BLOCK,
+        pre_fork_transaction_lookups=True,
     )
     try:
         yield fork
