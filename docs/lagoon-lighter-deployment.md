@@ -70,7 +70,9 @@ state. Move the mode-`0600` JSON record to the secret manager after deployment.
 
 Deployment writes the private records only after the whole command returns.
 If it fails after a key has been registered on Lighter, that key is lost and
-the account needs a new key through a Safe `changePubKey`.
+the account needs a new key through a Safe `changePubKey`, unless
+`--lighter-key-backup-dir` is set: it saves each key to a mode-0600 file
+before registration and deletes the files once the records are written.
 
 ### Sub-accounts
 
@@ -109,6 +111,41 @@ Lighter sequencer. See
 [README-Lighter.md](../tradeexecutor/exchange_account/README-Lighter.md#sub-accounts)
 for the custody model, fees, strategy setup, recovery and the verified
 mainnet results.
+
+## Test from the command line
+
+[`scripts/lagoon/manual-lighter-subaccounts-cli.sh`](../scripts/lagoon/manual-lighter-subaccounts-cli.sh)
+is a mainnet test of a vault with a Lighter master account and two
+sub-accounts that uses only `trade-executor` commands. Read it as the
+runbook of such a deployment: every step explains what it does to the vault,
+then runs plain commands. It deploys the vault, subscribes test capital,
+funds each sub-account and moves USDC between them with
+`perform-test-trade`, then withdraws every account, redeems all shares and
+returns the capital to the deployer.
+
+| Variable | Required | Use |
+|----------|----------|-----|
+| `JSON_RPC_ETHEREUM` | Yes | Ethereum mainnet archive RPC |
+| `LIGHTER_TEST_PRIVATE_KEY` | Yes | Funded deployer; the sole Safe owner and asset manager |
+| `ETHERSCAN_API_KEY` | Yes | Contract verification at deployment |
+| `TRADING_STRATEGY_API_KEY` | No | Passed through |
+| `SUBSCRIPTION_USDC` | No | Test capital in whole USDC, default 10 |
+| `LIGHTER_RUN_DIR` | No | An earlier run's directory, to resume it |
+| `HEARTBEAT_SECONDS` | No | Progress interval while a command runs, default 60 |
+
+The deployer needs ETH for about 15 transactions and `1 + SUBSCRIPTION_USDC`
+native USDC. A run takes about one and a half hours, most of it the three
+Lighter withdrawals. The script prints a timestamped banner per step, every
+command before it runs and how long it took, a heartbeat while a command
+runs, and the balances after every money step, all also written to
+`run.log` in the run directory. A rerun with `LIGHTER_RUN_DIR` skips the
+completed steps and checks the balances before any money step, so an
+interrupted step is never repeated. The actions outside the executor, such
+as the investor's deposit request and share claim, are subcommands of
+`python -m tradeexecutor.testing.lighter_manual`.
+
+`tests/lagoon/test_lagoon_lighter_cli_manual_e2e.py` runs the same commands
+in the same order on an Ethereum fork with a simulated Lighter sequencer.
 
 ## Pair a compatible strategy module
 

@@ -29,7 +29,7 @@ from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
 from tradeexecutor.ethereum.vault.settlement_retry import check_and_resolve_vault_settlements
 from tradeexecutor.ethereum.vault.vault_routing import get_vault_for_pair
 from tradeexecutor.ethereum.web3config import TEST_CHAIN_IDS
-from tradeexecutor.exchange_account.lighter import LIGHTER_MASTER_ACCOUNT_ID, get_lighter_account_id, is_lighter_exchange_account_pair
+from tradeexecutor.exchange_account.lighter import LIGHTER_MASTER_ACCOUNT_ID, find_lighter_account_pair, get_lighter_account_id, is_lighter_exchange_account_pair
 from tradeexecutor.state.trade import TradeExecution, TradeFlag, TradeStatus
 from tradeexecutor.state.types import Percent
 from tradeexecutor.statistics.core import update_statistics
@@ -1070,6 +1070,102 @@ def _make_exchange_account_test_trade(
             execute(position_manager.transfer_lighter_funds(LIGHTER_MASTER_ACCOUNT_ID, account, amount, notes=notes))
     if not buy_only:
         execute(position_manager.withdraw_from_lighter(account, amount, notes=notes))
+
+
+def parse_lighter_transfer(value: str) -> tuple[str, str]:
+    """Parse a ``SOURCE:DESTINATION`` Lighter account pair given on the command line.
+
+    :param value:
+        For example ``trend:arb`` or ``master:trend``.
+    :return:
+        Source and destination account ids.
+    :raise ValueError:
+        If the value is not two different, non-empty ids separated by one colon.
+    """
+    parts = [part.strip() for part in value.split(":")]
+    if len(parts) != 2 or not all(parts):
+        raise ValueError(f"Expected SOURCE:DESTINATION Lighter account ids, got {value!r}")
+    source, destination = parts
+    if source == destination:
+        raise ValueError(f"Lighter transfer source and destination must differ, got {value!r}")
+    return source, destination
+
+
+def get_lighter_transfer_signer_accounts(
+    universe: TradingStrategyUniverse,
+    source: str,
+    destination: str,
+    buy_only: bool,
+) -> dict[str, int]:
+    """Return the Lighter accounts that must sign a transfer test trade.
+
+    The outward leg is signed by the source, and the return leg, run
+    without ``buy_only``, by the destination. The caller checks every
+    signer before the first leg, because the routing layer checks only the
+    sender of each individual transfer: a missing destination key would
+    otherwise be found after the outward leg had moved the funds.
+
+    :param universe:
+        Strategy universe holding one pair per Lighter account.
+    :param source:
+        ``master`` or a sub-account id.
+    :param destination:
+        ``master`` or a sub-account id.
+    :param buy_only:
+        Leave the funds on the destination, so only the source signs.
+    :return:
+        Signing account id to its Lighter account index.
+    :raise ValueError:
+        If an id is not a Lighter account of the strategy.
+    """
+    pairs = list(universe.iterate_pairs())
+    signers = [source] if buy_only else [source, destination]
+    # Resolve both ids even when only the source signs, so a typo fails before any movement.
+    indices = {account: int(find_lighter_account_pair(pairs, account).get_exchange_account_id()) for account in (source, destination)}
+    return {account: indices[account] for account in signers}
+
+
+def make_lighter_transfer_test_trade(
+    execution_model: ExecutionModel,
+    state: State,
+    universe: TradingStrategyUniverse,
+    routing_model: RoutingModel,
+    routing_state: RoutingState,
+    pricing_model: PricingModel,
+    source: str,
+    destination: str,
+    amount: Decimal,
+    buy_only: bool,
+) -> None:
+    """Move ``amount`` USDC from one Lighter account to another and, unless ``buy_only``, back.
+
+    Each leg is the transfer ``start`` makes with
+    :py:meth:`~tradeexecutor.strategy.pandas_trader.position_manager.PositionManager.transfer_lighter_funds`:
+    one trade on the destination position, with the amount and Lighter's
+    fee booked on the source position. The caller must have checked that
+    the executor holds every signer the legs need, see
+    :py:func:`get_lighter_transfer_signer_accounts`.
+
+    :param source:
+        ``master`` or a sub-account id paying for the outward leg.
+    :param destination:
+        ``master`` or a sub-account id receiving it.
+    :param amount:
+        USDC credited to the destination; Lighter's minimum is 1 USDC.
+    :param buy_only:
+        Leave the funds on the destination.
+    """
+    ts = native_datetime_utc_now()
+    position_manager = PositionManager(ts, universe, state, pricing_model)
+    legs = [(source, destination)] if buy_only else [(source, destination), (destination, source)]
+    for leg_source, leg_destination in legs:
+        notes = f"perform-test-trade: {amount} USDC from Lighter account {leg_source} to account {leg_destination}"
+        trade = position_manager.transfer_lighter_funds(leg_source, leg_destination, amount, notes=notes)
+        logger.info("Transferring %s USDC from Lighter account %s to account %s, trade #%d", amount, leg_source, leg_destination, trade.trade_id)
+        execution_model.execute_trades(ts, state, [trade], routing_model, routing_state)
+        if not trade.is_success():
+            raise RuntimeError(f"Lighter transfer test trade #{trade.trade_id} did not succeed: {trade.get_status().value}")
+        logger.info("Lighter transfer test trade #%d succeeded: %s", trade.trade_id, trade.notes)
 
 
 def make_test_trade(

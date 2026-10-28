@@ -123,14 +123,25 @@ The executor reads a hand-over file only when an operator passes it in
 `LIGHTER_SUB_ACCOUNT_OPERATOR_RECORD_FILES`, and no sub-account key appears
 in any report.
 
-### Known limitation: keys are saved only after deployment
+### Saving keys before they are registered
 
-`lagoon-deploy-vault` writes the master and sub-account private keys only
-after the whole deployment returns. If it fails after a key has been
-registered on Lighter, that key exists nowhere else and the account needs a
-new key through a Safe `changePubKey`. Both tutorials work around this by
-saving each key to a mode-0600 temporary file as it is generated and
-deleting the files after a successful deployment.
+`lagoon-deploy-vault` writes the master and sub-account private keys to
+their records only after the deployment returns. If it fails after a key has
+been registered on Lighter, that key exists nowhere else and the account
+needs a new key through a Safe `changePubKey`. Pass
+`--lighter-key-backup-dir` (`LIGHTER_KEY_BACKUP_DIR`) to save each key to a
+mode-0600 file in that directory as soon as it is generated, before it is
+registered:
+
+```shell
+trade-executor lagoon-deploy-vault --generate-lighter-api-key \
+    --lighter-key-backup-dir /secure/path/key-backup ...
+```
+
+The files are deleted once every record is written and kept if the
+deployment fails. Each is created exclusively, so a retried deployment never
+overwrites an earlier attempt's keys. The Python tutorials predate the option
+and still save the keys themselves.
 
 ### Optional: let the executor sign for sub-accounts
 
@@ -390,8 +401,9 @@ with mode `0600`. Move it to a secret manager immediately. Do not put it in
 strategy configuration, command-line arguments, logs, support tickets or chat.
 Public outputs use an explicit metadata allowlist, so unknown SDK fields are
 not copied to them.
-A failed deployment can lose a key it already registered; see
-[Known limitation: keys are saved only after deployment](#known-limitation-keys-are-saved-only-after-deployment).
+A failed deployment can lose a key it already registered unless
+`--lighter-key-backup-dir` is set; see
+[Saving keys before they are registered](#saving-keys-before-they-are-registered).
 
 ## Example: deploy and test a Lighter vault
 
@@ -521,7 +533,26 @@ trade-executor perform-test-trade --single-pair --amount 1
 
 # Every account; a sub-account is funded through the master and withdrawn with the key-free L1 path
 trade-executor perform-test-trade --all-pairs --amount 1
+
+# One sub-account, by its id; --buy-only leaves the funding there
+trade-executor perform-test-trade --pair "(ethereum, lighter, LIGHTER-trend, USDC)" --buy-only --amount 2
+
+# Between two accounts, signed with the source's key; back again unless --buy-only
+export LIGHTER_SUB_ACCOUNT_OPERATOR_RECORD_FILES="/secure/path/vault-record.nautilus.trend.json,/secure/path/vault-record.nautilus.arb.json"
+trade-executor perform-test-trade --lighter-transfer trend:arb --buy-only --amount 1
 ```
+
+A Lighter account's pair is `LIGHTER-ACCOUNT` for the master and
+`LIGHTER-<id>` for a sub-account, on the `lighter` exchange.
+`--lighter-transfer SOURCE:DESTINATION` takes `master` or sub-account ids.
+It checks before the first leg that the executor holds the signer of every
+leg, the source and, without `--buy-only`, the destination, so a missing key
+never strands funds halfway. `--lighter-transfer master:trend` also completes
+a sub-account funding that stopped after its Safe deposit.
+
+[`manual-lighter-subaccounts-cli.sh`](../../scripts/lagoon/manual-lighter-subaccounts-cli.sh)
+runs the whole lifecycle with these commands, from deployment to the final
+redemption; see [the deployment guide](../../docs/lagoon-lighter-deployment.md#test-from-the-command-line).
 
 The operator record is required for any Lighter vault, whether or not the
 strategy sets `lighter_cash_management`; without it the command refuses

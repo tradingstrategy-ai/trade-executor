@@ -28,7 +28,7 @@ from ..bootstrap import prepare_executor_id, prepare_cache_and_token_cache, crea
     check_universe_contracts_resolve
 from ..log import setup_logging
 from ..slippage import configure_max_slippage_tolerance
-from ..testtrade import make_test_trade
+from ..testtrade import get_lighter_transfer_signer_accounts, make_lighter_transfer_test_trade, make_test_trade, parse_lighter_transfer
 from ...exchange_account.lighter import get_lighter_master_pair, has_lighter_exchange_account_pairs
 from ...ethereum.routing_state import OutOfBalance
 from ...ethereum.velvet.execution import VelvetExecution
@@ -96,6 +96,11 @@ def perform_test_trade(
     lighter_sub_account_operator_record_files: str | None = shared_options.lighter_sub_account_operator_record_files,
     lighter_withdrawal_timeout: int = shared_options.lighter_withdrawal_timeout,
     lighter_transfer_timeout: int = shared_options.lighter_transfer_timeout,
+    lighter_transfer: Optional[str] = Option(
+        None,
+        "--lighter-transfer",
+        help="Move --amount USDC between two Lighter accounts of the vault, given as SOURCE:DESTINATION account ids such as trend:arb or master:trend, and back again unless --buy-only.",
+    ),
 ):
     """Perform a small test swap.
 
@@ -123,6 +128,12 @@ def perform_test_trade(
     Test a Lighter vault: ``--single-pair`` moves ``--amount`` USDC from the
     Safe to the Lighter master account and back; ``--all-pairs`` does the
     same for the master and, through the master, for every sub-account.
+    ``--pair "(ethereum, lighter, LIGHTER-<id>, USDC)"`` tests one
+    sub-account. ``--lighter-transfer SOURCE:DESTINATION`` moves the amount
+    between two accounts, ``master`` or sub-account ids, and back unless
+    ``--buy-only``; the executor must hold every signer the legs need,
+    given with ``LIGHTER_SUB_ACCOUNT_OPERATOR_RECORD_FILES``, and the command
+    checks them all before the first leg.
     ``LIGHTER_OPERATOR_RECORD_FILE`` is required for any Lighter vault; the
     command refuses before moving anything without it. Each movement is the
     custody trade ``start`` would make, and a withdrawal waits up to
@@ -134,6 +145,10 @@ def perform_test_trade(
     interrupted withdrawal must be claimed into the Safe by hand first, as
     ``README-Lighter.md`` describes.
     """
+
+    if lighter_transfer:
+        assert not (pair or lending_reserve or single_pair or all_pairs or all_vaults), "--lighter-transfer cannot be combined with --pair, --lending-reserve, --single-pair, --all-pairs or --all-vaults"
+        lighter_transfer_accounts = parse_lighter_transfer(lighter_transfer)
 
     if pair:
         assert not all_pairs, "Cannot specify both --pair and --all-pairs"
@@ -149,7 +164,7 @@ def perform_test_trade(
     if test_credit_supply:
         raise NotImplementedError("--test-credit-supply is deprecated and no longer supported. Use --lending-reserve=(base, aave-v3, USDC) instead.")
 
-    assert pair or lending_reserve or single_pair or all_vaults or all_pairs, "You must specify either --pair, --lending-reserve, --single-pair, --all-vaults or --all-pairs to perform a test trade"
+    assert pair or lending_reserve or single_pair or all_vaults or all_pairs or lighter_transfer, "You must specify either --pair, --lending-reserve, --single-pair, --all-vaults, --all-pairs or --lighter-transfer to perform a test trade"
 
     id = prepare_executor_id(id, strategy_file)
 
@@ -281,6 +296,20 @@ def perform_test_trade(
         # Refuse before any trade: without the master's signer the withdrawal would fail after the deposit moved funds.
         raise ValueError("A Lighter test trade needs the master's operator record: set LIGHTER_OPERATOR_RECORD_FILE")
 
+    if lighter_transfer:
+        if lighter_routing_config is None:
+            raise ValueError("A Lighter transfer test trade needs the master's operator record: set LIGHTER_OPERATOR_RECORD_FILE")
+        # Check every signer before the first leg: the routing layer checks
+        # only each transfer's own sender, after earlier legs moved funds.
+        source, destination = lighter_transfer_accounts
+        signers = get_lighter_transfer_signer_accounts(universe, source, destination, buy_only)
+        missing = [account for account, index in signers.items() if lighter_routing_config.get_operator_record(index) is None]
+        if missing:
+            raise ValueError(
+                f"The executor holds no signer for Lighter account(s) {missing}; pass their hand-over records with "
+                "LIGHTER_SUB_ACCOUNT_OPERATOR_RECORD_FILES before running --lighter-transfer. Nothing was moved."
+            )
+
     if single_pair:
         # A Lighter vault has one pair per account; its single test pair is the master.
         pair = get_lighter_master_pair(universe.iterate_pairs()) if has_lighter_exchange_account_pairs(universe) else universe.get_single_pair()
@@ -310,7 +339,22 @@ def perform_test_trade(
     # command completion.  Deferred: thread the store callback through every
     # ``make_test_trade()`` invocation before relying on crash-safe resume.
     try:
-        if all_vaults:
+        if lighter_transfer:
+            source, destination = lighter_transfer_accounts
+            logger.info("Lighter transfer test trade: %s USDC from %s to %s%s", amount, source, destination, "" if buy_only else " and back")
+            make_lighter_transfer_test_trade(
+                execution_model,
+                state,
+                universe,
+                runner.routing_model,
+                routing_state,
+                pricing_model,
+                source=source,
+                destination=destination,
+                amount=Decimal(str(amount)),
+                buy_only=buy_only,
+            )
+        elif all_vaults:
             logger.info("Testing all vaults")
 
             vault_pairs = [p for p in universe.iterate_pairs() if p.is_vault()]

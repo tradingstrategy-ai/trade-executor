@@ -1,0 +1,669 @@
+#!/bin/bash
+#
+# Manual test: a Lagoon vault with a Lighter master account and two
+# sub-accounts, driven only by trade-executor command-line commands.
+#
+# This script is also the runbook of what such a deployment needs. Read it
+# top to bottom: every step says what it does to the vault and why, and
+# every action is a plain command you could type yourself.
+#
+#  0. Check the deployer can pay for the run
+#  1. Deploy the vault: Safe, Lagoon vault, guard, Lighter master account
+#     and two sub-accounts, each with its own API key
+#  2. Read the deployment's public addresses and Lighter account indices
+#  3. Initialise executor state and book the 1 USDC Lighter activation
+#  4. Subscribe test capital to the vault and claim the shares
+#  5. perform-test-trade: fund sub-account "trend" from the Safe
+#  6. perform-test-trade: fund sub-account "arb" from the Safe
+#  7. perform-test-trade: move USDC from "trend" to "arb"
+#  8. Withdraw "arb" to the Safe          (Lighter L1 withdrawal, ~30 min)
+#  9. Withdraw "trend" to the Safe        (Lighter L1 withdrawal, ~30 min)
+# 10. Withdraw the master to the Safe     (Lighter secure withdrawal, ~20 min)
+# 11. Redeem every share back to the deployer
+# 12. Sweep the Safe and reconcile the deployer's balances
+#
+# Real money, Ethereum mainnet only: Lighter's sequencer cannot run on a
+# fork, so there is no simulation mode. The deployer needs ETH for about
+# 15 transactions and 1 + SUBSCRIPTION_USDC native USDC (11 by default).
+# It gets everything back apart from gas and any Lighter dust below the
+# 1 USDC withdrawal minimum.
+#
+# Inputs (export before running):
+#
+#   JSON_RPC_ETHEREUM         Ethereum mainnet archive RPC
+#   LIGHTER_TEST_PRIVATE_KEY  Funded deployer; becomes the sole Safe owner
+#                             and the asset manager. Never printed.
+#   ETHERSCAN_API_KEY         Contract verification at deployment
+#   TRADING_STRATEGY_API_KEY  Optional, passed through
+#   SUBSCRIPTION_USDC         Optional test capital, whole USDC, default 10
+#   LIGHTER_RUN_DIR           Optional; set to an earlier run's directory to
+#                             resume it
+#   HEARTBEAT_SECONDS         Optional progress interval, default 60
+#
+# Prompts: lagoon-deploy-vault asks once to confirm the deployment,
+# correct-accounts asks before applying corrections and lighter-move-funds
+# asks for the direction, the amount and a confirmation. The script answers
+# them and says so before each command. Every other command gets no input,
+# so an unexpected prompt fails instead of hanging.
+#
+# Resuming: everything a run writes lives in its run directory. Rerun with
+# LIGHTER_RUN_DIR set to that directory; completed steps are skipped, and a
+# money-moving step first checks the balances, so an interrupted step is
+# never repeated. If the script stops, its last lines say what failed and
+# how to continue.
+#
+# Run from anywhere:
+#
+#   export JSON_RPC_ETHEREUM=... LIGHTER_TEST_PRIVATE_KEY=... ETHERSCAN_API_KEY=...
+#   scripts/lagoon/manual-lighter-subaccounts-cli.sh
+#
+# See docs/plans/lagoon-lighter-cli-manual-test.md for the design.
+#
+
+set -Eeuo pipefail
+
+# ---------------------------------------------------------------------------
+# Prerequisites
+# ---------------------------------------------------------------------------
+
+: "${JSON_RPC_ETHEREUM:?Set JSON_RPC_ETHEREUM to an Ethereum mainnet archive RPC}"
+: "${LIGHTER_TEST_PRIVATE_KEY:?Set LIGHTER_TEST_PRIVATE_KEY to the funded deployer key}"
+: "${ETHERSCAN_API_KEY:?Set ETHERSCAN_API_KEY for contract verification}"
+
+if [ "${SIMULATE:-false}" != "false" ]; then
+    echo "Lighter activation needs live Ethereum and Lighter state; this script runs on mainnet only. Unset SIMULATE."
+    exit 1
+fi
+
+command -v jq >/dev/null || { echo "jq is required to read the deployment artefact"; exit 1; }
+command -v poetry >/dev/null || { echo "poetry is required"; exit 1; }
+
+SUBSCRIPTION_USDC="${SUBSCRIPTION_USDC:-10}"
+if ! [[ "$SUBSCRIPTION_USDC" =~ ^[0-9]+$ ]] || [ "$SUBSCRIPTION_USDC" -lt 4 ]; then
+    echo "SUBSCRIPTION_USDC must be a whole number of USDC, at least 4: the run funds two sub-accounts with 2 USDC each"
+    exit 1
+fi
+
+# Run from the repository root, so strategy paths and poetry resolve.
+cd "$(dirname "$0")/../.."
+
+# ---------------------------------------------------------------------------
+# Configuration: the environment every trade-executor command reads
+# ---------------------------------------------------------------------------
+
+# All artefacts, records, state and logs of this run. Mode 0700: it holds
+# the mode-0600 files with the generated Lighter API keys.
+RUN_DIR="${LIGHTER_RUN_DIR:-$HOME/.tradingstrategy/examples/lighter-cli-$(date -u +%Y%m%d-%H%M%S)}"
+mkdir -p "$RUN_DIR/state"
+chmod 700 "$RUN_DIR"
+
+# Executor id: names the state and the deployment artefact.
+export EXECUTOR_ID="lighter-cli"
+
+# Strategy module: declares the sub-accounts "trend" and "arb". Deployment
+# creates one Lighter sub-account per declaration and every command builds
+# one trading pair per account from it. This script never runs `start`, so
+# the module's own cash policy never acts.
+export STRATEGY_FILE="strategies/test_only/lighter_multi_subaccount_strategy.py"
+
+# Executor state. The deployment artefact is written beside it as
+# lighter-cli.deployment.json, where init and every later command look.
+export STATE_FILE="$RUN_DIR/state/lighter-cli.json"
+
+# The deployer signs everything: it deploys the vault, is the Safe's sole
+# owner and the asset manager, and is the test investor.
+export PRIVATE_KEY="$LIGHTER_TEST_PRIVATE_KEY"
+
+# Contract verification at deployment, read from the environment so it
+# never appears on an echoed command line.
+export ETHERSCAN_API_KEY
+
+# Live run, never a fork.
+export SIMULATE=false
+
+# Executor logging: info shows each transaction, transfer and withdrawal wait as it happens.
+export LOG_LEVEL=info
+
+# Token and market metadata cache of this run.
+export CACHE_PATH="$RUN_DIR/cache"
+
+# The deployer keeps only enough ETH for this run; skip the generic
+# minimum-gas check that live executors use.
+export MIN_GAS_BALANCE=0
+
+# Public deployment report; the private records are written beside it:
+#   vault-record.json                Master API key, mode 0600
+#   vault-record.nautilus.<id>.json  One sub-account key each, mode 0600
+export VAULT_RECORD_FILE="$RUN_DIR/vault-record.txt"
+
+# Each generated API key is saved here before it is registered on Lighter,
+# and deleted once every record is written. Kept if the deployment fails.
+export LIGHTER_KEY_BACKUP_DIR="$RUN_DIR/key-backup"
+
+# The master's API key: perform-test-trade, lighter-move-funds and
+# check-accounts sign and read Lighter with it.
+export LIGHTER_OPERATOR_RECORD_FILE="$RUN_DIR/vault-record.json"
+
+# The sub-accounts' keys: a transfer sent from a sub-account (step 7) is
+# signed with that sub-account's own key.
+export LIGHTER_SUB_ACCOUNT_OPERATOR_RECORD_FILES="$RUN_DIR/vault-record.nautilus.trend.json,$RUN_DIR/vault-record.nautilus.arb.json"
+
+# Longest wait for a Lighter withdrawal to become claimable: one hour.
+# perform-test-trade reads the first name, lighter-move-funds the second.
+export LIGHTER_WITHDRAWAL_TIMEOUT=3600
+export LIGHTER_WITHDRAW_TIMEOUT=3600
+
+# Longest wait for a transfer between Lighter accounts to appear in history.
+export LIGHTER_TRANSFER_TIMEOUT=600
+
+# Progress interval while a command runs.
+HEARTBEAT_SECONDS="${HEARTBEAT_SECONDS:-60}"
+
+# Short names for the two command families, used only by the helpers below;
+# every step spells its commands out in full.
+LIGHTER_MANUAL=(poetry run python -m tradeexecutor.testing.lighter_manual)
+
+# Amounts of the custody steps, in whole USDC.
+FUNDING_USDC=2
+TRANSFER_USDC=1
+
+# Expected balances after each step, as safe, master, trend and arb.
+# The 1 USDC activation deposit stays on the master until step 10.
+SAFE_AFTER_SUBSCRIPTION=$SUBSCRIPTION_USDC
+SAFE_AFTER_TREND=$((SUBSCRIPTION_USDC - FUNDING_USDC))
+SAFE_AFTER_ARB=$((SUBSCRIPTION_USDC - 2 * FUNDING_USDC))
+
+# ---------------------------------------------------------------------------
+# Observability: one log, timestamps, step banners, echoed and timed
+# commands, a heartbeat while they run, and a failure report
+# ---------------------------------------------------------------------------
+
+RUN_LOG="$RUN_DIR/run.log"
+
+# Everything printed from here on goes to the terminal and to the run log.
+exec > >(tee -a "$RUN_LOG") 2>&1
+
+CURRENT_STEP="setup"
+STEP_STARTED=$SECONDS
+LAST_COMMAND=""
+FAILURE_REPORTED=0
+
+# Print a timestamped line. Script messages go to standard error, so a
+# command's captured result on standard output stays clean.
+log() {
+    echo "[$(date -u '+%H:%M:%S') UTC] $*" >&2
+}
+
+# Format seconds as "Xm YYs".
+format_duration() {
+    printf '%dm %02ds' $(($1 / 60)) $(($1 % 60))
+}
+
+# Short name of a command for the heartbeat: "trade-executor lagoon-settle".
+describe() {
+    local args=("$@")
+    if [ "${args[0]}" = "env" ]; then args=("${args[@]:1}"); fi
+    while [[ "${args[0]}" == *=* ]]; do args=("${args[@]:1}"); done
+    if [ "${args[0]}" = "poetry" ]; then args=("${args[@]:2}"); fi
+    if [ "${args[0]}" = "python" ]; then args=("${args[@]:2}"); fi
+    echo "${args[0]##*.} ${args[1]:-}"
+}
+
+# Print "still running" every HEARTBEAT_SECONDS until killed.
+heartbeat() {
+    local what="$1" started=$SECONDS
+    while sleep "$HEARTBEAT_SECONDS"; do
+        log "… still running $what ($(format_duration $((SECONDS - started))) elapsed)"
+    done
+}
+
+# Run one command: echo it, show a heartbeat while it runs, report how it
+# ended and how long it took. "--stdin TEXT" answers the command's prompts;
+# without it the command gets no input, so a prompt fails instead of hanging.
+run() {
+    local input=""
+    if [ "$1" = "--stdin" ]; then
+        input="$2"
+        shift 2
+    fi
+    LAST_COMMAND="$(printf '%q ' "$@")"
+    if [ -n "$input" ]; then
+        log "→ $LAST_COMMAND  (answering its prompts with: $(printf '%b' "$input" | paste -sd ',' -))"
+    else
+        log "→ $LAST_COMMAND"
+    fi
+    local started=$SECONDS status=0
+    heartbeat "$(describe "$@")" </dev/null &
+    local heartbeat_pid=$!
+    if [ -n "$input" ]; then
+        printf '%b' "$input" | "$@" || status=$?
+    else
+        "$@" </dev/null || status=$?
+    fi
+    kill "$heartbeat_pid" 2>/dev/null || true
+    wait "$heartbeat_pid" 2>/dev/null || true
+    if [ "$status" -eq 0 ]; then
+        log "✓ finished in $(format_duration $((SECONDS - started)))"
+    else
+        log "✗ failed with exit code $status after $(format_duration $((SECONDS - started)))"
+    fi
+    return "$status"
+}
+
+# Start a step: print its banner, or skip it when an earlier run completed it.
+step() {
+    local number="$1" title="$2" duration="${3:-}"
+    CURRENT_STEP="$number"
+    STEP_STARTED=$SECONDS
+    if [ -e "$RUN_DIR/step-$number.done" ]; then
+        log "Step $number/12 already done in an earlier run, skipping: $title"
+        return 1
+    fi
+    echo >&2
+    log "════ Step $number/12: $title"
+    if [ -n "$duration" ]; then
+        log "     Typical duration: $duration"
+    fi
+    return 0
+}
+
+# Mark a step complete.
+done_step() {
+    touch "$RUN_DIR/step-$1.done"
+    log "════ Step $1/12 done in $(format_duration $((SECONDS - STEP_STARTED)))"
+}
+
+# What to do after a failure in each step.
+recovery_hint() {
+    case "$CURRENT_STEP" in
+        1) echo "If the deployment failed after generating keys, they are in $LIGHTER_KEY_BACKUP_DIR. Do not rerun step 1: inspect $RUN_LOG and the Safe first." ;;
+        5|6|7) echo "If check-accounts reports an unbooked deposit or transfer, book it with: printf 'y\\n' | poetry run trade-executor correct-accounts" ;;
+        8|9|10) echo "A submitted withdrawal is saved in the state; rerunning resumes and claims it with lighter-move-funds." ;;
+        11) echo "lagoon-redeem resumes a pending or claimable redemption when rerun." ;;
+        *) echo "Fix the cause shown above, then rerun." ;;
+    esac
+}
+
+# Print the failure report once.
+report_failure() {
+    if [ "$FAILURE_REPORTED" -eq 1 ]; then return; fi
+    FAILURE_REPORTED=1
+    echo >&2
+    log "✗✗ Run stopped in step $CURRENT_STEP after $(format_duration $((SECONDS - STEP_STARTED))) in that step"
+    log "   Last command: ${LAST_COMMAND:-none}"
+    log "   What to do: $(recovery_hint)"
+    log "   Full log: $RUN_LOG"
+    log "   Resume with: LIGHTER_RUN_DIR=$RUN_DIR $0"
+}
+
+# Stop with a message and the failure report.
+fail() {
+    log "✗ $*"
+    report_failure
+    exit 1
+}
+
+# A failure inside a captured command, such as plan="$(run ...)", also
+# fails the assignment in the main shell; report once, from the main shell.
+trap 'status=$?; if [ "$BASH_SUBSHELL" -eq 0 ]; then report_failure; fi; exit $status' ERR
+trap 'log "Interrupted"; report_failure; exit 130' INT TERM
+
+# Show the deployer's, the Safe's and every Lighter account's balances.
+show_balances() {
+    run "${LIGHTER_MANUAL[@]}" balances
+}
+
+# Resume guard of a money-moving step (steps 5 to 7). Sets GUARD_RESULT to
+# "run" when the step should move its money, or "done" when an earlier run
+# already moved it. Stops the script in any other state.
+#
+#   guard_money_step N "<start balances>" "<target balances>" ["<halfway balances>" "<completion options>"]
+guard_money_step() {
+    local number="$1" start="$2" target="$3" halfway="${4:-}" completion="${5:-}"
+    log "Resume guard for step $number: the books must match the chain, then the balances must be the step's start or its target"
+    run poetry run trade-executor check-accounts
+    # shellcheck disable=SC2086  # The expectations are separate words on purpose.
+    if run "${LIGHTER_MANUAL[@]}" expect-balances --quiet $target >/dev/null; then
+        log "The target balances already hold: an earlier run moved this step's money. Nothing is moved again."
+        done_step "$number"
+        GUARD_RESULT="done"
+        return
+    fi
+    # shellcheck disable=SC2086
+    if run "${LIGHTER_MANUAL[@]}" expect-balances --quiet $start >/dev/null; then
+        log "The start balances hold; running step $number."
+        GUARD_RESULT="run"
+        return
+    fi
+    # shellcheck disable=SC2086
+    if [ -n "$halfway" ] && run "${LIGHTER_MANUAL[@]}" expect-balances --quiet $halfway >/dev/null; then
+        fail "Step $number stopped halfway in an earlier run: the deposit reached the master but the transfer to the sub-account did not happen. Complete it with: poetry run trade-executor perform-test-trade $completion, then rerun this script."
+    fi
+    # shellcheck disable=SC2086
+    run "${LIGHTER_MANUAL[@]}" expect-balances $start >/dev/null || true
+    fail "The balances match neither the start nor the target of step $number; see the table above and inspect with trade-executor check-accounts."
+}
+
+# Checks after a money-moving step: the books match the chain, the
+# balances are the step's target, and the step is marked done.
+finish_money_step() {
+    local number="$1" target="$2"
+    run poetry run trade-executor check-accounts
+    # shellcheck disable=SC2086
+    run "${LIGHTER_MANUAL[@]}" expect-balances $target >/dev/null
+    show_balances
+    done_step "$number"
+}
+
+# Withdraw one Lighter account to the Safe (steps 8 to 10). The decision
+# comes from withdrawal-plan: resume a withdrawal an earlier run submitted,
+# withdraw the account's free USDC, or skip an account below Lighter's
+# 1 USDC withdrawal minimum.
+#
+#   withdraw_account N NAME INDEX [sub-account]
+withdraw_account() {
+    local number="$1" name="$2" index="$3" kind="${4:-master}" plan amount
+    LAST_COMMAND="lighter_manual withdrawal-plan $index"
+    plan="$(run "${LIGHTER_MANUAL[@]}" withdrawal-plan "$index")"
+    log "Withdrawal plan for $name (account $index): $plan"
+    local environment=()
+    if [ "$kind" = "sub-account" ]; then
+        # LIGHTER_ACCOUNT_INDEX selects a sub-account; without it lighter-move-funds acts on the master.
+        environment=(env "LIGHTER_ACCOUNT_INDEX=$index")
+    fi
+    case "$plan" in
+        resume)
+            log "Resuming the withdrawal an earlier run submitted; lighter-move-funds waits until it is claimable and claims it into the Safe."
+            run "${environment[@]}" poetry run trade-executor lighter-move-funds
+            ;;
+        withdraw\ *)
+            amount="${plan#withdraw }"
+            log "Withdrawing $amount USDC from $name to the Safe at $(date -u '+%H:%M UTC'); Lighter makes it claimable after its withdrawal delay."
+            # lighter-move-funds asks for the direction (w), the amount and a confirmation (y).
+            run --stdin "w\n$amount\ny\n" "${environment[@]}" poetry run trade-executor lighter-move-funds
+            ;;
+        skip)
+            log "$name holds less than Lighter's 1 USDC withdrawal minimum; nothing to withdraw. lagoon-redeem leaves it out of the final NAV."
+            ;;
+        *)
+            fail "Unexpected withdrawal plan for $name: $plan"
+            ;;
+    esac
+    run poetry run trade-executor check-accounts
+    run "${LIGHTER_MANUAL[@]}" expect-balances "$name<=0.99" >/dev/null
+    show_balances
+    done_step "$number"
+}
+
+log "Lighter sub-account manual test, run directory $RUN_DIR"
+log "Log of this run: $RUN_LOG"
+log "Repository commit $(git rev-parse --short HEAD 2>/dev/null || echo unknown), subscription $SUBSCRIPTION_USDC USDC"
+
+# ---------------------------------------------------------------------------
+# Step 0: check the deployer can pay for the run
+# ---------------------------------------------------------------------------
+#
+# The deployer pays 1 USDC for Lighter's activation deposit and subscribes
+# SUBSCRIPTION_USDC as test capital, plus gas. check-funds also records the
+# starting balances in start.env; step 12 reconciles against them.
+
+if step 0 "Check the deployer's ETH and USDC"; then
+    run poetry run python -m tradeexecutor.testing.lighter_manual check-funds --usdc "$((SUBSCRIPTION_USDC + 1))" --start-file "$RUN_DIR/start.env"
+    done_step 0
+fi
+
+# start.env holds START_USDC, START_ETH_WEI and DEPLOYER_ADDRESS.
+# shellcheck source=/dev/null
+source "$RUN_DIR/start.env"
+log "Deployer: https://etherscan.io/address/$DEPLOYER_ADDRESS"
+
+# ---------------------------------------------------------------------------
+# Step 1: deploy the vault with a Lighter master and two keyed sub-accounts
+# ---------------------------------------------------------------------------
+#
+# lagoon-deploy-vault deploys a Safe, a Lagoon vault and its guard module,
+# then activates a Lighter account owned by the Safe: it subscribes 1 USDC
+# to the vault, deposits it from the Safe to Lighter (the minimum deposit,
+# which creates the master account) and registers an API key on the master
+# with a Safe changePubKey transaction. It then creates one sub-account per
+# SubAccount the strategy declares, trend and arb, and registers a key on
+# each the same way. The deployer is the Safe's sole owner, so it signs the
+# Safe transactions directly.
+#
+# Records written: the public report vault-record.txt, the master key in
+# vault-record.json, each sub-account key in vault-record.nautilus.<id>.json,
+# and the public artefact state/lighter-cli.deployment.json.
+#
+# The command asks once to confirm the deployment; the script answers y.
+
+if step 1 "Deploy the Lagoon vault, the Lighter master account and the sub-accounts trend and arb" "10 to 20 minutes: contract deployment and verification, then Lighter activation"; then
+    if [ -n "$(ls -A "$LIGHTER_KEY_BACKUP_DIR" 2>/dev/null)" ]; then
+        fail "$LIGHTER_KEY_BACKUP_DIR holds keys from an earlier deployment attempt that did not complete. Inspect them and the Safe before deploying again."
+    fi
+    run --stdin "y\n" poetry run trade-executor lagoon-deploy-vault \
+        --strategy-file "$STRATEGY_FILE" \
+        --generate-lighter-api-key \
+        --lighter-api-key-index 4 \
+        --lighter-sub-account-api-key-index 4 \
+        --lighter-key-backup-dir "$LIGHTER_KEY_BACKUP_DIR" \
+        --vault-record-file "$VAULT_RECORD_FILE" \
+        --fund-name "Lighter CLI test" \
+        --fund-symbol "LCLI" \
+        --multisig-owners "$DEPLOYER_ADDRESS" \
+        --any-asset \
+        --performance-fee 0 \
+        --management-fee 0
+    done_step 1
+fi
+
+# ---------------------------------------------------------------------------
+# Step 2: read the deployment
+# ---------------------------------------------------------------------------
+#
+# The public artefact holds the vault, Safe and guard module addresses and
+# each Lighter account's index. Every later command needs the vault and the
+# module; the unwind needs the account indices. Saved to deployment.env.
+
+DEPLOYMENT_FILE="$RUN_DIR/state/$EXECUTOR_ID.deployment.json"
+
+if step 2 "Read the deployed addresses and Lighter account indices"; then
+    jq -r '.deployments.ethereum as $d | [
+        "VAULT_ADDRESS=\($d.vault_address)",
+        "VAULT_ADAPTER_ADDRESS=\($d.module_address)",
+        "SAFE_ADDRESS=\($d.safe_address)",
+        "LIGHTER_MASTER_INDEX=\($d.lighter_account_setup.account_index)",
+        ($d.lighter_account_setup.sub_accounts[] | "LIGHTER_\(.label | ascii_upcase)_INDEX=\(.account_index)")
+    ] | .[]' "$DEPLOYMENT_FILE" > "$RUN_DIR/deployment.env"
+    done_step 2
+fi
+
+# shellcheck source=/dev/null
+source "$RUN_DIR/deployment.env"
+export VAULT_ADDRESS VAULT_ADAPTER_ADDRESS
+# From here on every command acts on the deployed Lagoon vault.
+export ASSET_MANAGEMENT_MODE=lagoon
+
+log "Vault:  https://etherscan.io/address/$VAULT_ADDRESS"
+log "Safe:   https://etherscan.io/address/$SAFE_ADDRESS"
+log "Guard:  https://etherscan.io/address/$VAULT_ADAPTER_ADDRESS"
+log "Lighter master $LIGHTER_MASTER_INDEX: https://mainnet.zklighter.elliot.ai/api/v1/account?by=index&value=$LIGHTER_MASTER_INDEX"
+log "Lighter trend  $LIGHTER_TREND_INDEX: https://mainnet.zklighter.elliot.ai/api/v1/account?by=index&value=$LIGHTER_TREND_INDEX"
+log "Lighter arb    $LIGHTER_ARB_INDEX: https://mainnet.zklighter.elliot.ai/api/v1/account?by=index&value=$LIGHTER_ARB_INDEX"
+
+# ---------------------------------------------------------------------------
+# Step 3: initialise executor state and book the activation
+# ---------------------------------------------------------------------------
+#
+# init creates the state from the deployment artefact, recording which
+# Lighter account index each id (master, trend, arb) maps to.
+# correct-accounts --process-redemption books what deployment already did:
+# the 1 USDC investor subscription and the 1 USDC now on the master. It asks
+# before applying the corrections; the script answers y. check-accounts then
+# confirms the books match the chain.
+
+if step 3 "Initialise executor state and book the Lighter activation deposit"; then
+    if [ -s "$STATE_FILE" ]; then
+        log "The state file exists from an earlier run; not initialising it again"
+    else
+        run poetry run trade-executor init
+    fi
+    run --stdin "y\n" poetry run trade-executor correct-accounts --process-redemption
+    run poetry run trade-executor check-accounts
+    run poetry run python -m tradeexecutor.testing.lighter_manual expect-balances safe=0 master=1 trend=0 arb=0 >/dev/null
+    show_balances
+    done_step 3
+fi
+
+# ---------------------------------------------------------------------------
+# Step 4: subscribe test capital and claim the shares
+# ---------------------------------------------------------------------------
+#
+# A Lagoon subscription has three parts. The investor requests a deposit,
+# which waits in the vault's silo; the asset manager settles the queue,
+# posting NAV and moving the USDC into the Safe; the investor claims the
+# shares. lagoon-settle is the asset manager's part. request-deposit and
+# claim-shares are the investor's, outside the executor, so they are done
+# by the testing module. All three are safe to rerun.
+
+if step 4 "Subscribe $SUBSCRIPTION_USDC USDC to the vault and claim the shares"; then
+    LAST_COMMAND="lighter_manual request-deposit"
+    deposit_status="$(run poetry run python -m tradeexecutor.testing.lighter_manual request-deposit "$SUBSCRIPTION_USDC" --marker "$RUN_DIR/deposit-requested")"
+    log "Subscription status: $deposit_status"
+    if [ "$deposit_status" = "requested" ] || [ "$deposit_status" = "pending" ]; then
+        run poetry run trade-executor lagoon-settle
+    fi
+    run poetry run python -m tradeexecutor.testing.lighter_manual claim-shares >/dev/null
+    run poetry run trade-executor check-accounts
+    run poetry run python -m tradeexecutor.testing.lighter_manual expect-balances "safe=$SAFE_AFTER_SUBSCRIPTION" master=1 trend=0 arb=0 >/dev/null
+    show_balances
+    done_step 4
+fi
+
+# ---------------------------------------------------------------------------
+# Step 5: fund sub-account trend with perform-test-trade
+# ---------------------------------------------------------------------------
+#
+# --pair selects the trend sub-account's trading pair. --buy-only funds it
+# and leaves the money there: a deposit from the Safe to the master, then a
+# transfer from the master to trend, signed with the master's key. Each
+# movement is the custody trade `start` would make, booked in the state.
+
+if step 5 "Fund sub-account trend with $FUNDING_USDC USDC" "a few minutes: one Lighter deposit and one transfer"; then
+    guard_money_step 5 \
+        "safe=$SAFE_AFTER_SUBSCRIPTION master=1 trend=0 arb=0" \
+        "safe=$SAFE_AFTER_TREND master=1 trend=$FUNDING_USDC arb=0" \
+        "safe=$SAFE_AFTER_TREND master=$((1 + FUNDING_USDC)) trend=0 arb=0" \
+        "--lighter-transfer master:trend --buy-only --amount $FUNDING_USDC"
+    if [ "$GUARD_RESULT" = "run" ]; then
+        run poetry run trade-executor perform-test-trade \
+            --pair "(ethereum, lighter, LIGHTER-trend, USDC)" \
+            --buy-only \
+            --amount "$FUNDING_USDC"
+        finish_money_step 5 "safe=$SAFE_AFTER_TREND master=1 trend=$FUNDING_USDC arb=0"
+    fi
+fi
+
+# ---------------------------------------------------------------------------
+# Step 6: fund sub-account arb with perform-test-trade
+# ---------------------------------------------------------------------------
+
+if step 6 "Fund sub-account arb with $FUNDING_USDC USDC" "a few minutes: one Lighter deposit and one transfer"; then
+    guard_money_step 6 \
+        "safe=$SAFE_AFTER_TREND master=1 trend=$FUNDING_USDC arb=0" \
+        "safe=$SAFE_AFTER_ARB master=1 trend=$FUNDING_USDC arb=$FUNDING_USDC" \
+        "safe=$SAFE_AFTER_ARB master=$((1 + FUNDING_USDC)) trend=$FUNDING_USDC arb=0" \
+        "--lighter-transfer master:arb --buy-only --amount $FUNDING_USDC"
+    if [ "$GUARD_RESULT" = "run" ]; then
+        run poetry run trade-executor perform-test-trade \
+            --pair "(ethereum, lighter, LIGHTER-arb, USDC)" \
+            --buy-only \
+            --amount "$FUNDING_USDC"
+        finish_money_step 6 "safe=$SAFE_AFTER_ARB master=1 trend=$FUNDING_USDC arb=$FUNDING_USDC"
+    fi
+fi
+
+# ---------------------------------------------------------------------------
+# Step 7: move USDC from trend to arb with perform-test-trade
+# ---------------------------------------------------------------------------
+#
+# --lighter-transfer trend:arb sends one transfer between the sub-accounts,
+# signed with trend's own key from LIGHTER_SUB_ACCOUNT_OPERATOR_RECORD_FILES.
+# It is booked as a trade on arb's position, with the amount (and any
+# Lighter fee) taken from trend's position as balance updates.
+
+if step 7 "Move $TRANSFER_USDC USDC from sub-account trend to arb" "a minute: one Lighter transfer"; then
+    guard_money_step 7 \
+        "safe=$SAFE_AFTER_ARB master=1 trend=$FUNDING_USDC arb=$FUNDING_USDC" \
+        "safe=$SAFE_AFTER_ARB master=1 trend=$((FUNDING_USDC - TRANSFER_USDC)) arb=$((FUNDING_USDC + TRANSFER_USDC))"
+    if [ "$GUARD_RESULT" = "run" ]; then
+        run poetry run trade-executor perform-test-trade \
+            --lighter-transfer trend:arb \
+            --buy-only \
+            --amount "$TRANSFER_USDC"
+        finish_money_step 7 "safe=$SAFE_AFTER_ARB master=1 trend=$((FUNDING_USDC - TRANSFER_USDC)) arb=$((FUNDING_USDC + TRANSFER_USDC))"
+    fi
+fi
+
+# ---------------------------------------------------------------------------
+# Steps 8 to 10: withdraw every Lighter account to the Safe
+# ---------------------------------------------------------------------------
+#
+# lighter-move-funds withdraws one account's free USDC to the Safe and
+# books it. A sub-account (LIGHTER_ACCOUNT_INDEX set) uses Lighter's
+# key-free L1 withdraw(subIndex) through the Safe; the master uses the
+# secure withdrawal signed with its key. Both wait until Lighter makes the
+# USDC claimable, then claim it into the Safe. The command asks for the
+# direction, the amount and a confirmation; the script answers with w, the
+# account's free USDC and y.
+
+if step 8 "Withdraw sub-account arb to the Safe" "25 to 35 minutes: Lighter L1 withdrawal delay"; then
+    withdraw_account 8 arb "$LIGHTER_ARB_INDEX" sub-account
+fi
+
+if step 9 "Withdraw sub-account trend to the Safe" "25 to 35 minutes: Lighter L1 withdrawal delay"; then
+    withdraw_account 9 trend "$LIGHTER_TREND_INDEX" sub-account
+fi
+
+if step 10 "Withdraw the master to the Safe" "15 to 25 minutes: Lighter secure withdrawal delay"; then
+    withdraw_account 10 master "$LIGHTER_MASTER_INDEX"
+fi
+
+# ---------------------------------------------------------------------------
+# Step 11: redeem every share back to the deployer
+# ---------------------------------------------------------------------------
+#
+# lagoon-redeem requests redemption of all the deployer's shares, posts NAV,
+# settles the redemption queue and claims the USDC. It finds every Lighter
+# account from the state and leaves Lighter balances below 5 USDC in total
+# out of the NAV, as they cannot be withdrawn.
+
+if step 11 "Redeem all shares back to the deployer" "a few minutes"; then
+    LAST_COMMAND="lighter_manual redeem-status"
+    redeem_status="$(run poetry run python -m tradeexecutor.testing.lighter_manual redeem-status)"
+    if [ "$redeem_status" = "redeem" ]; then
+        run poetry run trade-executor lagoon-redeem
+    else
+        log "The deployer has no shares or redemption left; nothing to redeem"
+    fi
+    run poetry run trade-executor check-accounts
+    show_balances
+    done_step 11
+fi
+
+# ---------------------------------------------------------------------------
+# Step 12: sweep the Safe and reconcile
+# ---------------------------------------------------------------------------
+#
+# Once no shares are outstanding, whatever the Safe still holds belongs to
+# nobody but its owner: sweep-safe moves it to the deployer. reconcile then
+# explains the deployer's USDC change since step 0 by Lighter fees and dust,
+# and fails on anything else.
+
+if step 12 "Sweep the Safe and reconcile the deployer's balances"; then
+    run poetry run python -m tradeexecutor.testing.lighter_manual sweep-safe >/dev/null
+    run poetry run python -m tradeexecutor.testing.lighter_manual reconcile --start-file "$RUN_DIR/start.env" >/dev/null
+    show_balances
+    done_step 12
+fi
+
+log "Manual test complete. Artefacts, records and the log are in $RUN_DIR"

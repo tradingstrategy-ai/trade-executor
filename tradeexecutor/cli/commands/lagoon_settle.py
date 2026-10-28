@@ -154,13 +154,18 @@ def lagoon_settle(
 
     universe_options = mod.get_universe_options(execution_context.mode)
 
-    # We construct the trading universe to know what's our reserve asset
+    # We construct the trading universe to know what's our reserve asset.
+    # Pass the state: a universe built in code, such as a Lighter vault with
+    # sub-accounts, resolves its deployed account indices from it.
     universe_model: TradingStrategyUniverseModel = run_description.universe_model
     ts = native_datetime_utc_now()
     universe = universe_model.construct_universe(
         ts,
         execution_context.mode,
-        universe_options
+        universe_options,
+        strategy_parameters=mod.parameters,
+        execution_model=execution_model,
+        state=state,
     )
 
     runner = run_description.runner
