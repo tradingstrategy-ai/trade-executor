@@ -10,14 +10,14 @@ import pytest
 
 from eth_account import Account
 from eth_typing import HexAddress
-from web3 import Web3, HTTPProvider
+from web3 import Web3
 
 from eth_defi.provider.anvil import AnvilLaunch, launch_anvil
-from eth_defi.chain import install_chain_middleware
 from eth_defi.enzyme.vault import Vault
 from eth_defi.hotwallet import HotWallet
 from eth_defi.token import TokenDetails, fetch_erc20_details
 from eth_defi.trace import assert_transaction_success_with_explanation
+from eth_defi.provider.multi_provider import create_multi_provider_web3
 
 from tradeexecutor.cli.main import app
 from tradeexecutor.monkeypatch.web3 import construct_sign_and_send_raw_middleware
@@ -58,9 +58,7 @@ def web3(anvil) -> Web3:
 
     Also perform the Anvil state reset for each test.
     """
-    web3 = Web3(HTTPProvider(anvil.json_rpc_url, request_kwargs={"timeout": 10}))
-    web3.middleware_onion.clear()
-    install_chain_middleware(web3)
+    web3 = create_multi_provider_web3(anvil.json_rpc_url, request_kwargs={"timeout": 10})
     return web3
 
 

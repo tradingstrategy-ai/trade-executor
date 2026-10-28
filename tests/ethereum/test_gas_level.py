@@ -6,12 +6,12 @@ from decimal import Decimal
 import pytest
 from eth_account import Account
 from eth_defi.provider.anvil import launch_anvil, AnvilLaunch
-from eth_defi.chain import install_chain_middleware
 from eth_defi.hotwallet import HotWallet
 from eth_defi.trace import assert_transaction_success_with_explanation
+from eth_defi.provider.multi_provider import create_multi_provider_web3
 from eth_typing import HexAddress
 
-from web3 import Web3, HTTPProvider
+from web3 import Web3
 
 from tradeexecutor.ethereum.wallet import perform_gas_level_checks
 from tradeexecutor.strategy.run_state import RunState
@@ -42,8 +42,7 @@ def web3(anvil: AnvilLaunch) -> Web3:
 
     Also perform the Anvil state reset for each test.
     """
-    web3 = Web3(HTTPProvider(anvil.json_rpc_url, request_kwargs={"timeout": 2}))
-    install_chain_middleware(web3)
+    web3 = create_multi_provider_web3(anvil.json_rpc_url, request_kwargs={"timeout": 2})
     return web3
 
 

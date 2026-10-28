@@ -17,11 +17,10 @@ import flaky
 import pytest
 from eth_account import Account
 from eth_defi.provider.anvil import fork_network_anvil
-from eth_defi.chain import install_chain_middleware
 
 from eth_defi.confirmation import wait_transactions_to_complete
 from eth_typing import HexAddress, HexStr
-from web3 import Web3, HTTPProvider
+from web3 import Web3
 from web3.contract import Contract
 
 from eth_defi.abi import get_deployed_contract
@@ -42,6 +41,7 @@ from tradeexecutor.testing.pairuniversetrader import PairUniverseTestTrader
 from tradingstrategy.chain import ChainId
 from tradingstrategy.pair import PandasPairUniverse
 from eth_defi.compat import native_datetime_utc_now
+from eth_defi.provider.multi_provider import create_multi_provider_web3
 
 pytestmark = pytest.mark.skip(reason="Known to be broken - TODO - needs to be fixed later")
 
@@ -89,8 +89,7 @@ def anvil_bnb_chain_fork(logger, large_usdt_holder) -> str:
 def web3(anvil_bnb_chain_fork: str):
     """Set up a local unit testing blockchain."""
     # https://web3py.readthedocs.io/en/stable/examples.html#contract-unit-tests-in-python
-    web3 = Web3(HTTPProvider(anvil_bnb_chain_fork, request_kwargs={"timeout": 5}))
-    install_chain_middleware(web3)
+    web3 = create_multi_provider_web3(anvil_bnb_chain_fork, request_kwargs={"timeout": 5})
     return web3
 
 

@@ -8,15 +8,15 @@ import pytest
 import secrets
 
 from eth_typing import HexAddress
-from web3 import Web3, HTTPProvider
+from web3 import Web3
 from web3.contract import Contract
 from eth_account import Account
 
 from eth_defi.hotwallet import HotWallet
 from eth_defi.provider.anvil import AnvilLaunch, launch_anvil
-from eth_defi.chain import install_chain_middleware
 from eth_defi.token import create_token
 from eth_defi.trace import assert_transaction_success_with_explanation
+from eth_defi.provider.multi_provider import create_multi_provider_web3
 from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
 
@@ -36,9 +36,7 @@ def anvil() -> AnvilLaunch:
 @pytest.fixture()
 def web3(anvil: AnvilLaunch) -> Web3:
     """Set up the Anvil Web3 connection."""
-    web3 = Web3(HTTPProvider(anvil.json_rpc_url, request_kwargs={"timeout": 2}))
-    web3.middleware_onion.clear()
-    install_chain_middleware(web3)
+    web3 = create_multi_provider_web3(anvil.json_rpc_url, request_kwargs={"timeout": 2})
     return web3
 
 

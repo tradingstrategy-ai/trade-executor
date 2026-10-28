@@ -24,11 +24,12 @@ from eth_defi.abi import get_deployed_contract
 from eth_defi.confirmation import wait_transactions_to_complete
 from eth_typing import HexAddress, HexStr
 
-from web3 import Web3, HTTPProvider
+from web3 import Web3
 from web3.contract import Contract
 
 from eth_defi.provider.ganache import fork_network
 from eth_defi.hotwallet import HotWallet
+from eth_defi.provider.multi_provider import create_multi_provider_web3
 from tradeexecutor.cli.main import app
 from tradeexecutor.state.state import State
 
@@ -91,7 +92,7 @@ def ganache_bnb_chain_fork(logger, large_busd_holder) -> str:
 def web3(ganache_bnb_chain_fork: str):
     """Set up a local unit testing blockchain."""
     # https://web3py.readthedocs.io/en/stable/examples.html#contract-unit-tests-in-python
-    return Web3(HTTPProvider(ganache_bnb_chain_fork))
+    return create_multi_provider_web3(ganache_bnb_chain_fork)
 
 
 @pytest.fixture

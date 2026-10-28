@@ -16,18 +16,18 @@ from eth_typing import HexAddress
 from tradingstrategy.pair import PandasPairUniverse
 from tradingstrategy.exchange import Exchange, ExchangeType
 from tradingstrategy.chain import ChainId
-from web3 import Web3, HTTPProvider
+from web3 import Web3
 from web3.contract import Contract
 from eth_account import Account
 
 from eth_defi.hotwallet import HotWallet
 from eth_defi.provider.anvil import AnvilLaunch, launch_anvil
-from eth_defi.chain import install_chain_middleware
 from eth_defi.deploy import deploy_contract
 from eth_defi.trace import assert_transaction_success_with_explanation
 
 from eth_defi.token import create_token, fetch_erc20_details
 from eth_defi.uniswap_v2.deployment import deploy_uniswap_v2_like, UniswapV2Deployment, deploy_trading_pair
+from eth_defi.provider.multi_provider import create_multi_provider_web3
 
 from tradeexecutor.ethereum.token import translate_token_details
 from tradeexecutor.ethereum.universe import create_pair_universe
@@ -53,12 +53,7 @@ def web3(anvil: AnvilLaunch) -> Web3:
 
     Also perform the Anvil state reset for each test.
     """
-    web3 = Web3(HTTPProvider(anvil.json_rpc_url, request_kwargs={"timeout": 2}))
-
-    # Get rid of attributeddict slow down
-    web3.middleware_onion.clear()
-
-    install_chain_middleware(web3)
+    web3 = create_multi_provider_web3(anvil.json_rpc_url, request_kwargs={"timeout": 2})
 
     return web3
 
