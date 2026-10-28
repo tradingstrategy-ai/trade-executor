@@ -8,6 +8,16 @@ Exchange account positions allow tracking capital deployed to external perpetual
 
 For deploying a Lagoon vault on Derive chain and linking it to a Derive trading account, see the [Derive vault deployment guide](./README-Derive-Vault.md).
 
+## Derive v3
+
+Derive v3 replaced the v2 API at `api.lyra.finance` with `https://api.derive.xyz/v3` and settles on Ethereum. The integration uses the v3 API through `eth_defi.derive`. The main changes for operators are:
+
+- **No separate Derive wallet.** The wallet that owns the account is the owner EOA or multisig itself. When `DERIVE_WALLET_ADDRESS` is not set, the owner EOA address is used.
+- **Accounts start with a deposit.** A wallet has no v3 account until its first deposit. v2 accounts and session keys do not work against v3 until they are set up again.
+- **Multisig owners use onchain actions.** A Safe registers its session key by calling `OnchainActionManager.submit()` on Ethereum, because it cannot sign the API's EIP-712 actions. See [smart contracts and multisigs](https://docs.derive.xyz/authentication/contract-owned-accounts).
+
+See the [v3 breaking changes](https://docs.derive.xyz/migrating/breaking-changes) for the full list.
+
 ## Environment variables
 
 Configure these environment variables for Derive integration:
@@ -16,7 +26,7 @@ Configure these environment variables for Derive integration:
 |----------|----------|-------------|
 | `DERIVE_SESSION_PRIVATE_KEY` | Yes | Private key for the Derive session key (used for API authentication) |
 | `DERIVE_OWNER_PRIVATE_KEY` | No* | Private key of the Ethereum wallet that owns the Derive account |
-| `DERIVE_WALLET_ADDRESS` | No* | Derive wallet address (auto-derived from owner key if not provided). For Lagoon vault deployments, set this to the Safe multisig address. |
+| `DERIVE_WALLET_ADDRESS` | No* | Wallet that owns the Derive account (defaults to the owner EOA address). For Lagoon vault deployments, set this to the Safe multisig address. |
 | `DERIVE_NETWORK` | No | Network selection: `mainnet` or `testnet` (default: `mainnet`) |
 
 \* Either `DERIVE_OWNER_PRIVATE_KEY` or `DERIVE_WALLET_ADDRESS` must be provided. If the wallet address is provided directly, the owner private key is not needed. For Lagoon vault deployments, the Derive exchange account is registered against the Safe multisig address, so `DERIVE_WALLET_ADDRESS` must be set to the Safe address (not the vault contract address).
@@ -109,13 +119,13 @@ The command will:
 from eth_account import Account
 from eth_defi.derive.authentication import DeriveApiClient
 from eth_defi.derive.account import fetch_subaccount_ids
-from eth_defi.derive.onboarding import fetch_derive_wallet_address
 
 from tradeexecutor.exchange_account.derive import create_derive_account_value_func
 
 # Set up authentication
 owner_account = Account.from_key(os.environ["DERIVE_OWNER_PRIVATE_KEY"])
-derive_wallet = fetch_derive_wallet_address(owner_account.address, is_testnet=False)
+# In Derive v3 the owner EOA is the wallet that owns the account
+derive_wallet = owner_account.address
 
 client = DeriveApiClient(
     owner_account=owner_account,
@@ -166,7 +176,7 @@ for evt in events:
 
 ### Owner wallet
 
-The Ethereum wallet that controls the Derive account. Used to derive the Derive wallet address and sign authentication requests.
+The Ethereum wallet that owns the Derive account. In Derive v3 its address is the account's wallet address.
 
 ### Session key
 
@@ -180,7 +190,7 @@ Derive accounts can have multiple subaccounts for isolated margin. Each subaccou
 
 ### Derive wallet address
 
-A smart contract wallet address on the Derive L2 chain. Automatically derived from the owner wallet address using a deterministic formula.
+In Derive v2 this was a LightAccount smart contract wallet on Derive Chain, derived from the owner address. Derive v3 removed it: the owner EOA or multisig is the wallet, and v2 Derive wallets were moved to their owners.
 
 ## Troubleshooting
 

@@ -24,14 +24,14 @@ from unittest.mock import patch
 import pytest
 from eth_account import Account
 from eth_typing import HexAddress
-from web3 import Web3, HTTPProvider
+from web3 import Web3
 from web3.contract import Contract
 
 from eth_defi.hotwallet import HotWallet
 from eth_defi.provider.anvil import AnvilLaunch, launch_anvil
-from eth_defi.chain import install_chain_middleware
 from eth_defi.token import create_token
 from eth_defi.trace import assert_transaction_success_with_explanation
+from eth_defi.provider.multi_provider import create_multi_provider_web3
 from tradingstrategy.chain import ChainId
 from typer.main import get_command
 
@@ -66,17 +66,13 @@ def anvil_dest() -> AnvilLaunch:
 
 @pytest.fixture()
 def web3_source(anvil_source: AnvilLaunch) -> Web3:
-    web3 = Web3(HTTPProvider(anvil_source.json_rpc_url, request_kwargs={"timeout": 2}))
-    web3.middleware_onion.clear()
-    install_chain_middleware(web3)
+    web3 = create_multi_provider_web3(anvil_source.json_rpc_url)
     return web3
 
 
 @pytest.fixture()
 def web3_dest(anvil_dest: AnvilLaunch) -> Web3:
-    web3 = Web3(HTTPProvider(anvil_dest.json_rpc_url, request_kwargs={"timeout": 2}))
-    web3.middleware_onion.clear()
-    install_chain_middleware(web3)
+    web3 = create_multi_provider_web3(anvil_dest.json_rpc_url)
     return web3
 
 

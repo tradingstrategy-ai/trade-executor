@@ -21,8 +21,8 @@ from tradeexecutor.cli.main import app
 from tradeexecutor.state.state import State
 
 pytestmark = pytest.mark.skipif(
-    not os.environ.get("ASTER_API_KEY") or not os.environ.get("ASTER_API_SECRET"),
-    reason="Set ASTER_API_KEY and ASTER_API_SECRET for Aster CCXT tests",
+    not os.environ.get("ASTER_PRIVATE_KEY"),
+    reason="Set ASTER_PRIVATE_KEY, the Aster account's L1 wallet key, for Aster CCXT tests",
 )
 from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
@@ -58,8 +58,8 @@ def environment(
     """
     import json
     ccxt_options = json.dumps({
-        "apiKey": os.environ["ASTER_API_KEY"],
-        "secret": os.environ["ASTER_API_SECRET"],
+        # Since ccxt 4.5.52 Aster signs with the L1 wallet key; an API key and secret are rejected.
+        "privateKey": os.environ["ASTER_PRIVATE_KEY"],
     })
 
     environment = {
@@ -95,8 +95,8 @@ def environment_anvil(
     """
     import json
     ccxt_options = json.dumps({
-        "apiKey": os.environ["ASTER_API_KEY"],
-        "secret": os.environ["ASTER_API_SECRET"],
+        # Since ccxt 4.5.52 Aster signs with the L1 wallet key; an API key and secret are rejected.
+        "privateKey": os.environ["ASTER_PRIVATE_KEY"],
     })
 
     environment = {
@@ -144,8 +144,8 @@ def _create_test_state_with_ccxt_position(state_file: Path) -> tuple[State, Deci
 
     # Set up CCXT exchange
     exchange = create_ccxt_exchange("aster", {
-        "apiKey": os.environ["ASTER_API_KEY"],
-        "secret": os.environ["ASTER_API_SECRET"],
+        # Since ccxt 4.5.52 Aster signs with the L1 wallet key; an API key and secret are rejected.
+        "privateKey": os.environ["ASTER_PRIVATE_KEY"],
     })
 
     # Create exchange account pair

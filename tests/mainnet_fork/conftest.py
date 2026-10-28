@@ -2,13 +2,12 @@ import os
 
 import pytest
 from eth_defi.provider.anvil import fork_network_anvil
-from eth_defi.chain import install_chain_middleware
 from eth_defi.abi import get_deployed_contract
 from eth_typing import HexAddress, HexStr
-from web3 import Web3, HTTPProvider
 from web3.contract import Contract
 
 from eth_defi.token import USDCE_WHALE
+from eth_defi.provider.multi_provider import create_multi_provider_web3
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.testing.pytest_helpers import is_failed_test
@@ -58,8 +57,7 @@ def anvil_polygon_chain_fork(request, logger, large_usdc_holder) -> str:
 def web3(anvil_polygon_chain_fork: str):
     """Set up a local unit testing blockchain."""
     # https://web3py.readthedocs.io/en/stable/examples.html#contract-unit-tests-in-python
-    web3 = Web3(HTTPProvider(anvil_polygon_chain_fork, request_kwargs={"timeout": 5}))
-    install_chain_middleware(web3)
+    web3 = create_multi_provider_web3(anvil_polygon_chain_fork)
     # web3 = create_multi_provider_web3(anvil_polygon_chain_fork)
     return web3
 

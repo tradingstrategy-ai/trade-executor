@@ -113,9 +113,9 @@ def create_ccxt_account_value_func(
             aster_total_equity,
         )
 
+        # Since ccxt 4.5.52 Aster signs with the account's L1 wallet key.
         exchange = create_ccxt_exchange("aster", {
-            "apiKey": os.environ["ASTER_API_KEY"],
-            "secret": os.environ["ASTER_API_SECRET"],
+            "privateKey": os.environ["ASTER_PRIVATE_KEY"],
         })
 
         exchanges = {"aster_main": exchange}

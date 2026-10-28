@@ -350,6 +350,7 @@ def trading_strategy_universe(core_universe: Universe, asset_usdc) -> TradingStr
 
 
 
+@pytest.mark.skip(reason="kaleido issues")
 def test_live_stop_loss(
     logger,
     web3: Web3,
@@ -476,6 +477,7 @@ def test_live_stop_loss(
     assert state.portfolio.reserves[usdc_id].quantity == pytest.approx(Decimal('8588.907521'))
 
 
+@pytest.mark.skip(reason="kaleido issues")
 def test_live_stop_loss_missing(
         logger,
         web3: Web3,

@@ -31,6 +31,16 @@ Regenerate an entry by setting `FOUNDRY_RPC_CACHE_DIR` to an empty external
 directory, running the focused test module, and copying its generated
 `storage.json` here after Anvil exits cleanly.
 
+A seed must be written by the Anvil release CI uses, `v1.8.6` since
+2026-10-27, the same as eth-defi. Most committed seeds are zstd-compressed,
+which Anvil `v1.3.2` and older cannot read: they start cold and silently
+overwrite the copy. Anvil `v1.8` reads per-endpoint
+`storage-<keccak256(fork_url)>.json` files; eth-defi's `launch_anvil()`
+aliases the committed `storage.json` to that name, rewrites its
+`meta.source_id` for the fork URL and merges it back on shutdown, so seeds
+keep the `storage.json` name here. When the CI Foundry version changes,
+rerun the seeded modules and refresh any seed they had to extend.
+
 The seed serves repeatable historical reads after Anvil has started. Its initial
 chain-identity and archive preflight are remote by design and, when configured
 with multiple providers, must use their bounded failover proxy rather than one

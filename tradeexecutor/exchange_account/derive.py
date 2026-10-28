@@ -41,11 +41,14 @@ def discover_derive_subaccount_id(
     Resolution order:
 
     1. ``DERIVE_SUBACCOUNT_ID`` env var — returns immediately, no API call.
-    2. ``DERIVE_WALLET_ADDRESS`` + ``DERIVE_SESSION_PRIVATE_KEY`` — queries
-       the API using the session key. Works with Safe multisig owners that
-       have no single private key.
-    3. ``DERIVE_OWNER_PRIVATE_KEY`` + ``DERIVE_SESSION_PRIVATE_KEY`` — derives
-       the wallet address from the owner EOA, then queries the API.
+    2. ``DERIVE_WALLET_ADDRESS`` — queries the public Derive v3 subaccount
+       list for this wallet. Works with Safe multisig owners that have no
+       single private key.
+    3. ``DERIVE_OWNER_PRIVATE_KEY`` — in Derive v3 the owner EOA is the
+       wallet, so its address is queried.
+
+    Discovery uses the public ``public/get_subaccounts`` endpoint, so the
+    session key is not needed here.
 
     Environment variables (all optional, checked in order above):
 
@@ -59,7 +62,8 @@ def discover_derive_subaccount_id(
         Derive owner wallet private key hex string.
         Only needed when ``wallet_address`` / ``DERIVE_WALLET_ADDRESS`` is absent.
     :param session_private_key:
-        Derive session key private key hex string.
+        Derive session key private key hex string, passed to the API client.
+        Not needed for discovery.
     :param wallet_address:
         Derive wallet address. For Safe multisig owners, set this to the
         Safe address directly (no owner key needed).
@@ -83,12 +87,7 @@ def discover_derive_subaccount_id(
     from eth_defi.derive.account import fetch_subaccount_ids
     from eth_defi.derive.authentication import DeriveApiClient
 
-    session_key = session_private_key or os.environ.get("DERIVE_SESSION_PRIVATE_KEY")
-    if not session_key:
-        raise RuntimeError(
-            "DERIVE_SESSION_PRIVATE_KEY is required to discover subaccount IDs. "
-            "Alternatively set DERIVE_SUBACCOUNT_ID to skip API discovery."
-        )
+    session_key = session_private_key or os.environ.get("DERIVE_SESSION_PRIVATE_KEY", "")
 
     if isinstance(network, str):
         network = DeriveNetwork(network)
@@ -99,13 +98,11 @@ def discover_derive_subaccount_id(
     if env_network:
         is_testnet = (env_network == "testnet")
 
-    # Resolve wallet address: explicit > env var > derived from owner key
+    # Resolve wallet address: explicit > env var > owner EOA, which is the wallet in Derive v3
     derive_wallet = wallet_address or os.environ.get("DERIVE_WALLET_ADDRESS")
     owner_account = None
     if not derive_wallet:
-        # Need owner key only to derive the wallet address
         from eth_account import Account
-        from eth_defi.derive.onboarding import fetch_derive_wallet_address
 
         owner_key = owner_private_key or os.environ.get("DERIVE_OWNER_PRIVATE_KEY")
         if not owner_key:
@@ -116,10 +113,7 @@ def discover_derive_subaccount_id(
                 "Alternatively set DERIVE_SUBACCOUNT_ID to skip API discovery."
             )
         owner_account = Account.from_key(owner_key)
-        derive_wallet = fetch_derive_wallet_address(
-            owner_account.address,
-            is_testnet=is_testnet,
-        )
+        derive_wallet = owner_account.address
 
     client = DeriveApiClient(
         owner_account=owner_account,

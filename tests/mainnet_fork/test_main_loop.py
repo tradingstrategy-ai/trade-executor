@@ -14,12 +14,11 @@ import flaky
 import pytest
 from eth_account import Account
 from eth_defi.provider.anvil import fork_network_anvil
-from eth_defi.chain import install_chain_middleware
 from eth_defi.gas import node_default_gas_price_strategy
 from eth_typing import HexAddress, HexStr
 from hexbytes import HexBytes
 from typer.testing import CliRunner
-from web3 import Web3, HTTPProvider
+from web3 import Web3
 from web3.contract import Contract
 
 from eth_defi.abi import get_deployed_contract
@@ -28,6 +27,7 @@ from eth_defi.hotwallet import HotWallet
 from eth_defi.confirmation import wait_transactions_to_complete
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, fetch_deployment
 from eth_defi.utils import is_localhost_port_listening
+from eth_defi.provider.multi_provider import create_multi_provider_web3
 from tradeexecutor.cli.main import app
 from tradeexecutor.state.identifier import AssetIdentifier
 
@@ -79,9 +79,8 @@ def anvil_bnb_chain_fork(logger, large_busd_holder) -> str:
 def web3(anvil_bnb_chain_fork: str):
     """Set up a local unit testing blockchain."""
     # https://web3py.readthedocs.io/en/stable/examples.html#contract-unit-tests-in-python
-    web3 = Web3(HTTPProvider(anvil_bnb_chain_fork, request_kwargs={"timeout": 5}))
+    web3 = create_multi_provider_web3(anvil_bnb_chain_fork)
     web3.eth.set_gas_price_strategy(node_default_gas_price_strategy)
-    install_chain_middleware(web3)
     return web3
 
 

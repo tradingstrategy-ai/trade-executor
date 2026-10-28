@@ -27,7 +27,6 @@ from pathlib import Path
 from unittest import mock
 
 import pytest
-from web3 import Web3, HTTPProvider
 
 from eth_defi.cctp.constants import CCTP_DOMAIN_ARBITRUM, CCTP_DOMAIN_BASE
 from eth_defi.cctp.receive import prepare_receive_message
@@ -36,6 +35,7 @@ from eth_defi.hotwallet import HotWallet
 from eth_defi.provider.anvil import AnvilLaunch, fund_erc20_on_anvil, launch_anvil
 from eth_defi.token import USDC_NATIVE_TOKEN, fetch_erc20_details
 from eth_defi.trace import assert_transaction_success_with_explanation
+from eth_defi.provider.multi_provider import create_multi_provider_web3
 
 from tradeexecutor.cli.main import app
 from tradeexecutor.state.state import State
@@ -74,7 +74,7 @@ def anvil_arbitrum(hot_wallet_address) -> AnvilLaunch:
     anvil = launch_anvil(mainnet_rpc)
     try:
         # Fund hot wallet with ETH and USDC on Arbitrum
-        web3 = Web3(HTTPProvider(anvil.json_rpc_url))
+        web3 = create_multi_provider_web3(anvil.json_rpc_url)
 
         # ETH for gas
         web3.eth.send_transaction({
@@ -105,7 +105,7 @@ def anvil_base(hot_wallet_address) -> AnvilLaunch:
     anvil = launch_anvil(mainnet_rpc)
     try:
         # Fund hot wallet with ETH on Base (for gas on cycle 3)
-        web3 = Web3(HTTPProvider(anvil.json_rpc_url))
+        web3 = create_multi_provider_web3(anvil.json_rpc_url)
         web3.eth.send_transaction({
             "from": web3.eth.accounts[0],
             "to": hot_wallet_address,
@@ -199,7 +199,7 @@ def test_cctp_bridge_start_single_cycle(
         f"Bridge trade status: {bridge_trade.get_status()}"
 
     # Verify USDC was burned on Arbitrum (reserve decreased)
-    arb_web3 = Web3(HTTPProvider(anvil_arbitrum.json_rpc_url))
+    arb_web3 = create_multi_provider_web3(anvil_arbitrum.json_rpc_url)
     arb_usdc = fetch_erc20_details(arb_web3, USDC_NATIVE_TOKEN[42161], chain_id=42161)
     arb_balance = arb_usdc.fetch_balance_of(hot_wallet_address)
     assert arb_balance == Decimal(5000), \
@@ -210,7 +210,7 @@ def test_cctp_bridge_start_single_cycle(
         f"Equity after cycle 1 should still reflect total bridged capital, got {equity_after_c1}"
 
     # === Spoof CCTP attestation on Base ===
-    base_web3 = Web3(HTTPProvider(anvil_base.json_rpc_url))
+    base_web3 = create_multi_provider_web3(anvil_base.json_rpc_url)
 
     # Replace the real CCTP attester with our test attester
     base_test_attester = replace_attester_on_fork(base_web3)

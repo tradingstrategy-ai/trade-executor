@@ -36,8 +36,6 @@ def resolve_derive_addresses(
     """
     from eth_account import Account
 
-    is_testnet = (derive_network == DeriveNetwork.testnet)
-
     result = {
         "derive_network": derive_network.value,
     }
@@ -52,15 +50,11 @@ def resolve_derive_addresses(
         owner_account = Account.from_key(derive_owner_private_key)
         result["derive_owner_address"] = owner_account.address
 
-    # Derive wallet address (LightAccount smart contract wallet)
+    # Derive wallet address: in Derive v3 the owner EOA or multisig owns the account
     if derive_wallet_address:
         result["derive_wallet_address"] = derive_wallet_address
     elif owner_account is not None:
-        from eth_defi.derive.onboarding import fetch_derive_wallet_address
-        result["derive_wallet_address"] = fetch_derive_wallet_address(
-            owner_account.address,
-            is_testnet=is_testnet,
-        )
+        result["derive_wallet_address"] = owner_account.address
 
     return result
 
@@ -92,11 +86,8 @@ def _create_derive_protocol_value_func(
         owner_account = Account.from_key(derive_owner_private_key)
 
     if not derive_wallet_address:
-        from eth_defi.derive.onboarding import fetch_derive_wallet_address
-        derive_wallet_address = fetch_derive_wallet_address(
-            owner_account.address,
-            is_testnet=is_testnet,
-        )
+        # In Derive v3 the owner EOA is the wallet that owns the account
+        derive_wallet_address = owner_account.address
 
     client = DeriveApiClient(
         owner_account=owner_account,
@@ -324,13 +315,10 @@ def create_derive_value_func_from_credentials(
         owner_account = Account.from_key(derive_owner_private_key)
 
     if not derive_wallet_address:
-        from eth_defi.derive.onboarding import fetch_derive_wallet_address
         assert owner_account is not None, \
             "Either DERIVE_OWNER_PRIVATE_KEY or DERIVE_WALLET_ADDRESS must be provided"
-        derive_wallet_address = fetch_derive_wallet_address(
-            owner_account.address,
-            is_testnet=is_testnet,
-        )
+        # In Derive v3 the owner EOA is the wallet that owns the account
+        derive_wallet_address = owner_account.address
 
     client = DeriveApiClient(
         owner_account=owner_account,

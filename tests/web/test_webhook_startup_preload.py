@@ -54,7 +54,8 @@ def test_start_preloads_chart_pairs_before_first_cycle(
     state_file = tmp_path / "hyper-ai-state.json"
     store = JSONFileStore(state_file)
     state = State()
-    state.other_data.save(state.cycle, "decision_cycle_ended_at", native_datetime_utc_now())
+    # Seed the ISO string State.record_cycle_end() writes; a raw datetime would round-trip through JSON as a float.
+    state.other_data.save(state.cycle, "decision_cycle_ended_at", native_datetime_utc_now().isoformat())
     store.sync(state)
 
     port = find_free_port(20_000, 40_000, 20)

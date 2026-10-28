@@ -130,6 +130,7 @@ def test_derive_vault_mainnet_cli_init_and_start(environment: dict):
     assert trade.get_status() == TradeStatus.success
 
 
+@pytest.mark.skip(reason="Derive v3 migration: the test Safe account and its session key need to be set up again on Ethereum (deposit through OnchainActionManager, then an onchain session key registration)")
 @pytest.mark.slow_test_group
 def test_derive_vault_mainnet_correct_accounts(environment: dict):
     """Test correct-accounts syncs Derive mainnet vault balance.
@@ -197,7 +198,8 @@ def _create_test_state_with_mainnet_position(state_file: Path) -> Decimal:
 
     ids = fetch_subaccount_ids(client)
     if not ids:
-        pytest.skip("Account has no subaccounts")
+        # Derive v3 settles on Ethereum: a Safe owner needs a fresh deposit and an onchain session key registration
+        pytest.skip(f"Safe {derive_wallet_address} has no Derive v3 subaccounts")
     client.subaccount_id = ids[0]
 
     clients = {client.subaccount_id: client}

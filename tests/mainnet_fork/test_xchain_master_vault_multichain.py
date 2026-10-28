@@ -23,6 +23,7 @@ from eth_defi.cctp.bridge import prepare_receive_message
 from eth_defi.cctp.testing import craft_cctp_message, forge_attestation, replace_attester_on_fork
 from eth_defi.compat import native_datetime_utc_now
 from eth_defi.hotwallet import HotWallet
+from eth_defi.testing.fork_blocks import ARBITRUM_MIDNIGHT_BLOCK, BASE_MIDNIGHT_BLOCK, HYPERLIQUID_MIDNIGHT_BLOCK
 from eth_defi.provider.anvil import (
     AnvilLaunch,
     fork_network_anvil,
@@ -62,6 +63,8 @@ JSON_RPC_ARBITRUM = os.environ.get("JSON_RPC_ARBITRUM")
 JSON_RPC_BASE = os.environ.get("JSON_RPC_BASE")
 JSON_RPC_HYPERLIQUID = os.environ.get("JSON_RPC_HYPERLIQUID")
 TRADING_STRATEGY_API_KEY = os.environ.get("TRADING_STRATEGY_API_KEY")
+#: Creem licence key for the paid vault datasets the master vault universe loads.
+VAULT_PRO_API_KEY = os.environ.get("VAULT_PRO_API_KEY")
 
 ARBITRUM_CHAIN_ID = 42161
 BASE_CHAIN_ID = 8453
@@ -90,8 +93,8 @@ VAULT_BASE_AMOUNT = Decimal("4")
 VAULT_HYPER_AMOUNT = Decimal("4")
 
 pytestmark = pytest.mark.skipif(
-    not all([JSON_RPC_ARBITRUM, JSON_RPC_BASE, JSON_RPC_HYPERLIQUID, TRADING_STRATEGY_API_KEY]),
-    reason="JSON_RPC_ARBITRUM, JSON_RPC_BASE, JSON_RPC_HYPERLIQUID, and TRADING_STRATEGY_API_KEY are required",
+    not all([JSON_RPC_ARBITRUM, JSON_RPC_BASE, JSON_RPC_HYPERLIQUID, TRADING_STRATEGY_API_KEY, VAULT_PRO_API_KEY]),
+    reason="JSON_RPC_ARBITRUM, JSON_RPC_BASE, JSON_RPC_HYPERLIQUID, TRADING_STRATEGY_API_KEY and VAULT_PRO_API_KEY are required",
 )
 
 
@@ -271,7 +274,7 @@ def client() -> Client:
 
 @pytest.fixture()
 def anvil_arbitrum() -> AnvilLaunch:
-    launch = fork_network_anvil(JSON_RPC_ARBITRUM)
+    launch = fork_network_anvil(JSON_RPC_ARBITRUM, fork_block_number=ARBITRUM_MIDNIGHT_BLOCK)
     try:
         yield launch
     finally:
@@ -280,7 +283,7 @@ def anvil_arbitrum() -> AnvilLaunch:
 
 @pytest.fixture()
 def anvil_base() -> AnvilLaunch:
-    launch = fork_network_anvil(JSON_RPC_BASE)
+    launch = fork_network_anvil(JSON_RPC_BASE, fork_block_number=BASE_MIDNIGHT_BLOCK)
     try:
         yield launch
     finally:
@@ -289,7 +292,7 @@ def anvil_base() -> AnvilLaunch:
 
 @pytest.fixture()
 def anvil_hyperevm() -> AnvilLaunch:
-    launch = fork_network_anvil(JSON_RPC_HYPERLIQUID, gas_limit=30_000_000)
+    launch = fork_network_anvil(JSON_RPC_HYPERLIQUID, gas_limit=30_000_000, fork_block_number=HYPERLIQUID_MIDNIGHT_BLOCK)
     try:
         yield launch
     finally:
@@ -474,6 +477,7 @@ def test_xchain_master_vault_multichain_round_trip(
         "ANY_ASSET": "true",
         "SAFE_SALT_NONCE": "42",
         "TRADING_STRATEGY_API_KEY": TRADING_STRATEGY_API_KEY,
+        "VAULT_PRO_API_KEY": VAULT_PRO_API_KEY,
     }
     cli = get_command(app)
     mocker.patch.dict("os.environ", environment, clear=True)
@@ -763,6 +767,7 @@ def test_xchain_master_vault_lagoon_cli_bridged_deposit(
         "PRIVATE_KEY": DEPLOYER_PRIVATE_KEY,
         "STATE_FILE": state_file.as_posix(),
         "TRADING_STRATEGY_API_KEY": TRADING_STRATEGY_API_KEY,
+        "VAULT_PRO_API_KEY": VAULT_PRO_API_KEY,
         "CACHE_PATH": str(tmp_path / "cache"),
     }
 
@@ -913,6 +918,7 @@ def test_xchain_master_vault_lagoon_cli_reclaim_satellites(
         "PRIVATE_KEY": DEPLOYER_PRIVATE_KEY,
         "STATE_FILE": state_file.as_posix(),
         "TRADING_STRATEGY_API_KEY": TRADING_STRATEGY_API_KEY,
+        "VAULT_PRO_API_KEY": VAULT_PRO_API_KEY,
         "CACHE_PATH": str(tmp_path / "cache"),
         # Disable the unreceived-burn auto-scan: fork-local burns are never
         # indexed by Circle's Iris API, and scanning days of pre-fork history

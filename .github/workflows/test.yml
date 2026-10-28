@@ -65,13 +65,20 @@ jobs:
           key: cache-datasets
 
       # Needed for Anvil / fork tests
+      # Match eth_defi's Foundry version: Anvil 1.8 changed the fork cache layout and receipts.
+      - name: Cache Foundry toolchain
+        uses: actions/cache@v6
+        with:
+          path: ~/.foundry/bin
+          key: foundry-toolchain-v1.8.6-${{ runner.os }}
+          restore-keys: |
+            foundry-toolchain-v1.8.6-
+
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1.9.1
         with:
-          # pick a nightly release from: https://github.com/foundry-rs/foundry/releases
-          # version: 'nightly-de33b6af53005037b463318d2628b5cfcaf39916'
-          #version: "nightly-fdd321bac95f0935529164a88faf99d4d5cfa321"
-          version: "v1.2.3"
+          # Keep in step with deps/web3-ethereum-defi/.github/workflows/test.yml
+          version: "v1.8.6"
 
       # Lagoon source deployment (use_forge=True) compiles contracts from source,
       # which needs the soldeer-managed OpenZeppelin/forge-std dependencies.
@@ -107,6 +114,9 @@ jobs:
             poetry run pytest --tb=native --dist loadgroup -n 5 --durations=20 -m "not slow_test_group and warm_rpc_test_group" --timeout=390
             poetry run pytest --tb=native --dist loadgroup -n 6 --durations=20 -m "not slow_test_group and warm_rpc_high_value_group" --timeout=390
         env:
+          # Cap each Anvil fork's upstream request rate (Anvil's default is 330) so
+          # parallel workers queue cold reads instead of drawing HTTP 429s, as eth_defi does.
+          ANVIL_COMPUTE_UNITS_PER_SECOND: "150"
           TRADING_STRATEGY_API_KEY: ${{ secrets.TRADING_STRATEGY_API_KEY }}
           # Creem licence key for the paid vault datasets: vault metadata and vault
           # share price history, downloaded by tradingstrategy.vault_data_client.

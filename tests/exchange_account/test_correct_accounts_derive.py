@@ -19,7 +19,7 @@ from tradeexecutor.cli.main import app
 from tradeexecutor.state.identifier import TradingPairKind
 from tradeexecutor.state.state import State
 
-pytestmark = pytest.mark.skip(reason="Needs fresh API key")
+pytestmark = pytest.mark.skip(reason="Derive v3 migration: the testnet account and its session key need to be set up again (deposit on Ethereum Sepolia, then private/set_session_key)")
 from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
 
@@ -120,7 +120,6 @@ def _create_test_state_with_derive_position(state_file: Path) -> tuple[State, De
     from eth_account import Account
     from eth_defi.derive.account import fetch_subaccount_ids
     from eth_defi.derive.authentication import DeriveApiClient
-    from eth_defi.derive.onboarding import fetch_derive_wallet_address
 
     from tradeexecutor.exchange_account.derive import \
         create_derive_account_value_func
@@ -135,7 +134,8 @@ def _create_test_state_with_derive_position(state_file: Path) -> tuple[State, De
     session_private_key = os.environ["DERIVE_SESSION_PRIVATE_KEY"]
 
     owner_account = Account.from_key(owner_private_key)
-    derive_wallet_address = fetch_derive_wallet_address(owner_account.address, is_testnet=True)
+    # In Derive v3 the owner EOA is the wallet that owns the account
+    derive_wallet_address = owner_account.address
 
     client = DeriveApiClient(
         owner_account=owner_account,

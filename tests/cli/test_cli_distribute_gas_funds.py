@@ -23,11 +23,11 @@ from pathlib import Path
 from unittest import mock
 
 import pytest
-from web3 import Web3, HTTPProvider
 
 from eth_defi.hotwallet import HotWallet
 from eth_defi.provider.anvil import AnvilLaunch, launch_anvil
 from eth_defi.trace import assert_transaction_success_with_explanation
+from eth_defi.provider.multi_provider import create_multi_provider_web3
 
 from tradeexecutor.cli.main import app
 from tradeexecutor.utils.hex import hexbytes_to_hex_str
@@ -58,7 +58,7 @@ def anvil_arbitrum(hot_wallet_address) -> AnvilLaunch:
     mainnet_rpc = os.environ["JSON_RPC_ARBITRUM"]
     anvil = launch_anvil(mainnet_rpc)
     try:
-        web3 = Web3(HTTPProvider(anvil.json_rpc_url))
+        web3 = create_multi_provider_web3(anvil.json_rpc_url)
         web3.eth.send_transaction({
             "from": web3.eth.accounts[0],
             "to": hot_wallet_address,
@@ -75,7 +75,7 @@ def anvil_base(hot_wallet_address) -> AnvilLaunch:
     mainnet_rpc = os.environ["JSON_RPC_BASE"]
     anvil = launch_anvil(mainnet_rpc)
     try:
-        web3 = Web3(HTTPProvider(anvil.json_rpc_url))
+        web3 = create_multi_provider_web3(anvil.json_rpc_url)
         web3.eth.send_transaction({
             "from": web3.eth.accounts[0],
             "to": hot_wallet_address,
@@ -176,7 +176,7 @@ def test_distribute_gas_funds_dry_run_fails_when_source_chain_has_no_balance(
     2. Patch the process environment for a dry-run CCTP bridge strategy.
     3. Run the command and verify the source balance assertion fires before distribution.
     """
-    web3 = Web3(HTTPProvider(anvil_arbitrum.json_rpc_url))
+    web3 = create_multi_provider_web3(anvil_arbitrum.json_rpc_url)
 
     # 1. Set the selected source chain hot wallet native balance to zero.
     web3.provider.make_request("anvil_setBalance", [hot_wallet_address, hex(0)])

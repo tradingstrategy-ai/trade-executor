@@ -47,7 +47,8 @@ pytestmark = [pytest.mark.warm_rpc_test_group, pytest.mark.xdist_group("fork:hyp
 @pytest.fixture()
 def anvil() -> Iterator[AnvilLaunch]:
     """Fork the production maintenance block; no test can transact on mainnet."""
-    fork = launch_anvil(os.environ.get("JSON_RPC_HYPERLIQUID") or "https://rpc.hyperliquid.xyz/evm", fork_block_number=BLOCK)
+    # The replayed production state references transactions mined before the fork block
+    fork = launch_anvil(os.environ.get("JSON_RPC_HYPERLIQUID") or "https://rpc.hyperliquid.xyz/evm", fork_block_number=BLOCK, pre_fork_transaction_lookups=True)
     try:
         yield fork
     finally:

@@ -18,11 +18,11 @@ import pytest
 from eth_account import Account
 from eth_defi.confirmation import wait_transactions_to_complete
 from eth_typing import HexAddress, HexStr
-from web3 import Web3, HTTPProvider
+from web3 import Web3
 from web3.contract import Contract
 
 from eth_defi.hotwallet import HotWallet
-from eth_defi.provider.fallback import FallbackProvider
+from eth_defi.provider.multi_provider import create_multi_provider_web3
 from eth_defi.uniswap_v3.deployment import (
     UniswapV3Deployment,
     fetch_deployment,
@@ -860,13 +860,10 @@ def test_stateful_routing_two_leg_multi_node_broadcast(
     - Otherwise the same as test_stateful_routing_two_legs
     """
 
-    providers = [
-        HTTPProvider(anvil_polygon_chain_fork, exception_retry_configuration=None),
-        HTTPProvider(anvil_polygon_chain_fork, exception_retry_configuration=None),
-    ]
-
-    web3 = Web3(FallbackProvider(providers))
-    web3.middleware_onion.clear()
+    # Two nodes behind one fallback provider, so the multi node broadcast path is used.
+    # Both point at the same fork; the helper rejects a repeated URL, so use two host spellings.
+    second_node = anvil_polygon_chain_fork.replace("localhost", "127.0.0.1")
+    web3 = create_multi_provider_web3(f"{anvil_polygon_chain_fork} {second_node}")
 
     # Prepare a transaction builder
     tx_builder = HotWalletTransactionBuilder(web3, hot_wallet)
@@ -949,13 +946,10 @@ def test_stateful_routing_two_leg_multi_node_broadcast_force_mev_blocker(
 
     execution_model.force_sequential_broadcast = True
 
-    providers = [
-        HTTPProvider(anvil_polygon_chain_fork, exception_retry_configuration=None),
-        HTTPProvider(anvil_polygon_chain_fork, exception_retry_configuration=None),
-    ]
-
-    web3 = Web3(FallbackProvider(providers))
-    web3.middleware_onion.clear()
+    # Two nodes behind one fallback provider, so the multi node broadcast path is used.
+    # Both point at the same fork; the helper rejects a repeated URL, so use two host spellings.
+    second_node = anvil_polygon_chain_fork.replace("localhost", "127.0.0.1")
+    web3 = create_multi_provider_web3(f"{anvil_polygon_chain_fork} {second_node}")
 
     # Prepare a transaction builder
     tx_builder = HotWalletTransactionBuilder(web3, hot_wallet)
