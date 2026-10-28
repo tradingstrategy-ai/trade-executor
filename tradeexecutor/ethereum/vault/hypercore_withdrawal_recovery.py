@@ -49,7 +49,7 @@ class PartialWithdrawalRecovery:
     retry_before_signing: bool = False
 
 
-def fetch_vault_withdrawals_since(safe_address: str, vault_address: str, since: datetime.datetime) -> list[dict]:
+def fetch_vault_withdrawals_since(safe_address: str, vault_address: str, since: datetime.datetime) -> list[dict] | None:
     """Return the Safe's HyperCore ``vaultWithdraw`` ledger rows for one vault.
 
     A paid ``vaultTransfer`` withdrawal always writes such a row, so their
@@ -58,25 +58,34 @@ def fetch_vault_withdrawals_since(safe_address: str, vault_address: str, since: 
     :param safe_address: Safe whose ledger is read.
     :param vault_address: HyperCore vault the trade withdrew from.
     :param since: Naive UTC time before the withdrawal was broadcast.
-    :return: Matching ledger deltas, newest last.
+    :return: Matching ledger deltas, newest last, or ``None`` when pagination
+        cannot prove the history is complete.
     """
     start_ms = int((since - datetime.datetime(1970, 1, 1)).total_seconds() * 1000)
     withdrawals = []
-    # Time-range info responses are capped at 500 rows; page forward from the
-    # last timestamp so a paid withdrawal cannot fall outside the first page.
+    seen = set()
+    # Time-range info responses are capped at 500 rows. Page forward from the
+    # last returned timestamp inclusively, as Hyperliquid documents, and drop
+    # rows already seen, so rows sharing a page's final millisecond are kept.
     while True:
         response = requests.post("https://api.hyperliquid.xyz/info", json={
             "type": "userNonFundingLedgerUpdates", "user": safe_address, "startTime": start_ms,
         }, timeout=15)
         response.raise_for_status()
         rows = response.json()
-        withdrawals += [
-            row["delta"] for row in rows
-            if row["delta"].get("type") == "vaultWithdraw" and row["delta"].get("vault", "").lower() == vault_address.lower()
-        ]
+        for row in rows:
+            key = (row["time"], row.get("hash"), repr(row["delta"]))
+            if key in seen:
+                continue
+            seen.add(key)
+            if row["delta"].get("type") == "vaultWithdraw" and row["delta"].get("vault", "").lower() == vault_address.lower():
+                withdrawals.append(row["delta"])
         if len(rows) < HYPERLIQUID_INFO_PAGE_ROWS:
             return withdrawals
-        start_ms = rows[-1]["time"] + 1
+        if rows[-1]["time"] == start_ms:
+            # A full page within one millisecond cannot be paged further.
+            return None
+        start_ms = rows[-1]["time"]
 
 
 def clear_rejected_first_stage_withdrawals(
@@ -129,11 +138,11 @@ def clear_rejected_first_stage_withdrawals(
         withdrawals = fetch_vault_withdrawals_since(
             safe_address, trade.pair.pool_address, trade.started_at - datetime.timedelta(minutes=1),
         )
-        if withdrawals or equity is None or not vault_kept_requested_funds(before, equity.equity, requested_raw):
+        if withdrawals is None or withdrawals or equity is None or not vault_kept_requested_funds(before, equity.equity, requested_raw):
             logger.warning(
                 "Trade #%s keeps its stranded marker: vault equity %s USDC against pre-phase-1 %s USDC, "
-                "%d vaultWithdraw ledger row(s) since the trade started; reconcile with correct-accounts",
-                trade.trade_id, equity.equity if equity else None, before, len(withdrawals),
+                "%s vaultWithdraw ledger row(s) since the trade started; reconcile with correct-accounts",
+                trade.trade_id, equity.equity if equity else None, before, "unknown" if withdrawals is None else len(withdrawals),
             )
             continue
         trade.other_data.pop(HYPERCORE_STRANDED_USDC_KEY)

@@ -177,20 +177,25 @@ def test_retry_and_ledger_evidence_cover_small_and_paged_cases() -> None:
 
     1. Size a no-op retry for a normal close and for cleanup after equity falls to 6.705 USDC.
     2. Mock two ledger pages, because the API caps time-range responses at 500 rows.
-    3. Verify the paid withdrawal on the second page is found.
+    3. Verify the paid withdrawal on the second page is found and a one-millisecond full page is uncertain.
     """
     # 1. Size a no-op retry for a normal close and for cleanup after equity falls to 6.705 USDC.
     routing = object.__new__(HypercoreVaultRouting)
     assert routing._get_phase1_noop_retry_raw(Decimal("6.705"), 1_510_000, 6_500_000, minimum_raw=1_500_000) is None
     assert routing._get_phase1_noop_retry_raw(Decimal("6.705"), 1_510_000, 6_500_000) == 205_000
     # 2. Mock two ledger pages, because the API caps time-range responses at 500 rows.
-    other = {"time": 1, "delta": {"type": "deposit"}}
-    paid = {"time": 2, "delta": {"type": "vaultWithdraw", "vault": "0xVault"}}
-    pages = [[other] * 500, [paid]]
+    # The paid withdrawal shares the first page's final millisecond.
+    start_ms = 1_793_145_600_000
+    rows = [{"time": start_ms + i, "hash": f"0x{i}", "delta": {"type": "deposit"}} for i in range(500)]
+    paid = {"time": start_ms + 499, "hash": "0xpaid", "delta": {"type": "vaultWithdraw", "vault": "0xVault"}}
+    pages = [rows, [rows[-1], paid]]
     responses = [MagicMock(json=MagicMock(return_value=page)) for page in pages]
     with patch("tradeexecutor.ethereum.vault.hypercore_withdrawal_recovery.requests.post", side_effect=responses) as post:
         withdrawals = fetch_vault_withdrawals_since("0xsafe", "0xvault", datetime.datetime(2026, 10, 28))
-    # 3. Verify the paid withdrawal on the second page is found.
+    # 3. Verify the paid withdrawal on the second page is found and a one-millisecond full page is uncertain.
     assert withdrawals == [paid["delta"]]
     assert post.call_count == 2
-    assert post.call_args_list[1].kwargs["json"]["startTime"] == 2
+    assert post.call_args_list[1].kwargs["json"]["startTime"] == start_ms + 499
+    same_ms = [{"time": start_ms, "hash": f"0x{i}", "delta": {"type": "deposit"}} for i in range(500)]
+    with patch("tradeexecutor.ethereum.vault.hypercore_withdrawal_recovery.requests.post", return_value=MagicMock(json=MagicMock(return_value=same_ms))):
+        assert fetch_vault_withdrawals_since("0xsafe", "0xvault", datetime.datetime(2026, 10, 28)) is None
