@@ -79,7 +79,7 @@ def anvil_bnb_chain_fork(logger, large_busd_holder) -> str:
 def web3(anvil_bnb_chain_fork: str):
     """Set up a local unit testing blockchain."""
     # https://web3py.readthedocs.io/en/stable/examples.html#contract-unit-tests-in-python
-    web3 = create_multi_provider_web3(anvil_bnb_chain_fork, request_kwargs={"timeout": 5})
+    web3 = create_multi_provider_web3(anvil_bnb_chain_fork)
     web3.eth.set_gas_price_strategy(node_default_gas_price_strategy)
     return web3
 

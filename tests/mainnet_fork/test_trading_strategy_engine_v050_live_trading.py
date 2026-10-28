@@ -108,7 +108,7 @@ def anvil_polygon_chain_fork_rpc(logger, large_polygon_usdc_holder, large_matic_
 def web3(anvil_polygon_chain_fork_rpc: str):
     """Set up a local unit testing blockchain."""
     # https://web3py.readthedocs.io/en/stable/examples.html#contract-unit-tests-in-python
-    web3 = create_multi_provider_web3(anvil_polygon_chain_fork_rpc, request_kwargs={"timeout": 5})
+    web3 = create_multi_provider_web3(anvil_polygon_chain_fork_rpc)
     web3.eth.set_gas_price_strategy(node_default_gas_price_strategy)
     return web3
 

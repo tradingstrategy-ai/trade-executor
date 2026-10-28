@@ -66,13 +66,13 @@ def anvil_dest() -> AnvilLaunch:
 
 @pytest.fixture()
 def web3_source(anvil_source: AnvilLaunch) -> Web3:
-    web3 = create_multi_provider_web3(anvil_source.json_rpc_url, request_kwargs={"timeout": 2})
+    web3 = create_multi_provider_web3(anvil_source.json_rpc_url)
     return web3
 
 
 @pytest.fixture()
 def web3_dest(anvil_dest: AnvilLaunch) -> Web3:
-    web3 = create_multi_provider_web3(anvil_dest.json_rpc_url, request_kwargs={"timeout": 2})
+    web3 = create_multi_provider_web3(anvil_dest.json_rpc_url)
     return web3
 
 

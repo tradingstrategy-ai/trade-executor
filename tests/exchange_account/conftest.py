@@ -36,7 +36,7 @@ def anvil() -> AnvilLaunch:
 @pytest.fixture()
 def web3(anvil: AnvilLaunch) -> Web3:
     """Set up the Anvil Web3 connection."""
-    web3 = create_multi_provider_web3(anvil.json_rpc_url, request_kwargs={"timeout": 2})
+    web3 = create_multi_provider_web3(anvil.json_rpc_url)
     return web3
 
 

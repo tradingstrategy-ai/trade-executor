@@ -47,7 +47,7 @@ def web3(anvil: AnvilLaunch) -> Web3:
 
     Also perform the Anvil state reset for each test.
     """
-    web3 = create_multi_provider_web3(anvil.json_rpc_url, request_kwargs={"timeout": 2})
+    web3 = create_multi_provider_web3(anvil.json_rpc_url)
     return web3
 
 
