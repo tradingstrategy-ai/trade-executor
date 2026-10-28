@@ -24,6 +24,7 @@ from tradingstrategy.vault_data_client import (
 
 from tradeexecutor.strategy.cycle import CycleDuration, snap_to_next_tick, snap_to_previous_tick
 from tradeexecutor.state.state import State
+from tradeexecutor.state.trade import TradeStatus
 
 
 HYPERCORE_CHAIN_ID = "9999"
@@ -71,7 +72,8 @@ def calculate_hypercore_slot_schedule(
     """Choose the live loop's restart slot without replaying persisted trades.
 
     Resume an unexpired pending decision, or skip an expired one automatically
-    if it created no trades. Fresh starts may join the current open window.
+    if it created no trades with executed effect. Fresh starts may join the
+    current open window.
     The caller saves the returned slot before polling; this helper does not
     modify state or mark a missed decision as completed.
 
@@ -84,7 +86,23 @@ def calculate_hypercore_slot_schedule(
 
     pending_slot = state.pending_data_availability_slot
     if pending_slot is not None:
-        if any(trade.opened_at == pending_slot for trade in state.portfolio.get_all_trades()):
+        # Accounting repairs, their counter trades and expired trades with no
+        # executed quantity or reserve left no executed effect, so a slot
+        # holding only those is resumed or skipped like an unexecuted one.
+        # Hyper-AI's 2026-10-28 slot needed this after repair undid its
+        # rejected Tortoise close and the untouched sibling buys. Receipt
+        # repair and rebroadcast also set ``repaired_at`` but keep the real
+        # execution, so those trades, like any successful or unrepaired trade,
+        # still block.
+        if any(
+            trade.opened_at == pending_slot
+            and not (
+                (trade.get_status() in (TradeStatus.repaired, TradeStatus.expired) or trade.repaired_trade_id)
+                and not trade.executed_quantity
+                and not trade.executed_reserve
+            )
+            for trade in state.portfolio.get_all_trades()
+        ):
             raise RuntimeError(
                 f"HyperCore slot {pending_slot} already created trades; reconcile the interrupted cycle before resuming"
             )

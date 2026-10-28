@@ -21,6 +21,7 @@ from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.strategy_cycle_trigger import StrategyCycleTrigger
 from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradeexecutor.state.state import State
+from tradeexecutor.state.trade import TradeStatus
 
 
 def _manifest(last_scan: str | None, last_candle: str | None) -> dict:
@@ -274,6 +275,7 @@ def test_hypercore_restart_refuses_persisted_trades() -> None:
     1. Load real trade records and identify their decision timestamp.
     2. Attempt restart both inside and after that decision's readiness window.
     3. Verify both attempts refuse replay without changing pending state.
+    4. Repair every slot trade and verify the slot is resumed or skipped.
     """
     # 1. Reuse a serialised portfolio rather than fabricating trade behaviour.
     state = State.read_json_file(Path(__file__).parents[1] / "cli" / "show-positions-long.json")
@@ -287,6 +289,21 @@ def test_hypercore_restart_refuses_persisted_trades() -> None:
 
     # 3. No unsafe automatic completion or state clearing occurred.
     assert state.pending_data_availability_slot == slot
+
+    # 4. A receipt repair keeps its execution and still blocks. An accounting
+    # repair zeroes it like repair_trade(), so the slot resumes inside its
+    # window and is skipped after it.
+    slot_trades = [trade for trade in state.portfolio.get_all_trades() if trade.opened_at == slot]
+    for trade in slot_trades:
+        trade.repaired_at = slot
+    with pytest.raises(RuntimeError, match="reconcile"):
+        calculate_hypercore_slot_schedule(slot, CycleDuration.cycle_2d, state)
+    for trade in slot_trades:
+        trade.executed_quantity = 0
+        trade.executed_reserve = 0
+        assert trade.get_status() == TradeStatus.success if trade.repaired_trade_id else TradeStatus.repaired
+    assert calculate_hypercore_slot_schedule(slot, CycleDuration.cycle_2d, state) == slot
+    assert calculate_hypercore_slot_schedule(slot + datetime.timedelta(days=4), CycleDuration.cycle_2d, state) > slot
 
 
 def test_sparse_scan_wait_and_version_race(tmp_path: Path) -> None:

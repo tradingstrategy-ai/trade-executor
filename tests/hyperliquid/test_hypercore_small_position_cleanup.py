@@ -12,7 +12,7 @@ from tradeexecutor.ethereum.vault.hypercore_routing import (
     HYPERCORE_SMALL_POSITION_CLEANUP_INITIAL_SAFETY_MARGIN_RAW,
     HYPERCORE_SMALL_POSITION_CLEANUP_RETRY_SAFETY_MARGINS_RAW,
     HYPERCORE_WITHDRAWAL_PREFLIGHT_CAP_TOLERANCE_FLOOR_RAW,
-    HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW,
+    HYPERCORE_FULL_CLOSE_MIN_REMAINDER_RAW,
     HypercoreWithdrawalPreflightError,
     HypercoreVaultRouting,
     usdc_to_raw,
@@ -321,7 +321,7 @@ def test_cleanup_uses_progressively_larger_silent_noop_retry_margins() -> None:
     assert routing._get_full_close_safety_margin_raw(
         normal_trade,
         3_450_000,
-    ) == HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW
+    ) == HYPERCORE_FULL_CLOSE_MIN_REMAINDER_RAW
     retry_raw = routing._get_phase1_noop_retry_raw(
         current_vault_equity=Decimal("3.45"),
         previous_raw=3_350_000,
@@ -340,9 +340,9 @@ def test_cleanup_uses_progressively_larger_silent_noop_retry_margins() -> None:
     ) is None
 
     # 4. Verify normal retries derive the configured margin and cleanup uses its retry ladder.
-    expected_normal_margin = usdc_to_raw(
+    expected_normal_margin = max(usdc_to_raw(
         get_hypercore_withdrawal_safety_margin(Decimal("1000"))
-    )
+    ), HYPERCORE_FULL_CLOSE_MIN_REMAINDER_RAW)
     assert normal_margins == (expected_normal_margin,)
     assert cleanup_margins == HYPERCORE_SMALL_POSITION_CLEANUP_RETRY_SAFETY_MARGINS_RAW
 
