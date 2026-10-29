@@ -16,6 +16,7 @@ from pathlib import Path
 import pytest
 from eth_defi.lighter.api_key import LighterApiKey
 
+from tradeexecutor.cli.commands.check_accounts import ACCOUNTS_DO_NOT_MATCH
 from tradeexecutor.cli.commands.lagoon_deploy_vault import LighterKeyBackup
 from tradeexecutor.cli.testtrade import parse_lighter_transfer
 from tradeexecutor.testing.lighter_manual import ManualTestError, check_expectations, format_usdc, parse_expectations
@@ -36,7 +37,7 @@ def test_lighter_manual_building_blocks(tmp_path: Path) -> None:
     2. Format amounts for the shell
     3. Parse --lighter-transfer account pairs
     4. Back up two keys with private modes and remove them
-    5. Check the shell script parses, its banners count every step, and it passes shellcheck when installed
+    5. Check the shell script parses, its banners count every step, it greps for check-accounts' mismatch message, and it passes shellcheck when installed
     """
     # 1. Parse balance expectations and compare them, including the <= form for dust
     expectations = parse_expectations(["safe=6", "master=1", "trend<=0.99", "arb=3"])
@@ -64,11 +65,12 @@ def test_lighter_manual_building_blocks(tmp_path: Path) -> None:
     backup.remove()
     assert list(backup.directory.iterdir()) == []
 
-    # 5. Check the shell script parses, its banners count every step, and it passes shellcheck when installed
+    # 5. Check the shell script parses, its banners count every step, it greps for check-accounts' mismatch message, and it passes shellcheck when installed
     subprocess.run(["bash", "-n", str(SCRIPT)], check=True)
     script = SCRIPT.read_text()
     steps = [int(number) for number in re.findall(r"^if step (\d+) ", script, re.MULTILINE)]
     assert steps == list(range(len(steps))) and f"LAST_STEP={steps[-1]}\n" in script
+    assert f'grep -q "{ACCOUNTS_DO_NOT_MATCH}"' in script
     assert SCRIPT.stat().st_mode & stat.S_IXUSR
     if shutil.which("shellcheck"):
         subprocess.run(["shellcheck", "--severity=warning", str(SCRIPT)], check=True)

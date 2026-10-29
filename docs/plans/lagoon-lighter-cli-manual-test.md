@@ -334,7 +334,9 @@ Steps 4 to 7 and 11 to 13 use the guards in "Resuming a run safely", and
 steps 5 to 13 are followed by `check-accounts`; the table omits those for
 brevity. Steps 9 and 10 write a marker file before they move money, so a
 rerun never sends again; it skips the expected `check-accounts` failure,
-since an earlier run may already have booked the correction.
+since an earlier run may already have booked the correction. That failure
+counts only when the command's output carries its "Accounts do not match"
+report, so an RPC or API error cannot pass as a detected change.
 
 Steps 8 to 10 were added on 2026-10-29, after the first live run, to stress
 the accounting commands: `correct-accounts` must book nothing on clean

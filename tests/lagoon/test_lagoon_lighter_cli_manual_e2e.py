@@ -35,8 +35,9 @@ from pytest import CaptureFixture, MonkeyPatch
 
 from eth_defi.compat import native_datetime_utc_now
 
+from tradeexecutor.cli.commands.check_accounts import ACCOUNTS_DO_NOT_MATCH
 from tradeexecutor.exchange_account.state import create_exchange_account_transfer
-from tradeexecutor.state.state import State
+from tradeexecutor.state.state import State, UncleanState
 from tradeexecutor.testing import lighter_manual
 from tradeexecutor.testing.lighter_tutorial import (
     SIMULATED_TRANSFER_FEE_USDC,
@@ -141,7 +142,7 @@ def test_cli_manual_lighter_sub_accounts_flow(tutorial: Tutorial, tmp_path: Path
     7. Move USDC from trend to arb with --lighter-transfer and check the booking
     8. Audit clean books: check-wallet, a correct-accounts that books nothing, and a settled NAV that matches the balances
     9. Move USDC between the sub-accounts with the trader's key, check check-accounts detects it and correct-accounts books it
-    10. Send USDC straight to the Safe, check check-accounts detects it, correct-accounts books it and the NAV rises
+    10. Send USDC straight to the Safe, check check-accounts reports it with its mismatch message, correct-accounts books it and the NAV rises
     11. Check a withdrawal started without a recorded request is reported as unconfirmed, not resumed
     12. Top up the master, then withdraw every account with lighter-move-funds answered over stdin
     13. Redeem every share, sweep the Safe and reconcile the deployer's balances
@@ -244,12 +245,14 @@ def test_cli_manual_lighter_sub_accounts_flow(tutorial: Tutorial, tmp_path: Path
     nav -= FEE
     assert manual(capsys, "expect-nav", "--nav", str(nav)) == "ok"
 
-    # 10. Send USDC straight to the Safe, check check-accounts detects it, correct-accounts books it and the NAV rises
+    # 10. Send USDC straight to the Safe, check check-accounts reports it with its mismatch message, correct-accounts books it and the NAV rises
     donation_marker = run_dir / "donation"
     assert manual(capsys, "donate", str(DONATION_USDC), "--marker", str(donation_marker)) == "sent"
     assert manual(capsys, "donate", str(DONATION_USDC), "--marker", str(donation_marker)) == "sent-earlier", "A rerun must not send again"
     expect(capsys, safe=SUBSCRIPTION_USDC - 2 * FUNDING_USDC + DONATION_USDC)
-    assert run_cli(["check-accounts"], env, check=False) == 1, "check-accounts must report USDC the vault did not book"
+    # The script accepts the failure only with this message in the output, so pin it through the raising form.
+    with pytest.raises(UncleanState, match=ACCOUNTS_DO_NOT_MATCH):
+        run_cli(["check-accounts"], {**env, "RAISE_ON_UNCLEAN": "true"})
     run_cli(["correct-accounts"], env)
     run_cli(["check-accounts"], env)
     run_cli(["lagoon-settle"], env)

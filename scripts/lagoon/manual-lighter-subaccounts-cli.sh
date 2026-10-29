@@ -558,12 +558,18 @@ withdraw_account() {
 }
 
 # check-accounts must fail now: the chain changed outside the executor
-# (steps 9 and 10). Passing would mean it cannot see such a change.
+# (steps 9 and 10). Passing would mean it cannot see such a change. A
+# failure counts only with the command's own mismatch report in its output,
+# so an RPC or API error cannot pass as a detected change.
 expect_unclean_books() {
-    local what="$1"
+    local what="$1" output="$RUN_DIR/step-$CURRENT_STEP-check-accounts.log"
     log "check-accounts must now report $what; a failure below is expected"
-    if run --probe poetry run trade-executor check-accounts; then
+    # tee keeps a copy of the output for the message check; pipefail keeps the command's exit status.
+    if run --probe poetry run trade-executor check-accounts 2>&1 | tee "$output"; then
         fail "check-accounts did not report $what: its books match a chain that changed outside the executor."
+    fi
+    if ! grep -q "Accounts do not match" "$output"; then
+        fail "check-accounts failed without reporting $what: it could not compare the books with the chain. See its output above, fix the cause and rerun."
     fi
     log "check-accounts reported $what, as it should"
 }
