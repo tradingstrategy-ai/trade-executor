@@ -1019,6 +1019,7 @@ class State:
                 position.share_price_state = update_share_price_state(
                     position.share_price_state,
                     trade,
+                    remaining_quantity=position.get_quantity(),
                 )
 
         if is_exchange_transfer and trade.is_sell():

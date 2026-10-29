@@ -49,9 +49,10 @@ Each account's position reports its profit independently of the capital moved
 in and out of it. Deposits, withdrawals and transfers between the vault's own
 accounts are flows; gains, losses and the fees an account pays are profit.
 
-- **Return %** is the position's internal share price: a flow mints or burns
+- **Return %** is the change in the position's internal share price: a flow mints or burns
   internal shares at the current price without moving it, so only valuations
-  and fees move the return. A closed position reports its USD profit over the
+  and transfer fees move the return. A withdrawal fee shows in the USD profit
+  only. A closed position reports its USD profit over the
   capital invested instead, because writing off its residual sets the share
   price to zero.
 - **USD profit** is the current value plus the capital withdrawn minus the
@@ -66,8 +67,9 @@ and loss on the other. Positions saved before the withdrawn total was tracked
 keep their earlier USD figure.
 
 `scripts/lagoon/manual-lighter-share-price-charts.py` draws the share price,
-shares, value and profit of example accounts for inspection, and the
-`exchange_account_share_price` chart draws them for a live vault.
+shares, value and profit of example accounts for inspection. A strategy can
+register the `exchange_account_share_price` chart to draw them for a live
+vault.
 
 ## Sub-accounts
 

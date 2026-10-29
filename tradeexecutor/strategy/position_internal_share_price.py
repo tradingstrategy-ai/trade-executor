@@ -7,22 +7,11 @@ See :py:class:`tradeexecutor.state.position_internal_share_price.PositionInterna
 """
 import dataclasses
 import datetime
+from decimal import Decimal
 
 from tradeexecutor.state.balance_update import BalanceUpdate
 from tradeexecutor.state.position_internal_share_price import PositionInternalSharePriceState
 from tradeexecutor.state.trade import TradeExecution
-
-#: Relative tolerance below which a sell or outflow counts as removing the
-#: whole holding.
-#:
-#: The share-price state tracks the position value as a float while the
-#: position books Decimal quantities, so after a few operations the two can
-#: differ in the last bits: withdrawing the whole 1.7 USDC of an account
-#: whose tracked value is 1.7000000000000002 would leave 2e-16 shares. A zero
-#: value over that dust supply then reads as a share price of zero, a -100%
-#: return. A burn this close to the whole holding burns all of it, and a
-#: valuation this close to zero values the position at exactly zero.
-FULL_EXIT_TOLERANCE = 1e-9
 
 
 def create_share_price_state(
@@ -103,17 +92,29 @@ def create_share_price_state_for_exchange_account(
 def update_share_price_state(
     state: PositionInternalSharePriceState,
     trade: TradeExecution,
+    remaining_quantity: Decimal | None = None,
 ) -> PositionInternalSharePriceState:
     """Update share price state with a new trade.
 
     For buys: mint shares at current share price.
     For sells: update share price based on sell price, then burn proportional shares.
 
+    The state tracks the position value as a float while the position books
+    Decimal quantities, so the two can differ in the last bits: withdrawing
+    the whole 1.7 USDC of a position tracked at 1.7000000000000002 would
+    leave 2e-16 shares, and a zero value over that dust reads as a share
+    price of zero. When the caller passes the position's Decimal quantity
+    after the trade and it is zero, the sell burns every share.
+
     :param state:
         Current share price state to update.
 
     :param trade:
         The newly executed trade.
+
+    :param remaining_quantity:
+        The position's quantity after the trade, from its Decimal books, if
+        the caller has it. Zero marks a full exit.
 
     :return:
         New PositionInternalSharePriceState with updated values.
@@ -160,34 +161,37 @@ def update_share_price_state(
         # Sell: update share price based on sell value, then burn proportional shares
         sell_quantity = abs(delta)
 
-        if state.cumulative_quantity > 0:
-            proportion_sold = sell_quantity / state.cumulative_quantity
-            full_exit = proportion_sold >= 1 - FULL_EXIT_TOLERANCE
+        # The reserve received, which for an exchange-account withdrawal can
+        # be less than the account debit.
+        total_withdrawn = _add_withdrawn(state.total_withdrawn, abs(float(trade.executed_reserve or 0)))
+        if state.cumulative_quantity <= 0:
+            return dataclasses.replace(state, total_withdrawn=total_withdrawn, last_updated_at=trade.executed_at)
 
-            # Update share price based on current value at sell price
-            total_assets_at_sell = state.cumulative_quantity * trade.executed_price
-            new_share_price = (
-                total_assets_at_sell / state.total_supply
-                if state.total_supply > 0
-                else state.current_share_price
-            )
+        proportion_sold = sell_quantity / state.cumulative_quantity
+        full_exit = remaining_quantity is not None and remaining_quantity == 0
 
-            # Burn proportional shares
-            shares_to_burn = state.total_supply * proportion_sold
-            new_total_supply = 0.0 if full_exit else max(0.0, state.total_supply - shares_to_burn)
+        # Update share price based on current value at sell price
+        total_assets_at_sell = state.cumulative_quantity * trade.executed_price
+        new_share_price = (
+            total_assets_at_sell / state.total_supply
+            if state.total_supply > 0
+            else state.current_share_price
+        )
 
-            return PositionInternalSharePriceState(
-                current_share_price=new_share_price,
-                total_supply=new_total_supply,
-                cumulative_quantity=0.0 if full_exit else state.cumulative_quantity - sell_quantity,
-                total_invested=state.total_invested,
-                peak_total_supply=state.peak_total_supply,
-                initial_share_price=state.initial_share_price,
-                last_updated_at=trade.executed_at,
-                # The reserve received, which for an exchange-account
-                # withdrawal can be less than the account debit.
-                total_withdrawn=_add_withdrawn(state.total_withdrawn, abs(float(trade.executed_reserve or 0))),
-            )
+        # Burn proportional shares
+        shares_to_burn = state.total_supply * proportion_sold
+        new_total_supply = 0.0 if full_exit else max(0.0, state.total_supply - shares_to_burn)
+
+        return PositionInternalSharePriceState(
+            current_share_price=new_share_price,
+            total_supply=new_total_supply,
+            cumulative_quantity=0.0 if full_exit else state.cumulative_quantity - sell_quantity,
+            total_invested=state.total_invested,
+            peak_total_supply=state.peak_total_supply,
+            initial_share_price=state.initial_share_price,
+            last_updated_at=trade.executed_at,
+            total_withdrawn=total_withdrawn,
+        )
 
     # No change for zero-quantity trades (e.g., failed/repaired)
     return state
@@ -197,6 +201,7 @@ def apply_capital_outflow(
     state: PositionInternalSharePriceState,
     amount: float,
     at: datetime.datetime,
+    remaining_quantity: Decimal | None = None,
 ) -> PositionInternalSharePriceState:
     """Remove principal from a position without treating it as a loss.
 
@@ -212,6 +217,10 @@ def apply_capital_outflow(
         Principal removed, in USD. Must be positive.
     :param at:
         Timestamp of the outflow.
+    :param remaining_quantity:
+        The position's quantity after the outflow, from its Decimal books, if
+        the caller has it. Zero marks a full exit, which burns every share
+        rather than leaving float residue, as in :py:func:`update_share_price_state`.
     :return:
         New share price state.
     """
@@ -220,7 +229,7 @@ def apply_capital_outflow(
     if state.cumulative_quantity <= 0:
         return dataclasses.replace(state, total_withdrawn=total_withdrawn, last_updated_at=at)
     proportion = min(amount / state.cumulative_quantity, 1.0)
-    full_exit = proportion >= 1 - FULL_EXIT_TOLERANCE
+    full_exit = remaining_quantity is not None and remaining_quantity == 0
     new_share_price = state.cumulative_quantity / state.total_supply if state.total_supply > 0 else state.current_share_price
     new_total_supply = 0.0 if full_exit else max(0.0, state.total_supply - state.total_supply * proportion)
     return PositionInternalSharePriceState(
@@ -256,10 +265,10 @@ def update_share_price_state_for_balance_update(
     """
     diff = float(balance_update.quantity)
     new_cumulative = state.cumulative_quantity + diff
-    if abs(new_cumulative) <= FULL_EXIT_TOLERANCE * abs(state.cumulative_quantity):
-        # A valuation to zero, such as a total loss, can leave float residue
-        # where the Decimal books hold zero. Snap it, so the share price is
-        # exactly zero and the next deposit starts a new series.
+    if balance_update.old_balance is not None and Decimal(balance_update.old_balance) + Decimal(balance_update.quantity) == 0:
+        # The Decimal books are at zero, such as after a total loss, while the
+        # float value can keep residue. Value the position at exactly zero,
+        # so the share price is zero and the next deposit starts a new series.
         new_cumulative = 0.0
 
     # total_supply is unchanged — no shares minted or burned

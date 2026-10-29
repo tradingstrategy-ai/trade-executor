@@ -251,8 +251,9 @@ def _check_flow_neutral_profit(state: State, positions: list[TradingPosition], p
 
     The fees are the Lighter transfer fees of the funding trades the account
     sent, and the shortfall of its withdrawals, where the Safe received less
-    than the account was debited. A position whose withdrawn total is unknown
-    is skipped.
+    than the account was debited. The scripted run starts from a fresh vault,
+    so every tracked position must know its withdrawn total; an unknown one
+    is a problem rather than a skipped check.
     """
     fees_paid: dict[int, Decimal] = {}
     for trade in state.portfolio.get_all_trades():
@@ -265,9 +266,13 @@ def _check_flow_neutral_profit(state: State, positions: list[TradingPosition], p
             shortfall = -trade.executed_quantity - trade.executed_reserve
             fees_paid[trade.position_id] = fees_paid.get(trade.position_id, Decimal(0)) + shortfall
     for position in positions:
+        if position.share_price_state is None:
+            continue
         profit = position.get_flow_neutral_profit_usd()
         expected = -float(fees_paid.get(position.position_id, Decimal(0)))
-        if profit is not None and abs(profit - expected) > 1e-6:
+        if profit is None:
+            problems.append(f"Lighter account {position.pair.get_exchange_account_id()} position #{position.position_id} has no withdrawn total, so its USD profit is unknown")
+        elif abs(profit - expected) > 1e-6:
             problems.append(f"Lighter account {position.pair.get_exchange_account_id()} position #{position.position_id} reports a USD profit of {profit}, expected minus its fees {expected}")
 
 

@@ -70,6 +70,7 @@ def test_lighter_flow_neutral_profit_old_state_recovery_and_chart() -> None:
         if position.get("share_price_state"):
             del position["share_price_state"]["total_withdrawn"]
     replay.state = State.from_json(json.dumps(serialised))
+    replay.allow_unknown_withdrawn = True
     replay.positions = {name: replay.state.portfolio.get_position_by_id(position.position_id) for name, position in replay.positions.items()}
     assert replay.positions[MASTER].share_price_state.total_withdrawn is None
     assert replay.positions[MASTER].get_flow_neutral_profit_usd() is None

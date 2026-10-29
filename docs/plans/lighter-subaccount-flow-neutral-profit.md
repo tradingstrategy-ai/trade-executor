@@ -120,8 +120,10 @@ profit_usd = total_assets + total_withdrawn − total_invested
 ```
 
 for open and closed positions alike. With `None` the current formulas apply.
-`profit_pct` stays the share-price return. Spot and vault positions are
-unchanged.
+`profit_pct` stays the share-price return. Spot and vault positions keep
+their profit formulas; they share the share-price state updates, so they get
+the exact-zero snapping and the zero-price restart of "Bugs found and fixed"
+and design 5.
 
 Fees: a funding fee is a balance update, so it is a loss in both figures. A
 withdrawal fee, the gap between the account debit and the Safe credit
@@ -255,7 +257,8 @@ computed with the current share-price functions plus the proposed
 | F. Withdrawal fee | Deposit 10; withdraw 10, Safe credited 9.9 | Return 0%, USD −0.1 |
 | G. Write-off and close | Deposit 10; revalue to 10.4; withdraw 10; close, writing off 0.4 | Closed: unrealised 0, realised USD 0, closed % 0 (design 3) |
 | H. Total loss and re-funding | Deposit 10; revalue to 0; deposit 5; revalue to 5.5 | No crash; a new series of 5 units, return +10% since the loss, USD −9.5 (design 5) |
-| I. Repeated allocation | Placeholder; valuation seeds 5; `open_exchange_account_position()` allocates 5 more | Allocation minted into the existing state: 10 units, `total_withdrawn` kept |
+| I. Repeated allocation | Placeholder; valuation seeds 5; `open_exchange_account_position()` allocates 5, then 1 | Both minted into the existing state: 11 units, profit 0, `total_withdrawn` kept |
+| J. Tiny remainders | One account: deposit 1,000,000, withdraw 999,999.9995. Another: deposit 1,000,000, revalue to 0.0005, deposit 1 | The 0.0005 USDC balances are kept, not rounded to zero: 0.0005 units at 1.0; the second account's deposit mints at 5e-10 and its return stays −99.99999995% |
 
 **One test for old states and bad paths:**
 
@@ -405,6 +408,14 @@ replace an existing state. The other findings, including a fourth round,
 concerned rebuilding and backfilling old states, which this version drops
 (design 4); their caveats are kept there for the follow-up.
 
+Codex CLI, GPT 6.1 sol, review of the implementation, 2026-10-29: request
+changes, three findings, all verified and fixed. A relative tolerance for
+float residue could erase a real balance of 0.0005 USDC on a million-dollar
+position; it was replaced by checks of the Decimal books. A further allocation
+of 1 USDC or less was booked as profit. The scripted profit check skipped
+unknown withdrawn totals, so it could pass without checking anything; fresh
+runs now fail on them.
+
 ## Implementation status
 
 Implemented on branch `lighter-subaccount-share-price`, 2026-10-29, as
@@ -445,13 +456,20 @@ designed, with the deviations and findings below.
 - **Float residue read as a −100% return.** The share-price state tracks the
   value as a float while the books hold Decimals. Withdrawing the whole 1.7
   USDC of an account tracked at 1.7000000000000002 left 2e-16 shares, so a
-  zero value read as a zero share price. A burn within
-  `FULL_EXIT_TOLERANCE` (1e-9, relative) of the whole holding now burns all
-  of it.
+  zero value read as a zero share price. When the position's Decimal
+  quantity after a sell or a transfer out is zero, which
+  `mark_trade_success()` and `complete_exchange_account_funding()` now pass
+  in, every share is burned.
 - **Float residue after a total loss.** A valuation to zero left 2e-16 of
   value, a share price of 1e-16, and the next deposit minted 1.6e16 shares
-  instead of starting a new series. A valuation within the same tolerance of
-  zero now values the position at exactly zero. Found by the CLI fork test.
+  instead of starting a new series. When a balance update's Decimal
+  `old_balance + quantity` is zero, the position is now valued at exactly
+  zero. Found by the CLI fork test.
+- **Small allocations into a tracked position were profit.**
+  `open_exchange_account_position()` minted only allocations above 1 USDC, so
+  a further allocation of 1 USDC or less raised the value without investing
+  it. It now mints any positive allocation into a tracked position; the
+  1 USDC placeholder rule applies only to creating a state. Found by review.
 - **`perform-test-trade --amount` booked a float's binary expansion.**
   `Decimal(amount)` on a float made `--amount 3.3` book and transfer
   3.29999999999999982236431605997495353221893310546875 USDC on the `--pair`,

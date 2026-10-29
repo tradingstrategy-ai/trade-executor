@@ -24,6 +24,7 @@ See ``docs/plans/lighter-subaccount-flow-neutral-profit.md``.
 import dataclasses
 import datetime
 import enum
+import math
 from dataclasses import dataclass, field
 from decimal import Decimal
 
@@ -61,7 +62,8 @@ TIMELINE_START = datetime.datetime(2026, 1, 1)
 #: Simulated time between two events.
 EVENT_INTERVAL = datetime.timedelta(hours=1)
 
-#: Absolute tolerance of the invariant and expectation checks, in USD, units or price.
+#: Absolute tolerance of the invariant checks, in USD, units or price; they
+#: also allow a 1e-9 relative difference, for float noise on large amounts.
 TOLERANCE = 1e-9
 
 #: Account id of the master account.
@@ -268,13 +270,34 @@ TIMELINES: tuple[Timeline, ...] = (
     ),
     Timeline(
         timeline_id="repeated-allocation",
-        description="A second real allocation mints into the existing share-price state instead of replacing it",
+        description="Further allocations, of any size, mint into the existing share-price state instead of replacing it",
         accounts=("repeated-allocation",),
         events=(
             _event(_K.seed, "repeated-allocation", 5),
             _event(_K.allocate, "repeated-allocation", 5),
+            _event(_K.allocate, "repeated-allocation", 1),
         ),
-        expected={"repeated-allocation": AccountExpectation(units=10, share_price=1, return_pct=0, profit_usd=0)},
+        expected={"repeated-allocation": AccountExpectation(units=11, share_price=1, return_pct=0, profit_usd=0)},
+    ),
+    Timeline(
+        timeline_id="tiny-remainders",
+        description="Real balances of 0.0005 USDC left on million-dollar positions are kept, not rounded to zero",
+        accounts=("small-exit", "small-value"),
+        events=(
+            _event(_K.deposit, "small-exit", 1_000_000),
+            _event(_K.withdraw, "small-exit", "999999.9995"),
+            _event(_K.deposit, "small-value", 1_000_000),
+            _event(_K.revalue, "small-value", "0.0005"),
+            _event(_K.deposit, "small-value", 1),
+        ),
+        expected={
+            "small-exit": AccountExpectation(units=0.0005, share_price=1, return_pct=0, profit_usd=0),
+            # The deposit mints at the near-zero price instead of starting a new
+            # series, which would read about +0.05%. Shares are not compared: the
+            # float value of 1,000,000 - 999,999.9995 is off by about 1e-7
+            # relative, and minting at that price magnifies it.
+            "small-value": AccountExpectation(units=None, share_price=5e-10, return_pct=-0.9999999995, profit_usd=-999_999.9995),
+        },
     ),
 )
 
@@ -312,9 +335,15 @@ class TimelineReplay:
     :param account_ids:
         Accounts to open: the master and sub-account ids. The master is
         always opened.
+    :param allow_unknown_withdrawn:
+        Accept accounts whose withdrawn total is unknown, as in a state saved
+        before it was tracked, and skip invariants 2 and 4 for them. In a
+        fresh replay an unknown total is a failure, so the checks cannot pass
+        without checking anything.
     """
 
-    def __init__(self, account_ids: list[str] | tuple[str, ...]):
+    def __init__(self, account_ids: list[str] | tuple[str, ...], allow_unknown_withdrawn: bool = False):
+        self.allow_unknown_withdrawn = allow_unknown_withdrawn
         self.usdc = AssetIdentifier(chain_id=1, address=USDC_NATIVE_TOKEN[1], token_symbol="USDC", decimals=6)
         self.state = State()
         self.state.portfolio.initialise_reserves(self.usdc, reserve_token_price=1.0)
@@ -451,7 +480,8 @@ class TimelineReplay:
         4. Each account's USD profit equals its booked gains minus its fees;
            over all accounts, the change in value minus net deposits.
            Accounts whose withdrawn total is unknown, from an old state, are
-           not checked for 2 and 4.
+           not checked for 2 and 4, and fail the check unless the replay
+           allows them.
 
         :raise TimelineInvariantError:
             Naming the event, the account and the figures.
@@ -463,7 +493,11 @@ class TimelineReplay:
             raise TimelineInvariantError(f"{where}, account {account}: {message}")
 
         def close_to(a: float, b: float) -> bool:
-            return abs(a - b) <= TOLERANCE
+            return math.isclose(a, b, rel_tol=1e-9, abs_tol=TOLERANCE)
+
+        for account, snapshot in after.items():
+            if snapshot.tracked and snapshot.profit_usd is None and not self.allow_unknown_withdrawn:
+                fail(account, "the withdrawn total is unknown in a fresh replay")
 
         if event.kind in FLOW_EVENTS:
             moves: dict[str, tuple[float, float]] = {}
@@ -531,7 +565,7 @@ class TimelineReplay:
                 observed["share_price"] = position.get_share_price_profit().current_share_price
             for name, value in observed.items():
                 wanted = getattr(expected, name)
-                if (value != wanted) if isinstance(wanted, bool) else abs(value - wanted) > 1e-6:
+                if (value != wanted) if isinstance(wanted, bool) else not math.isclose(value, wanted, rel_tol=1e-9, abs_tol=1e-6):
                     raise TimelineInvariantError(f"{timeline.timeline_id}, account {account}: {name} is {value}, expected {wanted}")
 
 
