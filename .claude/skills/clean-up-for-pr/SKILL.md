@@ -1,6 +1,6 @@
 ---
 name: clean-up-for-pr
-description: Clean up a completed feature, bug fix or maintained content change before PR handoff. Simplify the patch, correct code and prose, update agent and Markdown documentation, check AGENTS.md conformance, and obtain an independent cross-agent review.
+description: Clean up a completed feature, bug fix or maintained content change before PR handoff. Simplify the patch, correct code and prose, apply the repository's writing rules, update agent and Markdown documentation, check AGENTS.md conformance, and obtain an independent cross-agent review.
 ---
 
 # Clean up for PR
@@ -49,8 +49,16 @@ the entire patch into context.
    behaviour and authoritative sources. Distinguish a published claim from a
    verified fact and a historical snapshot from current state. Correct factual
    errors without inventing missing information.
-3. **Update documentation.** Revise relevant `.claude/docs` guidance when the
-   work changes an agent workflow or reveals a reusable operational lesson.
+3. **Update documentation.** For a script that can change production state,
+   such as a state repair or migration, check that it and its runbook follow
+   the production maintenance rules in `AGENTS.md` and
+   [`docs/docker.md`](../../../docs/docker.md): run from the deployment's
+   Docker Compose project, never a standalone `docker run`; stop the executor
+   first; preview before writing where the script supports it; confirm a
+   backup and a post-migration validation. Do not recommend sourcing
+   `.local-test.env` in production.
+   Revise relevant `.claude/docs` guidance when the work changes an agent
+   workflow or reveals a reusable operational lesson.
    Update the Markdown documentation under `docs/`, the module READMEs (such
    as `tradeexecutor/exchange_account/README-*.md`), runbooks, script headers
    and examples when their contracts or usage change, and the `CHANGELOG.md`
@@ -73,10 +81,17 @@ the entire patch into context.
    include canonical API links and DataFrame column/value expectations where
    relevant. Replace prose that merely translates the implementation into
    English. Avoid padding simple functions or repeating inherited docstrings.
-6. **Remove AI slop.** Cut filler, hype, unsupported assurances, repetitive
-   summaries, invented labels and comments that add no information. Use concrete
-   language, UK English and sentence-case headings. Keep manually
-   maintained copy factual, sourced and appropriate to its audience.
+6. **Check the writing style (required).** Check all added or changed
+   manually maintained narrative text, including `docs/`, module READMEs,
+   plans, script headers, CHANGELOG lines and PR descriptions, against the
+   English rules in `AGENTS.md`: UK English and sentence-case headings. Write
+   for the text's audience in plain, concrete language. Cut filler, hype,
+   unsupported assurances, repetitive summaries, invented labels and comments
+   that add no information. Date changing facts such as live-run results,
+   fees and durations, and keep them traceable to a source such as a run log
+   or a transaction. Reuse an earlier style review for unchanged text, but
+   check subsequent substantive edits again. Record completion, the earlier
+   review, or N/A when there are no narrative changes.
 7. **Obtain an independent review** using the opposite agent as described below.
 
 ## Review with the opposite agent
@@ -123,7 +138,7 @@ focused checks and `git diff --check`. Inspect the final status and patch,
 including staged and untracked files. Do not run the whole test suite as a
 cleanup check.
 
-Report the cleanup made, checks run, reviewer and model used, review outcome,
-and any remaining limitations. Keep the repository's required PR description
-format when a PR was requested. Do not claim PR readiness when a required
-review or check remains incomplete.
+Report the cleanup made, checks run, writing-style review status, reviewer and
+model used, review outcome, and any remaining limitations. Keep the repository's
+required PR description format when a PR was requested. Do not claim PR readiness
+when a required review or check remains incomplete.
