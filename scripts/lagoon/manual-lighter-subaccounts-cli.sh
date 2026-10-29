@@ -350,6 +350,9 @@ run() {
     else
         "$@" </dev/null || status=$?
     fi
+    # Kill the heartbeat's sleep too: as a child it would otherwise keep a
+    # pipe the command's output was sent through open until it ends.
+    pkill -P "$heartbeat_pid" 2>/dev/null || true
     kill "$heartbeat_pid" 2>/dev/null || true
     wait "$heartbeat_pid" 2>/dev/null || true
     if [ "$status" -eq 0 ]; then
@@ -564,6 +567,8 @@ withdraw_account() {
 expect_unclean_books() {
     local what="$1" output="$RUN_DIR/step-$CURRENT_STEP-check-accounts.log"
     log "check-accounts must now report $what; a failure below is expected"
+    # run executes in the pipeline's subshell, so name the command here for the failure report.
+    LAST_COMMAND="poetry run trade-executor check-accounts"
     # tee keeps a copy of the output for the message check; pipefail keeps the command's exit status.
     if run --probe poetry run trade-executor check-accounts 2>&1 | tee "$output"; then
         fail "check-accounts did not report $what: its books match a chain that changed outside the executor."
