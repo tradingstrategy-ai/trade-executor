@@ -21,6 +21,7 @@ Events are booked without a chain or Lighter:
 See ``docs/plans/lighter-subaccount-flow-neutral-profit.md``.
 """
 
+import dataclasses
 import datetime
 import enum
 from dataclasses import dataclass, field
@@ -411,7 +412,13 @@ class TimelineReplay:
                 self.lighter_values[event.destination] += event.amount
                 self.fees[event.account] += float(event.fee)
             case TimelineEventKind.allocate:
-                open_exchange_account_position(state=self.state, strategy_cycle_at=self.clock, pair=self.pairs[event.account], reserve_currency=self.usdc, reserve_amount=event.amount)
+                trades = open_exchange_account_position(state=self.state, strategy_cycle_at=self.clock, pair=self.pairs[event.account], reserve_currency=self.usdc, reserve_amount=event.amount)
+                # The spoofed allocation trade is stamped with the wall clock,
+                # right for a live executor; put it on the replay's clock.
+                for trade in trades:
+                    trade.executed_at = self.clock
+                if position.share_price_state is not None:
+                    position.share_price_state = dataclasses.replace(position.share_price_state, last_updated_at=self.clock)
                 self.lighter_values[event.account] += event.amount
                 self.net_deposits += float(event.amount)
             case TimelineEventKind.close:
