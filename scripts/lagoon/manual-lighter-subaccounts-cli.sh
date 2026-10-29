@@ -7,35 +7,45 @@
 # top to bottom: every step says what it does to the vault and why, and
 # every action is a plain command you could type yourself.
 #
-# Steps, with their durations in the live run of 2026-10-28 (1h 55m in
-# total). Steps 8 to 10 and the check-wallet runs were added after that run
-# and have no live duration yet; each takes a few minutes.
+# Steps, with their durations in the live run of 2026-10-29 (2h 04m in
+# total):
 #
-#  0. Check the deployer can pay for the run                            6s
+#  0. Check the deployer can pay for the run                            5s
 #  1. Deploy the vault: Safe, Lagoon vault, guard, Lighter master
-#     account and two sub-accounts, each with its own API key      14m 44s
+#     account and two sub-accounts, each with its own API key      13m 54s
 #  2. Read the deployment's public addresses and Lighter indices        0s
 #  3. Initialise executor state, book the 1 USDC activation and
-#     check the wallet                                                40s
-#  4. Subscribe test capital to the vault and claim the shares      4m 49s
-#  5. perform-test-trade: fund sub-account "trend" from the Safe    3m 11s
-#  6. perform-test-trade: fund sub-account "arb" from the Safe      3m 13s
-#  7. perform-test-trade: move USDC from "trend" to "arb"           1m 02s
+#     check the wallet                                                48s
+#  4. Subscribe test capital to the vault and claim the shares      4m 16s
+#  5. perform-test-trade: fund sub-account "trend" from the Safe    3m 13s
+#  6. perform-test-trade: fund sub-account "arb" from the Safe      3m 12s
+#  7. perform-test-trade: move USDC from "trend" to "arb"           1m 03s
 #  8. Audit clean books: check-wallet, correct-accounts books
-#     nothing, lagoon-settle posts the NAV the balances show
+#     nothing, lagoon-settle posts the NAV the balances show        1m 41s
 #  9. arb's trader moves USDC to "trend" outside the executor:
-#     check-accounts reports it, correct-accounts books it
+#     check-accounts reports it, correct-accounts books it          1m 57s
 # 10. USDC reaches the Safe outside the vault: check-accounts
-#     reports it, correct-accounts books it, the NAV rises
-# 11. Withdraw "arb" to the Safe (Lighter L1 withdrawal)           29m 31s
-# 12. Withdraw "trend" to the Safe (Lighter L1 withdrawal)         28m 45s
-# 13. Withdraw the master to the Safe (secure withdrawal)          24m 14s
-# 14. Redeem every share back to the deployer, check the wallet     4m 14s
-# 15. Sweep the Safe and reconcile the deployer's balances             13s
+#     reports it, correct-accounts books it, the NAV rises          4m 05s
+# 11. Withdraw "arb" to the Safe (Lighter L1 withdrawal)           30m 41s
+# 12. Withdraw "trend" to the Safe (Lighter L1 withdrawal)         26m 27s
+# 13. Withdraw the master to the Safe (secure withdrawal)          28m 39s
+# 14. Redeem every share back to the deployer, check the wallet     3m 26s
+# 15. Sweep the Safe and reconcile the deployer's balances             29s
 #
-# The live transaction links below use the step numbers of that run, in
-# which the withdrawals were steps 8 to 10, the redemption step 11 and the
-# sweep step 12.
+# In the run of 2026-10-29 every USDC came back to the deployer, Lighter
+# charged no transfer fee and the run spent 0.0066 ETH of gas. Step 9's
+# transfer booked one balance update on each sub-account, step 10's one on
+# the reserve, and the share price rose from 1 to 12/11.
+#
+#   Vault   https://etherscan.io/address/0x5514f46144D9518E63980A66C8d333cbE609b218
+#   Safe    https://etherscan.io/address/0x689aB28B0AED3C362e7c181e00bD46C77100459e
+#   Lighter master 764899, sub-accounts trend 281474976445708 and arb 281474976445707
+#   Step 10, 1 USDC sent straight to the Safe
+#     https://etherscan.io/tx/0x162fdf90027f42f51e99c16bb877314b551d9e66f082722fd58fd49a861fea88
+#
+# The transaction links below are from the first live run, before steps 8
+# to 10 existed: its withdrawals were steps 8 to 10, the redemption step 11
+# and the sweep step 12.
 #
 # The three withdrawals are mostly Lighter's withdrawal delay; the rest is
 # Ethereum confirmations. Gas prices were about 0.1 gwei.
@@ -83,8 +93,7 @@
 # Real money, Ethereum mainnet only: Lighter's sequencer cannot run on a
 # fork, so there is no simulation mode. The deployer needs ETH for a full
 # Lagoon vault deployment with contract verification plus about 30 more
-# transactions (the run of 2026-10-28 spent 0.0074 ETH of gas before steps
-# 8 to 10 added three NAV settlements and a transfer), and
+# transactions (0.0066 ETH at about 0.04 gwei on 2026-10-29), and
 # 1 + SUBSCRIPTION_USDC + 1 native USDC (12 by default). It gets the USDC
 # back apart from Lighter transfer fees, if Lighter charges any, and dust
 # below Lighter's 1 USDC withdrawal minimum.
@@ -353,17 +362,20 @@ run() {
     return "$status"
 }
 
+# Number of the last step, shown in the banners.
+LAST_STEP=15
+
 # Start a step: print its banner, or skip it when an earlier run completed it.
 step() {
     local number="$1" title="$2" duration="${3:-}"
     CURRENT_STEP="$number"
     STEP_STARTED=$SECONDS
     if [ -e "$RUN_DIR/step-$number.done" ]; then
-        log "Step $number/12 already done in an earlier run, skipping: $title"
+        log "Step $number/$LAST_STEP already done in an earlier run, skipping: $title"
         return 1
     fi
     echo >&2
-    log "════ Step $number/12: $title"
+    log "════ Step $number/$LAST_STEP: $title"
     if [ -n "$duration" ]; then
         log "     Typical duration: $duration"
     fi
@@ -373,7 +385,7 @@ step() {
 # Mark a step complete.
 done_step() {
     touch "$RUN_DIR/step-$1.done"
-    log "════ Step $1/12 done in $(format_duration $((SECONDS - STEP_STARTED)))"
+    log "════ Step $1/$LAST_STEP done in $(format_duration $((SECONDS - STEP_STARTED)))"
 }
 
 # Write env.sh: this run's public configuration, so an operator can run its

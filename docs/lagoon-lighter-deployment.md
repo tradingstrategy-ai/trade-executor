@@ -149,8 +149,7 @@ refuses to deploy when they differ from the chains the strategy declares.
 
 The deployer needs `1 + SUBSCRIPTION_USDC + 1` native USDC and ETH for the
 deployment, its contract verification and about 30 further transactions;
-the run of 2026-10-28 spent 0.0074 ETH of gas before the accounting steps
-were added. The USDC comes back apart from any Lighter transfer fee and dust below the
+the run of 2026-10-29 spent 0.0066 ETH of gas. The USDC comes back apart from any Lighter transfer fee and dust below the
 1 USDC withdrawal minimum. A run takes about two hours, most of it the three
 Lighter withdrawals. The script prints a timestamped banner per step, every
 command before it runs and how long it took, a heartbeat while a command
@@ -172,9 +171,12 @@ in the same order on an Ethereum fork with a simulated Lighter sequencer.
 It passed live on 2026-10-28 in 1 hour 55 minutes: deployment took 15
 minutes, the two sub-account L1 withdrawals 28 and 27 minutes and the
 master's secure withdrawal 23 minutes. Lighter charged no transfer fee, the
-deployer got all 11 USDC back, and the run spent 0.0074 ETH of gas. The
-accounting steps were added afterwards and have run only on the fork test
-so far.
+deployer got all 11 USDC back, and the run spent 0.0074 ETH of gas. With
+the accounting steps it passed again on 2026-10-29 in 2 hours 4 minutes:
+`correct-accounts` booked nothing on clean books, `check-accounts` reported
+both out-of-band changes, `correct-accounts` booked them, and every NAV
+`lagoon-settle` posted matched the balances and the books. The deployer got
+all 12 USDC back and the run spent 0.0066 ETH of gas.
 
 ## Pair a compatible strategy module
 

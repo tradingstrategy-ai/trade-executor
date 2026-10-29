@@ -580,8 +580,7 @@ including the master's secure withdrawal through `lighter-move-funds`.
 The script passed on Ethereum mainnet on 2026-10-28, run directory
 `lighter-cli-20261028-130827`, in 1 hour 55 minutes. That version had no
 steps 8 to 10, so its withdrawals were steps 8 to 10, the redemption step
-11 and the sweep step 12, as numbered below. Steps 8 to 10 have run only on
-the fork test so far.
+11 and the sweep step 12, as numbered below.
 
 | Step | Duration | Result |
 |------|----------|--------|
@@ -601,6 +600,24 @@ keeps only `JSON_RPC_ETHEREUM`. The run also showed two observability
 faults, both fixed: a captured command waited up to a minute for the
 heartbeat's `sleep`, and the guard's expected balance mismatches were
 printed as failures.
+
+### Second live run, with the accounting steps
+
+The script passed again on 2026-10-29, run directory
+`lighter-cli-20261029-092532`, in 2 hours 4 minutes, with steps numbered as
+in the table above:
+
+| Step | Duration | Result |
+|------|----------|--------|
+| 8. Audit clean books | 1m 41s | `check-wallet` passed; `correct-accounts` booked nothing (6 balance updates before and after); NAV 11 matched the balances and the books |
+| 9. Trader's transfer arb to trend, 1 USDC | 1m 57s | No fee; `check-accounts` reported it; `correct-accounts` added one balance update per sub-account; NAV still 11 |
+| 10. 1 USDC sent straight to the Safe | 4m 05s | `check-accounts` reported it; `correct-accounts` added one reserve balance update; NAV 12, share price 12/11 |
+| 11. to 13. Withdrawals of arb, trend and the master | 30m 41s, 26m 27s and 28m 39s | Claimed into the Safe |
+| 14. `lagoon-redeem` | 3m 26s | Settled at NAV 12 |
+| 15. Sweep and reconcile | 29s | All 12 USDC back, unexplained difference 0, gas 0.0066 ETH |
+
+The banners of this run showed the step total as 12; it is now kept in one
+variable that a unit test checks against the last step.
 
 ## Resolved questions
 

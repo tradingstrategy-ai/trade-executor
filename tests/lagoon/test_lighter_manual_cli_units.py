@@ -6,6 +6,7 @@ parser and the deployment key backup are exercised end to end in
 cases without a chain.
 """
 
+import re
 import shutil
 import stat
 import subprocess
@@ -35,7 +36,7 @@ def test_lighter_manual_building_blocks(tmp_path: Path) -> None:
     2. Format amounts for the shell
     3. Parse --lighter-transfer account pairs
     4. Back up two keys with private modes and remove them
-    5. Check the shell script parses, and passes shellcheck when it is installed
+    5. Check the shell script parses, its banners count every step, and it passes shellcheck when installed
     """
     # 1. Parse balance expectations and compare them, including the <= form for dust
     expectations = parse_expectations(["safe=6", "master=1", "trend<=0.99", "arb=3"])
@@ -63,8 +64,11 @@ def test_lighter_manual_building_blocks(tmp_path: Path) -> None:
     backup.remove()
     assert list(backup.directory.iterdir()) == []
 
-    # 5. Check the shell script parses, and passes shellcheck when it is installed
+    # 5. Check the shell script parses, its banners count every step, and it passes shellcheck when installed
     subprocess.run(["bash", "-n", str(SCRIPT)], check=True)
+    script = SCRIPT.read_text()
+    steps = [int(number) for number in re.findall(r"^if step (\d+) ", script, re.MULTILINE)]
+    assert steps == list(range(len(steps))) and f"LAST_STEP={steps[-1]}\n" in script
     assert SCRIPT.stat().st_mode & stat.S_IXUSR
     if shutil.which("shellcheck"):
         subprocess.run(["shellcheck", "--severity=warning", str(SCRIPT)], check=True)
