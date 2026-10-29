@@ -503,7 +503,10 @@ def command_reconcile(args: argparse.Namespace) -> int:
     if args.trader_transfer_marker is not None and args.trader_transfer_marker.exists():
         fields = args.trader_transfer_marker.read_text().split()
         if len(fields) != 2:
-            raise ManualTestError(f"{args.trader_transfer_marker} records no completed transfer; check the sub-account's transfer history on Lighter")
+            raise ManualTestError(
+                f"{args.trader_transfer_marker} records a transfer request without its result. Check the sub-account's transfer history on Lighter: "
+                "if the transfer executed, write its hash and fee into the marker as '<hash> <fee>'; if not, delete the marker. Then rerun."
+            )
         fees += Decimal(fields[1])
     reconcile_deployer(web3, deployer, usdc, Decimal(start["START_USDC"]), int(start["START_ETH_WEI"]), fees, lighter_dust)
     print("ok")
@@ -511,10 +514,10 @@ def command_reconcile(args: argparse.Namespace) -> int:
 
 
 def command_trader_transfer(args: argparse.Namespace) -> int:
-    """Move USDC between two sub-accounts the way their trader would, outside the executor.
+    """Move USDC from a sub-account to another account of the Safe, as its trader would, outside the executor.
 
     A trader holds its sub-account's API key and may move USDC to another
-    account of the same Safe at any time. The executor does not see such a
+    account of the same Safe, a sub-account or the master, at any time. The executor does not see such a
     transfer: it is booked nowhere, so ``check-accounts`` must report both
     accounts differing from the books and ``correct-accounts`` must accept
     the new equity. The transfer is signed with the sending sub-account's
