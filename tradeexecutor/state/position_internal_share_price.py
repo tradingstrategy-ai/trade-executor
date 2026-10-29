@@ -41,3 +41,13 @@ class PositionInternalSharePriceState:
 
     #: When this state was last updated
     last_updated_at: datetime.datetime | None = None
+
+    #: Capital taken out of the position: the reserve received for sell
+    #: trades and the principal moved to another account.
+    #:
+    #: Together with :py:attr:`total_invested` it gives the flow-neutral USD
+    #: profit of an exchange-account position: current value + withdrawn −
+    #: invested. ``None`` while unknown: in a state saved before this field
+    #: existed, or rebuilt from history, which can miss outflows booked as
+    #: balance updates. Updates carry ``None`` forward and never add to it.
+    total_withdrawn: float | None = None

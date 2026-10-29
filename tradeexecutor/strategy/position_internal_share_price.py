@@ -5,11 +5,24 @@ incrementally on each trade execution.
 
 See :py:class:`tradeexecutor.state.position_internal_share_price.PositionInternalSharePriceState`.
 """
+import dataclasses
 import datetime
 
 from tradeexecutor.state.balance_update import BalanceUpdate
 from tradeexecutor.state.position_internal_share_price import PositionInternalSharePriceState
 from tradeexecutor.state.trade import TradeExecution
+
+#: Relative tolerance below which a sell or outflow counts as removing the
+#: whole holding.
+#:
+#: The share-price state tracks the position value as a float while the
+#: position books Decimal quantities, so after a few operations the two can
+#: differ in the last bits: withdrawing the whole 1.7 USDC of an account
+#: whose tracked value is 1.7000000000000002 would leave 2e-16 shares. A zero
+#: value over that dust supply then reads as a share price of zero, a -100%
+#: return. A burn this close to the whole holding burns all of it, and a
+#: valuation this close to zero values the position at exactly zero.
+FULL_EXIT_TOLERANCE = 1e-9
 
 
 def create_share_price_state(
@@ -41,7 +54,13 @@ def create_share_price_state(
         peak_total_supply=shares_minted,
         initial_share_price=initial_share_price,
         last_updated_at=trade.executed_at,
+        total_withdrawn=0.0,
     )
+
+
+def _add_withdrawn(total_withdrawn: float | None, amount: float) -> float | None:
+    """Add an outflow to a withdrawn total, keeping an unknown total unknown."""
+    return None if total_withdrawn is None else total_withdrawn + amount
 
 
 def create_share_price_state_for_exchange_account(
@@ -77,6 +96,7 @@ def create_share_price_state_for_exchange_account(
         peak_total_supply=shares,
         initial_share_price=initial_share_price,
         last_updated_at=valued_at,
+        total_withdrawn=0.0,
     )
 
 
@@ -102,6 +122,25 @@ def update_share_price_state(
     trade_value = trade.get_value()
 
     if delta > 0:
+        if state.current_share_price <= 0:
+            # The position was valued at zero while shares remained, a total
+            # loss such as a liquidated exchange account. No price can be
+            # minted at, so the worthless shares are burned and a new series
+            # starts at the initial price. The return then covers the period
+            # since the loss; the invested and withdrawn totals are kept, so
+            # the USD profit still includes it.
+            new_total_supply = trade_value / state.initial_share_price
+            return PositionInternalSharePriceState(
+                current_share_price=state.initial_share_price,
+                total_supply=new_total_supply,
+                cumulative_quantity=state.cumulative_quantity + delta,
+                total_invested=state.total_invested + trade_value,
+                peak_total_supply=max(state.peak_total_supply, new_total_supply),
+                initial_share_price=state.initial_share_price,
+                last_updated_at=trade.executed_at,
+                total_withdrawn=state.total_withdrawn,
+            )
+
         # Buy: mint shares at current share price
         shares_to_mint = trade_value / state.current_share_price
         new_total_supply = state.total_supply + shares_to_mint
@@ -114,6 +153,7 @@ def update_share_price_state(
             peak_total_supply=max(state.peak_total_supply, new_total_supply),
             initial_share_price=state.initial_share_price,
             last_updated_at=trade.executed_at,
+            total_withdrawn=state.total_withdrawn,
         )
 
     elif delta < 0:
@@ -122,6 +162,7 @@ def update_share_price_state(
 
         if state.cumulative_quantity > 0:
             proportion_sold = sell_quantity / state.cumulative_quantity
+            full_exit = proportion_sold >= 1 - FULL_EXIT_TOLERANCE
 
             # Update share price based on current value at sell price
             total_assets_at_sell = state.cumulative_quantity * trade.executed_price
@@ -133,16 +174,19 @@ def update_share_price_state(
 
             # Burn proportional shares
             shares_to_burn = state.total_supply * proportion_sold
-            new_total_supply = max(0.0, state.total_supply - shares_to_burn)
+            new_total_supply = 0.0 if full_exit else max(0.0, state.total_supply - shares_to_burn)
 
             return PositionInternalSharePriceState(
                 current_share_price=new_share_price,
                 total_supply=new_total_supply,
-                cumulative_quantity=state.cumulative_quantity - sell_quantity,
+                cumulative_quantity=0.0 if full_exit else state.cumulative_quantity - sell_quantity,
                 total_invested=state.total_invested,
                 peak_total_supply=state.peak_total_supply,
                 initial_share_price=state.initial_share_price,
                 last_updated_at=trade.executed_at,
+                # The reserve received, which for an exchange-account
+                # withdrawal can be less than the account debit.
+                total_withdrawn=_add_withdrawn(state.total_withdrawn, abs(float(trade.executed_reserve or 0))),
             )
 
     # No change for zero-quantity trades (e.g., failed/repaired)
@@ -172,19 +216,22 @@ def apply_capital_outflow(
         New share price state.
     """
     assert amount > 0, f"Capital outflow must be positive, got {amount}"
+    total_withdrawn = _add_withdrawn(state.total_withdrawn, amount)
     if state.cumulative_quantity <= 0:
-        return state
+        return dataclasses.replace(state, total_withdrawn=total_withdrawn, last_updated_at=at)
     proportion = min(amount / state.cumulative_quantity, 1.0)
+    full_exit = proportion >= 1 - FULL_EXIT_TOLERANCE
     new_share_price = state.cumulative_quantity / state.total_supply if state.total_supply > 0 else state.current_share_price
-    new_total_supply = max(0.0, state.total_supply - state.total_supply * proportion)
+    new_total_supply = 0.0 if full_exit else max(0.0, state.total_supply - state.total_supply * proportion)
     return PositionInternalSharePriceState(
         current_share_price=new_share_price,
         total_supply=new_total_supply,
-        cumulative_quantity=state.cumulative_quantity - amount,
+        cumulative_quantity=0.0 if full_exit else state.cumulative_quantity - amount,
         total_invested=state.total_invested,
         peak_total_supply=state.peak_total_supply,
         initial_share_price=state.initial_share_price,
         last_updated_at=at,
+        total_withdrawn=total_withdrawn,
     )
 
 
@@ -209,6 +256,11 @@ def update_share_price_state_for_balance_update(
     """
     diff = float(balance_update.quantity)
     new_cumulative = state.cumulative_quantity + diff
+    if abs(new_cumulative) <= FULL_EXIT_TOLERANCE * abs(state.cumulative_quantity):
+        # A valuation to zero, such as a total loss, can leave float residue
+        # where the Decimal books hold zero. Snap it, so the share price is
+        # exactly zero and the next deposit starts a new series.
+        new_cumulative = 0.0
 
     # total_supply is unchanged — no shares minted or burned
     # share price moves as total_assets changes
@@ -226,6 +278,7 @@ def update_share_price_state_for_balance_update(
         peak_total_supply=state.peak_total_supply,
         initial_share_price=state.initial_share_price,
         last_updated_at=balance_update.block_mined_at,
+        total_withdrawn=state.total_withdrawn,
     )
 
 
@@ -301,6 +354,13 @@ def migrate_share_price_state(position: "TradingPosition") -> None:
                     state = update_share_price_state(state, trade)
 
         position.share_price_state = state
+
+    # A rebuilt state can miss capital that left as balance updates, such as
+    # an exchange-account funding principal replayed as performance, and can
+    # count a placeholder trade as invested. Keep its withdrawn total unknown
+    # so it never reports a flow-neutral USD profit.
+    if position.share_price_state is not None:
+        position.share_price_state = dataclasses.replace(position.share_price_state, total_withdrawn=None)
 
 
 def backfill_share_price_state(

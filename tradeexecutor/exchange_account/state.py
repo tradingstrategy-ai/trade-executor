@@ -17,6 +17,7 @@ from tradeexecutor.state.trade import TradeExecution, TradeFlag, TradeStatus, Tr
 from tradeexecutor.strategy.position_internal_share_price import (
     apply_capital_outflow,
     create_share_price_state,
+    update_share_price_state,
     update_share_price_state_for_balance_update,
 )
 
@@ -621,8 +622,13 @@ def open_exchange_account_position(
     # Seed share price state for real capital allocations (not placeholders).
     # Placeholder trades ($0 or $1 from correct-accounts) are excluded —
     # their share_price_state is created from the first valuation sync instead.
+    # create_trade() can return an existing position: mint into its state
+    # rather than replace it, which would lose its history and withdrawn total.
     if reserve_amount > 1:
-        position.share_price_state = create_share_price_state(trade)
+        if position.share_price_state is None:
+            position.share_price_state = create_share_price_state(trade)
+        else:
+            position.share_price_state = update_share_price_state(position.share_price_state, trade)
 
     return [trade]
 
