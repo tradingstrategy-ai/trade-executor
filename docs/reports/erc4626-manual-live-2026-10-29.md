@@ -82,6 +82,8 @@ into this directory or resubscribe it to reproduce this completed test.
 Subsequent PR cleanup moved the same target list from `Parameters` to a module
 constant and tightened the public close-only guard before treasury sync. The
 frozen strategy in the run directory records the version actually executed.
+The later configuration audit replaced the wrapper's `TEST_AMOUNT` alias with
+the existing executor `AMOUNT`; the historical run above used `TEST_AMOUNT=1`.
 
 This proves the five listed deployments accepted these small live round trips
 at this time. It does not establish large-order capacity, future liquidity,

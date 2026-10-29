@@ -17,6 +17,8 @@
 # The static strategy declares generic, Morpho V1/V2, Yearn V3 and Compounder
 # representatives. They are test candidates, not allocation recommendations.
 # Closed/full/illiquid vaults stop the run; do not silently omit their rows.
+# Optional inputs: ERC4626_RUN_DIR for an existing run, SUBSCRIPTION_USDC
+# (default 10), and the existing executor AMOUNT (default 1 USDC per test).
 #
 # Start:
 #   source .local-test.env
@@ -56,7 +58,7 @@ export ERC4626_RUN_DIR="${ERC4626_RUN_DIR:-$HOME/.tradingstrategy/examples/erc46
 mkdir -p "$ERC4626_RUN_DIR/state"
 chmod 700 "$ERC4626_RUN_DIR"
 export SUBSCRIPTION_USDC="${SUBSCRIPTION_USDC:-10}"
-export TEST_AMOUNT="${TEST_AMOUNT:-1}"
+export AMOUNT="${AMOUNT:-1}"
 # Match the existing Lagoon funding/redemption commands' minimum gas balance.
 export MIN_GAS_BALANCE="${MIN_GAS_BALANCE:-0.001}"
 export EXECUTOR_ID=erc4626-cli
@@ -84,7 +86,7 @@ fi
 # Public settings only. Required credentials remain references to the shell.
 {
     printf 'export ERC4626_RUN_DIR=%q\n' "$ERC4626_RUN_DIR"
-    printf 'export SUBSCRIPTION_USDC=%q TEST_AMOUNT=%q\n' "$SUBSCRIPTION_USDC" "$TEST_AMOUNT"
+    printf 'export SUBSCRIPTION_USDC=%q AMOUNT=%q\n' "$SUBSCRIPTION_USDC" "$AMOUNT"
     printf ': "${ERC4626_TEST_PRIVATE_KEY:?Set the original investor key}"\n'
     printf ': "${JSON_RPC_ARBITRUM:?Set the original Arbitrum RPC}"\n'
     printf 'export PRIVATE_KEY="$ERC4626_TEST_PRIVATE_KEY"\n'
@@ -187,7 +189,7 @@ while IFS=$'\t' read -r label target_address; do
     phase="$("${MANUAL[@]}" phase --address "$target_address" < /dev/null)"
     if [ "$phase" = open ]; then
         run poetry run trade-executor perform-test-trade \
-            --pair "(arbitrum, $target_address)" --amount "$TEST_AMOUNT" --buy-only --no-test-short
+            --pair "(arbitrum, $target_address)" --amount "$AMOUNT" --buy-only --no-test-short
         phase="$("${MANUAL[@]}" phase --address "$target_address" < /dev/null)"
     fi
     if [ "$phase" = close ]; then

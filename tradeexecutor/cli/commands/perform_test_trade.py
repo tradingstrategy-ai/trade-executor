@@ -92,7 +92,6 @@ def perform_test_trade(
     test_short: bool = Option(True, "--test-short/--no-test-short", help="Perform test short trades as well."),
     test_credit_supply: bool = Option(False,"--test-credit-supply/--no-test-credit-supply", help="Deprecated argument. Do not use anymore. Inistead, specify --pair (...lending pair description...)"),
     amount: float = Option(1.0, envvar="AMOUNT", help="The USD value of the test trade. For a Lighter account, 1.0 is Lighter's minimum transfer."),
-    anvil_time_skip_seconds: int = Option(24 * 3600, min=0, help="Seconds to advance an Anvil fork before redemption; use 0 to test an immediate exit. Never advances a live chain."),
     simulate: bool = shared_options.simulate,
     lighter_operator_record_file: Path | None = shared_options.lighter_operator_record_file,
     lighter_sub_account_operator_record_files: str | None = shared_options.lighter_sub_account_operator_record_files,
@@ -390,7 +389,6 @@ def perform_test_trade(
                     web3config=web3config,
                     sync_state_callback=sync_state,
                     test_trade_checks=True,
-                    anvil_time_skip_seconds=anvil_time_skip_seconds,
                 )
         elif all_pairs:
             tradeable_pairs = [p for p in universe.iterate_pairs() if not p.is_cctp_bridge()]
@@ -421,7 +419,6 @@ def perform_test_trade(
                     web3config=web3config,
                     sync_state_callback=sync_state,
                     test_trade_checks=True,
-                    anvil_time_skip_seconds=anvil_time_skip_seconds,
                 )
         else:
 
@@ -447,7 +444,6 @@ def perform_test_trade(
                 close_only=close_only,
                 sync_state_callback=sync_state,
                 test_trade_checks=True,
-                anvil_time_skip_seconds=anvil_time_skip_seconds,
             )
     except OutOfBalance as e:
         raise RuntimeError(f"Failed to a test trade, as we run out of balance. Make sure vault has enough stablecoins deposited for the test trades.") from e

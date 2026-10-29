@@ -156,7 +156,8 @@ all five representatives through separate public commands, checks accounts after
 each, forces terminal NAV refresh and redeems the investor. It reconciles returned
 USDC with actual protocol cash flows. Only investor USDC/gas are injected; no
 protocol liquidity or operator settlement is injected. The immediate exit trial
-uses `--anvil-time-skip-seconds 0`. The matrix is entirely on Arbitrum.
+sets the existing helper's `anvil_time_skip_seconds=0` in the test fixture,
+without exposing a production CLI option. The matrix is entirely on Arbitrum.
 
 Verified on 2026-10-29:
 
@@ -234,3 +235,28 @@ exact request/event quantities and zero residual shares for all seven profiles.
 The old Yearn dust expectation and the raw-share probe's missing capacity fixture
 were corrected. All seven guarded profiles and eight focused unit cases passed
 locally after reproducing the three original CI failures.
+
+## Configuration audit
+
+PR #1694 adds no executor environment variables. The new public options are CLI
+switches; the manual wrapper reuses normal executor settings.
+
+| Setting | Decision and comparison with existing tests |
+| --- | --- |
+| `--close-only` | Keep. `tests/cli/test_close_position.py::test_close_all_test_trades` already uses `close-position --all-test-trades`, but that command requires positive reserve cash, accepts frozen positions and can mark dust down. The new test-trade mode requires a wholly test-owned, resolved position and actual complete redemption, including when reserve cash is zero. |
+| `--force-valuation` | Keep. Ordinary empty-queue settlement skips NAV changes below tolerance. Other settlement tests mainly use queued flows or larger NAV changes, which do not cover the reproduced terminal-withdrawal failure. The new fork test explicitly compares normal and forced settlement. |
+| `--anvil-time-skip-seconds` | Remove from the public CLI. Only the immediate-exit fork test needed it. Its fixture supplies the existing `make_test_trade(anvil_time_skip_seconds=0)` argument, preserving real routing, transactions and receipt analysis. Existing fork tests also control their own clocks with `mine()` rather than production environment settings. |
+| `TEST_AMOUNT` | Replace with the existing executor `AMOUNT`, already read by `perform-test-trade`. No separate amount alias is needed. |
+| `ERC4626_TEST_PRIVATE_KEY`, `ERC4626_RUN_DIR` | Keep as tutorial-only inputs, following the Lighter manual script's dedicated test-key and run-directory pattern. Commands receive the existing `PRIVATE_KEY`, state and deployment paths. |
+| `SUBSCRIPTION_USDC` | Keep the existing Lighter tutorial convention for investor capital, separate from the per-trade `AMOUNT`. The wrapper passes it through the existing `--deposit-amount`. |
+| `MIN_GAS_BALANCE`, `CONFIRMATION_BLOCK_COUNT`, `UNIT_TESTING`, `LOG_LEVEL` | Existing options. The fork fixture follows other CLI tests by configuring them in its environment dictionary. The manual script's 0.001 ETH gas floor matches the existing Lagoon funding/redemption commands. |
+| `UNIT_TEST_FORCE_ANVIL` | Existing option; only its incorrect truthy default was fixed. No new setting was added. |
+
+The manual script's RPC, API-key, vault-address and state-path settings are also
+existing interfaces. The frozen live-run configuration remains historical
+evidence; it is not rewritten by this audit.
+
+The two CLI tests and three fork scenarios passed after these removals. The full
+round trip also passed with receipt-block timestamp assertions that detect an
+accidental 24-hour clock jump. Claude Opus 5.5 approved the configuration audit;
+the clock assertion addresses its optional test-strengthening recommendation.

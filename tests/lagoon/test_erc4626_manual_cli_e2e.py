@@ -9,6 +9,7 @@ import json
 import os
 from collections.abc import Iterator
 from decimal import Decimal
+from functools import partial
 from pathlib import Path
 from unittest.mock import patch
 
@@ -26,6 +27,8 @@ from typer.main import get_command
 from web3 import Web3
 
 from tradeexecutor.cli.main import app
+from tradeexecutor.cli.commands import perform_test_trade as perform_test_trade_command
+from tradeexecutor.cli.testtrade import make_test_trade
 from tradeexecutor.ethereum.vault.vault_routing import VaultRouting
 from tradeexecutor.state.state import State
 from tradeexecutor.state.store import JSONFileStore
@@ -79,9 +82,12 @@ def manual_runtime(anvil_fork_pool: AnvilForkPool, tmp_path_factory: TempPathFac
 
 
 @pytest.fixture()
-def manual_environment(manual_runtime: tuple[dict, Web3]) -> Iterator[dict]:
+def manual_environment(manual_runtime: tuple[dict, Web3], monkeypatch: MonkeyPatch) -> Iterator[dict]:
     """Restore funded custody and a fresh state file around each CLI scenario."""
     environment, web3 = manual_runtime
+    # Keep the real CLI, routing and receipts, but use the helper's existing
+    # clock argument to test immediate exits without a public test-only option.
+    monkeypatch.setattr(perform_test_trade_command, "make_test_trade", partial(make_test_trade, anvil_time_skip_seconds=0))
     state_path = Path(environment["STATE_FILE"])
     saved = state_path.read_bytes()
     snapshot = web3.provider.make_request("evm_snapshot", [])["result"]
@@ -97,12 +103,13 @@ def test_perform_test_trade_erc4626_round_trip(manual_environment: dict, manual_
     """Run the manual tutorial matrix and return the investor capital through the public CLI.
 
     1. Open and separately close each implementation through the public commands.
-    2. Check receipt amounts, exhausted shares and clean accounts after every row.
+    2. Check receipt amounts, immediate-exit timing, exhausted shares and clean accounts.
     3. Verify only forced settlement refreshes a below-tolerance NAV change with an empty queue.
     4. Redeem the investor and reconcile actual returned USDC against protocol cash flows.
     """
     # 1. Open and separately close each implementation through the public commands.
     cli = get_command(app)
+    web3 = manual_runtime[1]
     state_path = Path(manual_environment["STATE_FILE"])
     for pair in load_universe().iterate_pairs():
         selector = f"(arbitrum, {pair.pool_address})"
@@ -114,14 +121,18 @@ def test_perform_test_trade_erc4626_round_trip(manual_environment: dict, manual_
         assert buy.executed_reserve == Decimal(1)
         assert buy.executed_quantity > 0
         assert position_phase(opened, load_universe(), pair.pool_address) == "close"
-        cli.main(args=["perform-test-trade", "--pair", selector, "--close-only", "--no-test-short", "--anvil-time-skip-seconds", "0"], standalone_mode=False)
+        cli.main(args=["perform-test-trade", "--pair", selector, "--close-only", "--no-test-short"], standalone_mode=False)
 
-        # 2. Check receipt amounts, exhausted shares and clean accounts after every row.
+        # 2. Check receipt amounts, immediate-exit timing, exhausted shares and clean accounts.
         closed = State.read_json_file(state_path)
         assert not closed.portfolio.open_positions
         assert not closed.portfolio.frozen_positions
         final = closed.portfolio.closed_positions[position.position_id]
         sell = final.get_last_trade()
+        buy_timestamp = web3.eth.get_block(buy.blockchain_transactions[-1].block_number)["timestamp"]
+        sell_timestamp = web3.eth.get_block(sell.blockchain_transactions[-1].block_number)["timestamp"]
+        # Allow ordinary RPC/test latency, but detect the helper's default 24h jump.
+        assert 0 <= sell_timestamp - buy_timestamp < 3600
         assert sell.is_success() and sell.is_test()
         assert sell.executed_quantity == -buy.executed_quantity
         assert sell.executed_reserve > 0
@@ -132,7 +143,6 @@ def test_perform_test_trade_erc4626_round_trip(manual_environment: dict, manual_
         assert exit_result.value.code == 0
 
     # 3. Verify only forced settlement refreshes a below-tolerance NAV change with an empty queue.
-    web3 = manual_runtime[1]
     wallet = HotWallet.from_private_key(manual_environment["PRIVATE_KEY"])
     token = fetch_erc20_details(web3, USDC_NATIVE_TOKEN[42161])
     assert manual_main("audit") == 0
