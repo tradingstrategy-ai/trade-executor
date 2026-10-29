@@ -189,10 +189,11 @@ covers the whole life, including the loss, because `total_invested` and
 | `tradeexecutor/exchange_account/state.py` | `open_exchange_account_position()` mints into an existing state |
 | `tradeexecutor/strategy/position_internal_share_price.py` (buy branch) | New series on a deposit into a zero-priced position |
 | `tradeexecutor/state/position.py` | Flow-neutral `profit_usd`; closed-position split and money-weighted closed % |
-| `tradeexecutor/testing/lighter_core.py` | `FakeLighterCore(withdrawal_fee=...)`: credit the Safe the amount minus the fee, in both withdrawal paths (lines 247 and 302) |
 | `tradeexecutor/testing/lighter_share_price_timelines.py` (new) | The timelines of the state unit tests as data, a driver that applies their events to a `State` through the executor's own code, and the invariant checks; shared by the unit tests and the manual chart script |
 | `tradeexecutor/strategy/chart/standard/exchange_account.py` (new) | `exchange_account_share_price(input: ChartInput) -> Figure`: one exchange-account position's share price, units, value and USD profit over time, with flow markers |
 | `scripts/lagoon/manual-lighter-share-price-charts.py` (new) | Manual chart inspection, below |
+| `tradeexecutor/testing/lighter_scripted_transfers.py` | `verify_lighter_scripted_transfers()` checks each account's USD profit is minus the fees it paid |
+| `tradeexecutor/cli/commands/perform_test_trade.py` | `--amount` converted to `Decimal` through `str`; see "Bugs found and fixed" |
 | `README-Lighter.md`, `docs/lagoon-lighter-deployment.md` | The two figures, under strategy accounting |
 | `CHANGELOG.md` | One dated line |
 
@@ -234,7 +235,7 @@ event through the code the executor uses:
 | Opening, placeholder or real | `open_exchange_account_position()` |
 | Deposit, withdrawal (with a Safe credit below the debit) | `create_exchange_account_transfer()`, `complete_exchange_account_transfer()` |
 | Transfer between accounts, with a fee | `create_exchange_account_funding()`, `complete_exchange_account_funding()` |
-| Gain or loss | `ExchangeAccountValuator` with a stub account-value function, as `test_exchange_account_share_price.py` does |
+| Gain or loss | `ExchangeAccountSyncModel.sync_positions()`, the `correct-accounts` path, with a stub account-value function; it takes the event's timestamp, so balance updates and statistics share the replay's clock |
 | Write-off and close | `close_exchange_account_position()` |
 
 **One test, parametrised over the timelines.** The timelines, their events
@@ -261,12 +262,12 @@ computed with the current share-price functions plus the proposed
 - a share-price state serialised without `total_withdrawn` loads as `None`,
   keeps the current formula and stays `None` through a valuation, a funding
   outflow and a withdrawal;
-- a rejected repeat completion of a funding leaves both accounts' units and
-  `total_withdrawn` unchanged, and a verified recovery of a started or
-  failed funding counts the outflow once (extending the recovery case of
-  `test_lighter_funding_trade.py`);
-- after timeline G, `PositionStatistics` from `calculate_position_statistics()`
-  carries the figures in `profit_usd` and `internal_profit_usd`.
+- a verified recovery of a failed funding counts the outflow once, and a
+  repeated completion is refused and leaves both accounts' shares and
+  `total_withdrawn` unchanged;
+- after the funding chain, the master's last `PositionStatistics` carries
+  the figures in `profit_usd`, `internal_profit_usd` and `profitability`, and
+  its chart renders to a non-empty PNG.
 
 ### Anvil fork with the Typer CLI
 
@@ -275,28 +276,33 @@ uses the shared Ethereum fork and the simulated Lighter Core
 (`FakeLighterCore`) through the `prepare_tutorial()` and `run_cli()` helpers
 of `tradeexecutor/testing/lighter_tutorial.py`, like
 `test_lagoon_lighter_cli_manual_e2e.py`. Every Ethereum effect is real; the
-fake sequencer charges its 0.5 USDC transfer fee. One test function deploys
-once and walks one timeline across the three accounts:
+fake sequencer charges its 0.5 USDC transfer fee, and every `--pair` funding
+takes that fee from the master. One test function deploys once, subscribes
+20 USDC and walks one timeline across the three accounts:
 
-| Step | Command or action | Timeline covered |
-|------|-------------------|------------------|
-| 1 | `lagoon-deploy-vault`, `init`, `correct-accounts --process-redemption`, subscribe with `lagoon-settle` | E on the master: the activation deposit seeds it |
-| 2 | `perform-test-trade --pair "(ethereum, lighter, LIGHTER-trend, USDC)" --buy-only` | A Safe deposit to the master and a funding with a fee |
-| 3 | Credit trend's account in the fake core; `correct-accounts` | A gain, booked by the correct-accounts sync path |
-| 4 | Fund arb; credit its account in the fake core; `lagoon-settle`; fund arb again | A, with the gain booked by the settlement valuation path |
-| 5 | `perform-test-trade --lighter-transfer trend:arb --buy-only` | D: transfer between sub-accounts, fee on trend |
-| 6 | Debit arb's account; `correct-accounts`; `lighter-move-funds --lighter-account-index <arb>` for half its balance | B |
-| 7 | Set trend's account to zero; `correct-accounts`; fund trend again | H: must not crash |
-| 8 | `withdrawal_fee` set in the fake core; `lighter-move-funds` withdraws the master's free balance | F |
-| 9 | Withdraw arb entirely, fund it again, credit it; `correct-accounts` | C |
-| 10 | Withdraw every account; `lagoon-redeem` | Final vault check |
+| Step | Command or action | Covers |
+|------|-------------------|--------|
+| 1 | `lagoon-deploy-vault`, `init`, `correct-accounts --process-redemption`, subscribe with `lagoon-settle`, then `perform-test-trade --single-pair --buy-only` tops up the master by 4 | E on the master: the activation deposit seeds it |
+| 2 | `perform-test-trade --pair "(ethereum, lighter, LIGHTER-trend, USDC)" --buy-only --amount 4`; credit trend 0.4 in the fake core; `correct-accounts` | A deposit and a funding with a fee; a gain booked by the correct-accounts sync path |
+| 3 | Fund arb 3; credit it 0.3; `lagoon-settle`; fund arb 3.3 | A, with the gain booked by the settlement valuation path |
+| 4 | `perform-test-trade --lighter-transfer trend:arb --buy-only --amount 2.2` | D: a transfer between sub-accounts, fee on trend |
+| 5 | Debit arb 0.88; `correct-accounts`; `lighter-move-funds --lighter-account-index <arb>` withdraws 3.96, half | B |
+| 6 | Set trend to zero; `correct-accounts`; fund trend 2 | H: a new series, no crash |
+| 7 | Withdraw arb's 3.96; fund it 2; credit it 0.2; `correct-accounts` | C |
+| 8 | Withdraw every account with `lighter-move-funds`; `lagoon-redeem` | Final vault check |
 
-After every step the test reads the state file and asserts the four
-invariants and each position's units, return % and USD profit. After step 10
-the per-position USD profits sum to the gains and losses injected into the
-fake core minus the fees the fake core charged, which also equals the
-deployer's final USDC minus its starting USDC, before gas and within
-Lagoon's share rounding.
+After every step the test reads the state file and checks that each
+tracked account's USD profit equals the gains and losses injected into it
+minus the fees it paid, and that the share price of every account the step
+did not revalue stays put, except a fee payer's, which falls by the fee over
+its value when the fee was charged. At the end the profits are master −2.5
+(five transfer fees), trend −1.8 and arb −0.38, and they sum to the
+deployer's USDC change, within Lagoon's share rounding.
+
+A withdrawal fee is not exercised here: `lighter-move-funds` refuses a
+withdrawal whose claimable amount differs from the request, on the master's
+secure path and a sub-account's L1 path alike. Timeline F covers it through
+the state helpers.
 
 The scripted-strategy flows through `start` are covered by extending
 `verify_lighter_scripted_transfers()`, so
@@ -425,21 +431,14 @@ designed, with the deviations and findings below.
 
 ### Deviations from the plan
 
-- **Valuations in the unit timelines** run through
-  `ExchangeAccountSyncModel.sync_positions()`, the `correct-accounts` path,
-  not `ExchangeAccountValuator`: the sync model takes the event's timestamp,
-  so balance updates and statistics share the replay's clock in the charts.
-  The valuator path is covered by the scripted-transfer and CLI fork tests.
-- **States rebuilt from history** by `migrate_share_price_state()` keep
-  `total_withdrawn` unknown, like states saved before the change.
-- **No withdrawal fee in the CLI fork test.** `lighter-move-funds` refuses a
-  withdrawal whose claimable amount differs from the request, on both the
-  master's secure path and a sub-account's L1 path, so a short credit cannot
-  happen through the CLI today. Timeline F covers the accounting through the
-  state helpers, which accept a credit below the debit. The planned
-  `FakeLighterCore(withdrawal_fee=...)` setting was dropped as unused.
+- **Withdrawal fee in the CLI fork test.** The planned
+  `FakeLighterCore(withdrawal_fee=...)` setting was dropped: the CLI cannot
+  complete a withdrawal credited below its request, see the fork test
+  section.
 - **Recovery** is tested in the new module rather than by extending
   `test_lighter_funding_trade.py`.
+- **States rebuilt from history** by `migrate_share_price_state()` keep
+  `total_withdrawn` unknown, like states saved before the change.
 
 ### Bugs found and fixed
 
