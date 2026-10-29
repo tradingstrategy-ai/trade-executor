@@ -5,8 +5,11 @@ This test runs the same commands in the same order on the fixed Ethereum
 fork, with only Lighter's sequencer faked: deployment with a key backup,
 subscription through ``lagoon-settle``, sub-account funding with
 ``perform-test-trade --pair``, a ``--lighter-transfer`` between the
-sub-accounts, the unwind through ``lighter-move-funds`` and
-``lagoon-redeem``, and the ``lighter_manual`` helpers the script calls.
+sub-accounts, the audit of clean books with ``check-wallet``,
+``correct-accounts`` and ``lagoon-settle``, the detection and correction of
+a trader's transfer and a direct Safe deposit the executor did not make, the
+unwind through ``lighter-move-funds`` and ``lagoon-redeem``, and the
+``lighter_manual`` helpers the script calls.
 
 The fake sequencer charges a 0.5 USDC transfer fee. The amounts are larger
 than the script's, and the master gets a 1 USDC top-up, so every account
@@ -23,6 +26,7 @@ from pathlib import Path
 
 import pytest
 from eth_defi.provider.anvil import AnvilLaunch
+from eth_defi.provider.receipt import wait_for_transaction_receipt_robust
 from eth_defi.testing.anvil_fork_pool import AnvilForkPool
 from eth_defi.testing.evm_snapshot_fixture import evm_snapshot_revert
 from eth_defi.testing.fork_blocks import ETHEREUM_MIDNIGHT_BLOCK
@@ -68,6 +72,10 @@ FUNDING_USDC = Decimal(3)
 MASTER_TOP_UP_USDC = Decimal(1)
 #: USDC moved from trend to arb.
 TRANSFER_USDC = Decimal(1)
+#: USDC the trader of arb moves back to trend outside the executor.
+TRADER_TRANSFER_USDC = Decimal(1)
+#: USDC the deployer sends straight to the Safe outside the vault.
+DONATION_USDC = Decimal(1)
 #: The simulated fee of one transfer between Lighter accounts.
 FEE = SIMULATED_TRANSFER_FEE_USDC
 
@@ -124,24 +132,29 @@ def test_cli_manual_lighter_sub_accounts_flow(tutorial: Tutorial, tmp_path: Path
     The script is mainnet only, so its command sequence is tested here on the
     fork: if any command, option or helper it relies on changes, this fails.
 
-    1. Record the deployer's starting balances with check-funds
+    1. Fund the deployer for the donation too and record its starting balances with check-funds
     2. Deploy with a key backup directory and check the backups are removed after success
-    3. Initialise the state and book the activation deposit
+    3. Initialise the state, book the activation deposit and check the wallet
     4. Subscribe with request-deposit, lagoon-settle and claim-shares, and check a rerun does not subscribe again
     5. Fund trend and arb with perform-test-trade --pair --buy-only
     6. Check --lighter-transfer refuses before moving anything without every signer
     7. Move USDC from trend to arb with --lighter-transfer and check the booking
-    8. Check a withdrawal started without a recorded request is reported as unconfirmed, not resumed
-    9. Top up the master, then withdraw every account with lighter-move-funds answered over stdin
-    10. Redeem every share, sweep the Safe and reconcile the deployer's balances
+    8. Audit clean books: check-wallet, a correct-accounts that books nothing, and a settled NAV that matches the balances
+    9. Move USDC between the sub-accounts with the trader's key, check check-accounts detects it and correct-accounts books it
+    10. Send USDC straight to the Safe, check check-accounts detects it, correct-accounts books it and the NAV rises
+    11. Check a withdrawal started without a recorded request is reported as unconfirmed, not resumed
+    12. Top up the master, then withdraw every account with lighter-move-funds answered over stdin
+    13. Redeem every share, sweep the Safe and reconcile the deployer's balances
     """
     run_dir = tutorial.config.run_dir
     start_file = run_dir / "start.env"
     for key, value in get_base_environment(tutorial).items():
         monkeypatch.setenv(key, value)
 
-    # 1. Record the deployer's starting balances with check-funds
-    assert manual(capsys, "check-funds", "--usdc", str(SUBSCRIPTION_USDC + 1), "--start-file", str(start_file)) == "ok"
+    # 1. Fund the deployer for the donation too and record its starting balances with check-funds
+    tx_hash = tutorial.usdc.transfer(tutorial.deployer.address, DONATION_USDC).transact({"from": USDC_WHALE[1]})
+    wait_for_transaction_receipt_robust(tutorial.web3, tx_hash)
+    assert manual(capsys, "check-funds", "--usdc", str(SUBSCRIPTION_USDC + 1 + DONATION_USDC), "--start-file", str(start_file)) == "ok"
     assert manual(capsys, "check-funds", "--usdc", "1", "--start-file", str(start_file)) == "recorded", "A rerun must keep the original start balances"
     assert lighter_manual.main(["check-funds", "--usdc", "1", "--min-eth", "100000000", "--start-file", str(run_dir / "short.env")]) == 1, "Too little ETH must fail"
 
@@ -157,10 +170,11 @@ def test_cli_manual_lighter_sub_accounts_flow(tutorial: Tutorial, tmp_path: Path
     for key, value in env.items():
         monkeypatch.setenv(key, value)
 
-    # 3. Initialise the state and book the activation deposit
+    # 3. Initialise the state, book the activation deposit and check the wallet
     run_cli(["init"], env)
     run_cli(["correct-accounts", "--process-redemption"], env)
     run_cli(["check-accounts"], env)
+    run_cli(["check-wallet"], env)
     expect(capsys, safe=Decimal(0), master=Decimal(1), trend=Decimal(0), arb=Decimal(0))
 
     # 4. Subscribe with request-deposit, lagoon-settle and claim-shares, and check a rerun does not subscribe again
@@ -200,7 +214,49 @@ def test_cli_manual_lighter_sub_accounts_flow(tutorial: Tutorial, tmp_path: Path
     assert int(booked.pair.get_exchange_account_id()) == arb and int(booked.other_data["funding_source_account_id"]) == trend
     assert booked.executed_quantity == pytest.approx(TRANSFER_USDC) and Decimal(booked.other_data["funding_fee_usdc"]) == FEE
 
-    # 8. Check a withdrawal started without a recorded request is reported as unconfirmed, not resumed
+    # 8. Audit clean books: check-wallet, a correct-accounts that books nothing, and a settled NAV that matches the balances
+    run_cli(["check-wallet"], env)
+    books = manual(capsys, "books")
+    run_cli(["correct-accounts", "--dry-run"], env)
+    run_cli(["correct-accounts"], env)
+    assert manual(capsys, "books") == books, "correct-accounts must book nothing when the books match"
+    run_cli(["check-accounts"], env)
+    run_cli(["lagoon-settle"], env)
+    nav = SUBSCRIPTION_USDC + 1 - 3 * FEE
+    assert manual(capsys, "expect-nav", "--nav", str(nav)) == "ok"
+    run_cli(["show-valuation"], env)
+    run_cli(["show-positions"], env)
+
+    # 9. Move USDC between the sub-accounts with the trader's key, check check-accounts detects it and correct-accounts books it
+    trader_marker = run_dir / "trader-transfer"
+    assert manual(capsys, "trader-transfer", "arb", "trend", str(TRADER_TRANSFER_USDC), "--marker", str(trader_marker)) == "sent"
+    assert manual(capsys, "trader-transfer", "arb", "trend", str(TRADER_TRANSFER_USDC), "--marker", str(trader_marker)) == "sent-earlier", "A rerun must not send again"
+    trend_left += TRADER_TRANSFER_USDC
+    arb_left = FUNDING_USDC + TRANSFER_USDC - TRADER_TRANSFER_USDC - FEE
+    expect(capsys, trend=trend_left, arb=arb_left)
+    assert run_cli(["check-accounts"], env, check=False) == 1, "check-accounts must report a transfer the executor did not make"
+    run_cli(["correct-accounts", "--dry-run"], env)
+    assert manual(capsys, "books") == books, "A dry run must book nothing"
+    run_cli(["correct-accounts"], env)
+    assert manual(capsys, "books") != books, "correct-accounts must book the new equity"
+    run_cli(["check-accounts"], env)
+    run_cli(["lagoon-settle"], env)
+    nav -= FEE
+    assert manual(capsys, "expect-nav", "--nav", str(nav)) == "ok"
+
+    # 10. Send USDC straight to the Safe, check check-accounts detects it, correct-accounts books it and the NAV rises
+    donation_marker = run_dir / "donation"
+    assert manual(capsys, "donate", str(DONATION_USDC), "--marker", str(donation_marker)) == "sent"
+    assert manual(capsys, "donate", str(DONATION_USDC), "--marker", str(donation_marker)) == "sent-earlier", "A rerun must not send again"
+    expect(capsys, safe=SUBSCRIPTION_USDC - 2 * FUNDING_USDC + DONATION_USDC)
+    assert run_cli(["check-accounts"], env, check=False) == 1, "check-accounts must report USDC the vault did not book"
+    run_cli(["correct-accounts"], env)
+    run_cli(["check-accounts"], env)
+    run_cli(["lagoon-settle"], env)
+    nav += DONATION_USDC
+    assert manual(capsys, "expect-nav", "--nav", str(nav)) == "ok"
+
+    # 11. Check a withdrawal started without a recorded request is reported as unconfirmed, not resumed
     saved = tmp_path / "state-before-unconfirmed.json"
     shutil.copyfile(tutorial.state_file, saved)
     state = State.read_json_file(tutorial.state_file)
@@ -211,12 +267,12 @@ def test_cli_manual_lighter_sub_accounts_flow(tutorial: Tutorial, tmp_path: Path
     assert manual(capsys, "withdrawal-plan", str(arb)) == f"unconfirmed {started.trade_id}"
     shutil.copyfile(saved, tutorial.state_file)
 
-    # 9. Top up the master, then withdraw every account with lighter-move-funds answered over stdin
+    # 12. Top up the master, then withdraw every account with lighter-move-funds answered over stdin
     run_cli(["perform-test-trade", "--single-pair", "--buy-only", "--amount", str(MASTER_TOP_UP_USDC)], env)
-    expect(capsys, master=MASTER_TOP_UP_USDC, trend=trend_left, arb=FUNDING_USDC + TRANSFER_USDC)
-    safe = SUBSCRIPTION_USDC - 2 * FUNDING_USDC - MASTER_TOP_UP_USDC
+    expect(capsys, master=MASTER_TOP_UP_USDC, trend=trend_left, arb=arb_left)
+    safe = SUBSCRIPTION_USDC - 2 * FUNDING_USDC + DONATION_USDC - MASTER_TOP_UP_USDC
     for name, index, amount, options in (
-        ("arb", arb, FUNDING_USDC + TRANSFER_USDC, ["--lighter-account-index", str(arb)]),
+        ("arb", arb, arb_left, ["--lighter-account-index", str(arb)]),
         ("trend", trend, trend_left, ["--lighter-account-index", str(trend)]),
         ("master", master, MASTER_TOP_UP_USDC, []),
     ):
@@ -229,10 +285,11 @@ def test_cli_manual_lighter_sub_accounts_flow(tutorial: Tutorial, tmp_path: Path
         assert manual(capsys, "withdrawal-plan", str(index)) == "skip"
         expect(capsys, safe=safe, **{name: Decimal(0)})
 
-    # 10. Redeem every share, sweep the Safe and reconcile the deployer's balances
+    # 13. Redeem every share, sweep the Safe and reconcile the deployer's balances
     assert manual(capsys, "redeem-status") == "redeem"
     run_cli(["lagoon-redeem"], env)
     assert manual(capsys, "redeem-status") == "done"
     assert manual(capsys, "sweep-safe").startswith("swept ")
-    assert manual(capsys, "reconcile", "--start-file", str(start_file)) == "ok"
+    run_cli(["check-wallet"], env)
+    assert manual(capsys, "reconcile", "--start-file", str(start_file), "--trader-transfer-marker", str(trader_marker)) == "ok"
     assert tutorial.usdc.fetch_balance_of(tutorial.safe_address) == 0

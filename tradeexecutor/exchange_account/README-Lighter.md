@@ -322,8 +322,12 @@ start fresh.
 does the same lifecycle with command-line commands only, as an operator
 would: deployment, `perform-test-trade` for the sub-account funding and a
 sub-account to sub-account transfer, `lighter-move-funds` for the
-withdrawals and `lagoon-redeem`. Its investor actions, balance checks and
-final sweep are subcommands of
+withdrawals and `lagoon-redeem`. In between it checks that `check-wallet`,
+`correct-accounts` and `lagoon-settle` leave clean books unchanged, and that
+`check-accounts` reports, and `correct-accounts` books, a trader's transfer
+between sub-accounts and USDC sent straight to the Safe. Its investor
+actions, out-of-band changes, balance and NAV checks and final sweep are
+subcommands of
 [`lighter_manual.py`](../testing/lighter_manual.py), which the Python
 tutorials share for the sweep and the reconciliation. It is live only;
 `tests/lagoon/test_lagoon_lighter_cli_manual_e2e.py` runs its command

@@ -50,8 +50,8 @@ The deployer must hold:
 
 | Asset | Amount | Why |
 |-------|--------|-----|
-| ETH | A full vault deployment with verification plus about 20 transactions; about 0.011 ETH in the comparable 2026-10-26 tutorial run | Safe, vault and guard deployment, Lighter activation, three `changePubKey` calls, deposits, L1 withdrawals, settlement and redemption. |
-| Native Ethereum USDC | `1 + SUBSCRIPTION_USDC`, 11 by default | 1 USDC is the fixed Lighter activation subscription made by the deployment; the rest is the test capital. |
+| ETH | A full vault deployment with verification plus about 30 transactions; 0.0074 ETH in the 2026-10-28 run, before steps 8 to 10 added three NAV settlements and a transfer | Safe, vault and guard deployment, Lighter activation, three `changePubKey` calls, deposits, L1 withdrawals, settlement and redemption. |
+| Native Ethereum USDC | `1 + SUBSCRIPTION_USDC + 1`, 12 by default | 1 USDC is the fixed Lighter activation subscription made by the deployment, then the test capital, and 1 USDC sent straight to the Safe in step 10; all of it comes back. |
 
 `USDC` means native Ethereum USDC, `0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48`.
 
@@ -219,9 +219,13 @@ private key or an RPC URL.
 | `balances [--json]` | Prints the deployer's USDC and ETH, the Safe's USDC and every Safe-owned Lighter account's equity and free collateral from the public API. | `fetch_lighter_balances()` and the log lines in `run_start()`. |
 | `expect-balances safe=6 master=1 trend=1 arb=3 [--tolerance 0.01]` | Exits 0 when the observed Safe USDC and Lighter equities match, 1 otherwise. `arb<=1` accepts any balance up to the bound, for accounts left below the withdrawal minimum. Used after every money step as the assertion and before every money step as the resume guard. | The balance assertions in the tutorials. |
 | `withdrawal-plan ACCOUNT_INDEX` | Prints `resume` when the state has a withdrawal in flight on the account, `withdraw <amount>` with its free USDC, or `skip` below Lighter's 1 USDC withdrawal minimum. Equity alone cannot decide: a submitted withdrawal already reads zero. | Reading observed balances instead of planned numbers. |
-| `redeem-status` | Prints `redeem` while the deployer holds shares or has a redemption in progress, `done` otherwise, so a rerun of step 11 does not call `lagoon-redeem` with nothing to redeem. | The checks in `redeem_all_shares()`. |
+| `redeem-status` | Prints `redeem` while the deployer holds shares or has a redemption in progress, `done` otherwise, so a rerun of step 14 does not call `lagoon-redeem` with nothing to redeem. | The checks in `redeem_all_shares()`. |
 | `sweep-safe` | Checks no shares are outstanding and nothing is claimable, then moves the Safe's USDC and ETH to the deployer with `sweep_safe_to_owner()`. | `sweep_safe()`. |
-| `reconcile` | Explains the deployer's USDC and ETH change since `start.env`: fees from the state, Lighter dust, gas; fails on an unexplained difference above 2 raw units. | `reconcile_deployer_balances()`. |
+| `reconcile` | Explains the deployer's USDC and ETH change since `start.env`: fees from the state and, with `--trader-transfer-marker`, the fee of the trader's transfer, Lighter dust, gas; fails on an unexplained difference above 2 raw units. | `reconcile_deployer_balances()`. |
+| `trader-transfer SOURCE DESTINATION AMOUNT --marker FILE` | Sends a same-owner Lighter transfer signed with `SOURCE`'s hand-over record from `LIGHTER_SUB_ACCOUNT_OPERATOR_RECORD_FILES`, as the sub-account's trader would, and waits for it in the history. The marker is written before the request and holds the hash and fee after, so a rerun prints `sent-earlier` instead of sending again. | A trader's own transfer, which no command makes. |
+| `donate AMOUNT --marker FILE` | Transfers USDC from the deployer straight to the Safe, with the same marker rule. | An airdrop or mistaken transfer to the Safe. |
+| `expect-nav [--nav N]` | After a settlement with no flows waiting: exits 0 when the vault's total assets equal the Safe's USDC plus every Lighter account's equity, the state's total equity and `N`, within 0.01 USDC. | Reading the NAV by hand. |
+| `books` | Prints `balance-updates <count>`, so the script can tell whether `correct-accounts` booked anything. | Diffing the state by hand. |
 
 `lagoon-settle` settles the deposit and `lagoon-redeem` requests, settles and
 claims the redemption, so neither needs Python.
@@ -277,7 +281,7 @@ the rerun.
 After the command, `check-accounts` and `expect-balances` with the target
 balances must pass before the marker is written.
 
-**Withdrawals, steps 8 to 10.** `lighter-move-funds` saves a withdrawal as
+**Withdrawals, steps 11 to 13.** `lighter-move-funds` saves a withdrawal as
 a pending trade before it submits the request and records the request id
 after, and `check-accounts` fails while it is pending, so the
 `check-accounts` precondition does not apply here. `withdrawal-plan` decides:
@@ -309,30 +313,42 @@ activation leaves 1 USDC on the master and the Safe empty.
 
 | # | Step | Command or action | Expected balances afterwards (Safe, master, trend, arb) |
 |---|------|-------------------|---------------------------------------------------------|
-| 0 | Check prerequisites | Shell: required variables set, `jq` and `poetry` found, `SIMULATE` not `true`; `lighter_manual check-funds --usdc 11`, which also requires 0.02 ETH by default and writes `start.env`. | Deployer has 0.02 ETH and 11 USDC or more. |
+| 0 | Check prerequisites | Shell: required variables set, `jq` and `poetry` found, `SIMULATE` not `true`; `lighter_manual check-funds --usdc 12`, which also requires 0.02 ETH by default and writes `start.env`. | Deployer has 0.02 ETH and 12 USDC or more. |
 | 1 | Deploy the vault with two keyed sub-accounts | `printf 'y\n' \| trade-executor lagoon-deploy-vault --strategy-file strategies/test_only/lighter_multi_subaccount_strategy.py --generate-lighter-api-key --lighter-api-key-index 4 --lighter-sub-account-api-key-index 4 --vault-record-file "$RUN_DIR/vault-record.txt" --lighter-key-backup-dir "$RUN_DIR/key-backup" --fund-name "Lighter CLI test" --fund-symbol LCLI --multisig-owners "$DEPLOYER" --any-asset --performance-fee 0 --management-fee 0` (the Etherscan key comes from `ETHERSCAN_API_KEY`, not the command line) with `EXECUTOR_ID=lighter-cli`, `STATE_FILE=$RUN_DIR/state/lighter-cli.json`, `PRIVATE_KEY`, `JSON_RPC_ETHEREUM`, `SIMULATE=false`. | 0, 1, 0, 0. Records and the artefact written as in the layout table. |
 | 2 | Read the deployment | `jq` on `$RUN_DIR/state/lighter-cli.deployment.json` writes `deployment.env`: `VAULT_ADDRESS`, `VAULT_ADAPTER_ADDRESS` (module), `LIGHTER_MASTER_INDEX`, `LIGHTER_TREND_INDEX`, `LIGHTER_ARB_INDEX`; the script sources it and exports `ASSET_MANAGEMENT_MODE=lagoon`, `LIGHTER_OPERATOR_RECORD_FILE`, `LIGHTER_SUB_ACCOUNT_OPERATOR_RECORD_FILES`. | Every later command has its configuration. |
-| 3 | Initialise state and account for the activation | `trade-executor init`; `printf 'y\n' \| trade-executor correct-accounts --process-redemption`; `trade-executor check-accounts`. | 0, 1, 0, 0. State has one position per account; the 1 USDC activation flow is booked. |
+| 3 | Initialise state and account for the activation | `trade-executor init`; `printf 'y\n' \| trade-executor correct-accounts --process-redemption`; `trade-executor check-accounts`; `trade-executor check-wallet`. | 0, 1, 0, 0. State has one position per account; the 1 USDC activation flow is booked. |
 | 4 | Subscribe test capital and claim the shares | `lighter_manual request-deposit 10`; if it printed `requested` or `pending`, `trade-executor lagoon-settle` (after change 1; until then `printf 'y\n' \| trade-executor correct-accounts --process-redemption`); `lighter_manual claim-shares`; `trade-executor check-accounts`. | 10, 1, 0, 0. Deployer holds the shares. |
 | 5 | Fund the first sub-account | `trade-executor perform-test-trade --pair "(ethereum, lighter, LIGHTER-trend, USDC)" --buy-only --amount 2`. | 8, 1, 2, 0. Two trades: a master deposit and a `trend` funding. |
 | 6 | Fund the second sub-account | `trade-executor perform-test-trade --pair "(ethereum, lighter, LIGHTER-arb, USDC)" --buy-only --amount 2`. | 6, 1, 2, 2. |
 | 7 | Transfer between sub-accounts | `trade-executor perform-test-trade --lighter-transfer trend:arb --buy-only --amount 1`, with both hand-over files in `LIGHTER_SUB_ACCOUNT_OPERATOR_RECORD_FILES`. | 6, 1, 1, 3. One trade on `arb` with the amount booked from `trend`. |
-| 8 | Withdraw `arb` to the Safe | `plan=$(lighter_manual withdrawal-plan "$LIGHTER_ARB_INDEX")`; for `withdraw <amount>`, `printf 'w\n%s\ny\n' "$amount" \| trade-executor lighter-move-funds --lighter-account-index "$LIGHTER_ARB_INDEX"`; for `resume`, the same command without answers. The L1 `withdraw(subIndex)` sends the given amount, the whole observed balance here; it took about 29 minutes live. | 9, 1, 1, 0. |
-| 9 | Withdraw `trend` to the Safe | Same, reading `trend`'s own plan, with `--lighter-account-index "$LIGHTER_TREND_INDEX"`. | 10, 1, 0, 0. |
-| 10 | Withdraw the master to the Safe | `plan=$(lighter_manual withdrawal-plan "$LIGHTER_MASTER_INDEX")`; `printf 'w\n%s\ny\n' "$amount" \| trade-executor lighter-move-funds` without `LIGHTER_ACCOUNT_INDEX`. The secure withdrawal requests the given amount and leaves nothing behind; it took about 20 minutes live. | 11, 0, 0, 0. An account `withdrawal-plan` skipped keeps its sub-minimum balance and its target becomes `<=1`. |
-| 11 | Redeem all shares | `trade-executor lagoon-redeem` requests redemption of every deployer share, posts NAV, settles and claims. With `STATE_FILE` set it finds every recorded Lighter account itself and writes off aggregate Lighter equity below 5 USDC from the NAV; `--lighter-account-index` is not needed. `trade-executor check-accounts`. | Deployer holds 11 USDC minus fees and dust; vault total supply 0; Safe 0. |
-| 12 | Sweep and reconcile | `lighter_manual sweep-safe`; `lighter_manual reconcile`. | Safe holds nothing; unexplained USDC at most 2 raw units; gas spent printed. |
+| 8 | Audit clean books | `trade-executor check-accounts`; `trade-executor check-wallet`; `lighter_manual books`; `trade-executor correct-accounts --dry-run`; `printf 'y\n' \| trade-executor correct-accounts`; `lighter_manual books` must print the same count; `trade-executor lagoon-settle`; `lighter_manual expect-nav --nav 11`; `trade-executor show-valuation`; `trade-executor show-positions`. | 6, 1, 1, 3. NAV 11 equals the balances and the state's total equity; no new balance update. |
+| 9 | A trader's transfer outside the executor | `lighter_manual trader-transfer arb trend 1 --marker "$RUN_DIR/trader-transfer"` signs with `arb`'s hand-over record; `trade-executor check-accounts` must exit 1; `correct-accounts --dry-run` must book nothing; `printf 'y\n' \| trade-executor correct-accounts`; `check-accounts`; `lagoon-settle`; `expect-nav --nav 11`. | 6, 1, 2, 2. Both sub-accounts corrected by balance updates; NAV unchanged. |
+| 10 | USDC sent straight to the Safe | `lighter_manual donate 1 --marker "$RUN_DIR/donation"` transfers from the deployer without a deposit request; `check-accounts` must exit 1; `correct-accounts --dry-run`; `printf 'y\n' \| trade-executor correct-accounts`; `check-accounts`; `lagoon-settle`; `expect-nav --nav 12`. | 7, 1, 2, 2. The reserve correction raises the NAV and the share price. |
+| 11 | Withdraw `arb` to the Safe | `plan=$(lighter_manual withdrawal-plan "$LIGHTER_ARB_INDEX")`; for `withdraw <amount>`, `printf 'w\n%s\ny\n' "$amount" \| trade-executor lighter-move-funds --lighter-account-index "$LIGHTER_ARB_INDEX"`; for `resume`, the same command without answers. The L1 `withdraw(subIndex)` sends the given amount, the whole observed balance here; it took about 29 minutes live. | 9, 1, 2, 0. |
+| 12 | Withdraw `trend` to the Safe | Same, reading `trend`'s own plan, with `--lighter-account-index "$LIGHTER_TREND_INDEX"`. | 11, 1, 0, 0. |
+| 13 | Withdraw the master to the Safe | `plan=$(lighter_manual withdrawal-plan "$LIGHTER_MASTER_INDEX")`; `printf 'w\n%s\ny\n' "$amount" \| trade-executor lighter-move-funds` without `LIGHTER_ACCOUNT_INDEX`. The secure withdrawal requests the given amount and leaves nothing behind; it took about 20 minutes live. | 12, 0, 0, 0. An account `withdrawal-plan` skipped keeps its sub-minimum balance and its target becomes `<=1`. |
+| 14 | Redeem all shares | `trade-executor lagoon-redeem` requests redemption of every deployer share, posts NAV, settles and claims. With `STATE_FILE` set it finds every recorded Lighter account itself and writes off aggregate Lighter equity below 5 USDC from the NAV; `--lighter-account-index` is not needed. `trade-executor check-accounts`; `trade-executor check-wallet`. | Deployer holds 12 USDC minus fees and dust; vault total supply 0; Safe 0. |
+| 15 | Sweep and reconcile | `lighter_manual sweep-safe`; `lighter_manual reconcile --trader-transfer-marker "$RUN_DIR/trader-transfer"`, which counts the fee of step 9's transfer. | Safe holds nothing; unexplained USDC at most 2 raw units; gas spent printed. |
 
-Steps 4 to 10 use the guards in "Resuming a run safely", and steps 5 to 10
-are followed by `check-accounts`; the table omits those for brevity.
+Steps 4 to 7 and 11 to 13 use the guards in "Resuming a run safely", and
+steps 5 to 13 are followed by `check-accounts`; the table omits those for
+brevity. Steps 9 and 10 write a marker file before they move money, so a
+rerun never sends again; it skips the expected `check-accounts` failure,
+since an earlier run may already have booked the correction.
 
-Steps 8 to 10 are the slow part: about an hour and twenty minutes of
+Steps 8 to 10 were added on 2026-10-29, after the first live run, to stress
+the accounting commands: `correct-accounts` must book nothing on clean
+books, `lagoon-settle` must post the NAV the balances and the books show,
+and `check-accounts` must report, and `correct-accounts` repair, a change
+made outside the executor on Lighter and on the Safe.
+
+Steps 11 to 13 are the slow part: about an hour and twenty minutes of
 waiting, in which the commands poll with their own timeouts
 (`LIGHTER_WITHDRAW_TIMEOUT`). The script prints the time each withdrawal
 started so an operator can estimate the wait. The three withdrawals run one
 after another.
 
-Alternatives for steps 8 to 10: `perform-test-trade --all-pairs --amount 1`
+Alternatives for steps 11 to 13: `perform-test-trade --all-pairs --amount 1`
 without `--buy-only` round-trips every account, but it deposits first and
 withdraws only its own amount, so it does not drain the balances left by
 steps 5 to 7. One or more `start` cycles after requesting the redemption
@@ -562,7 +578,10 @@ including the master's secure withdrawal through `lighter-move-funds`.
 ## Live run
 
 The script passed on Ethereum mainnet on 2026-10-28, run directory
-`lighter-cli-20261028-130827`, in 1 hour 55 minutes:
+`lighter-cli-20261028-130827`, in 1 hour 55 minutes. That version had no
+steps 8 to 10, so its withdrawals were steps 8 to 10, the redemption step
+11 and the sweep step 12, as numbered below. Steps 8 to 10 have run only on
+the fork test so far.
 
 | Step | Duration | Result |
 |------|----------|--------|

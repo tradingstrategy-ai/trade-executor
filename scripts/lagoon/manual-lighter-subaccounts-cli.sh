@@ -7,22 +7,35 @@
 # top to bottom: every step says what it does to the vault and why, and
 # every action is a plain command you could type yourself.
 #
-# Steps, with their durations in the live run of 2026-10-28 (1h 55m in total):
+# Steps, with their durations in the live run of 2026-10-28 (1h 55m in
+# total). Steps 8 to 10 and the check-wallet runs were added after that run
+# and have no live duration yet; each takes a few minutes.
 #
 #  0. Check the deployer can pay for the run                            6s
 #  1. Deploy the vault: Safe, Lagoon vault, guard, Lighter master
 #     account and two sub-accounts, each with its own API key      14m 44s
 #  2. Read the deployment's public addresses and Lighter indices        0s
-#  3. Initialise executor state and book the 1 USDC activation         40s
+#  3. Initialise executor state, book the 1 USDC activation and
+#     check the wallet                                                40s
 #  4. Subscribe test capital to the vault and claim the shares      4m 49s
 #  5. perform-test-trade: fund sub-account "trend" from the Safe    3m 11s
 #  6. perform-test-trade: fund sub-account "arb" from the Safe      3m 13s
 #  7. perform-test-trade: move USDC from "trend" to "arb"           1m 02s
-#  8. Withdraw "arb" to the Safe (Lighter L1 withdrawal)           29m 31s
-#  9. Withdraw "trend" to the Safe (Lighter L1 withdrawal)         28m 45s
-# 10. Withdraw the master to the Safe (secure withdrawal)          24m 14s
-# 11. Redeem every share back to the deployer                       4m 14s
-# 12. Sweep the Safe and reconcile the deployer's balances             13s
+#  8. Audit clean books: check-wallet, correct-accounts books
+#     nothing, lagoon-settle posts the NAV the balances show
+#  9. arb's trader moves USDC to "trend" outside the executor:
+#     check-accounts reports it, correct-accounts books it
+# 10. USDC reaches the Safe outside the vault: check-accounts
+#     reports it, correct-accounts books it, the NAV rises
+# 11. Withdraw "arb" to the Safe (Lighter L1 withdrawal)           29m 31s
+# 12. Withdraw "trend" to the Safe (Lighter L1 withdrawal)         28m 45s
+# 13. Withdraw the master to the Safe (secure withdrawal)          24m 14s
+# 14. Redeem every share back to the deployer, check the wallet     4m 14s
+# 15. Sweep the Safe and reconcile the deployer's balances             13s
+#
+# The live transaction links below use the step numbers of that run, in
+# which the withdrawals were steps 8 to 10, the redemption step 11 and the
+# sweep step 12.
 #
 # The three withdrawals are mostly Lighter's withdrawal delay; the rest is
 # Ethereum confirmations. Gas prices were about 0.1 gwei.
@@ -69,11 +82,12 @@
 #
 # Real money, Ethereum mainnet only: Lighter's sequencer cannot run on a
 # fork, so there is no simulation mode. The deployer needs ETH for a full
-# Lagoon vault deployment with contract verification plus about 20 more
-# transactions (the comparable tutorial run on 2026-10-26 spent about
-# 0.011 ETH of gas), and 1 + SUBSCRIPTION_USDC native USDC (11 by default). It
-# gets the USDC back apart from Lighter transfer fees, if Lighter charges
-# any, and dust below Lighter's 1 USDC withdrawal minimum.
+# Lagoon vault deployment with contract verification plus about 30 more
+# transactions (the run of 2026-10-28 spent 0.0074 ETH of gas before steps
+# 8 to 10 added three NAV settlements and a transfer), and
+# 1 + SUBSCRIPTION_USDC + 1 native USDC (12 by default). It gets the USDC
+# back apart from Lighter transfer fees, if Lighter charges any, and dust
+# below Lighter's 1 USDC withdrawal minimum.
 #
 # Inputs (export before running):
 #
@@ -233,15 +247,26 @@ LIGHTER_MANUAL=(poetry run python -m tradeexecutor.testing.lighter_manual)
 # Amounts of the custody steps, in whole USDC.
 FUNDING_USDC=2
 TRANSFER_USDC=1
+# Moved back from arb to trend by arb's trader in step 9, outside the executor.
+TRADER_TRANSFER_USDC=1
+# Sent by the deployer straight to the Safe in step 10, outside the vault.
+DONATION_USDC=1
 
-# Expected balances after each step, as safe, master, trend and arb.
-# The 1 USDC activation deposit stays on the master until step 10. They
-# assume no fee for a transfer between accounts of one owner, as Lighter
-# charged none on 2026-10-26; with a fee, the balance checks stop the run
-# after the transfer and show the difference, with the books still correct.
+# Expected balances after each step, as safe, master, trend and arb, and
+# the vault's NAV. The 1 USDC activation deposit stays on the master until
+# step 13. They assume no fee for a transfer between accounts of one owner,
+# as Lighter charged none on 2026-10-26 and 2026-10-28; with a fee, the
+# balance checks stop the run after the transfer and show the difference.
 SAFE_AFTER_SUBSCRIPTION=$SUBSCRIPTION_USDC
 SAFE_AFTER_TREND=$((SUBSCRIPTION_USDC - FUNDING_USDC))
 SAFE_AFTER_ARB=$((SUBSCRIPTION_USDC - 2 * FUNDING_USDC))
+SAFE_AFTER_DONATION=$((SAFE_AFTER_ARB + DONATION_USDC))
+TREND_AFTER_TRANSFER=$((FUNDING_USDC - TRANSFER_USDC))
+ARB_AFTER_TRANSFER=$((FUNDING_USDC + TRANSFER_USDC))
+TREND_AFTER_TRADER=$((TREND_AFTER_TRANSFER + TRADER_TRANSFER_USDC))
+ARB_AFTER_TRADER=$((ARB_AFTER_TRANSFER - TRADER_TRANSFER_USDC))
+NAV_INVESTED=$((1 + SUBSCRIPTION_USDC))
+NAV_AFTER_DONATION=$((NAV_INVESTED + DONATION_USDC))
 
 # ---------------------------------------------------------------------------
 # Observability: one log, timestamps, step banners, echoed and timed
@@ -379,8 +404,11 @@ recovery_hint() {
     case "$CURRENT_STEP" in
         1) echo "A rerun does not deploy again while $RUN_DIR/deploy-started exists without a deployment artefact. Generated keys, if any, are in $LIGHTER_KEY_BACKUP_DIR. Inspect $RUN_LOG and the Safe first." ;;
         5|6|7) echo "If check-accounts reports an unbooked deposit or transfer: source $ENV_FILE && printf 'y\\n' | poetry run trade-executor correct-accounts, then rerun." ;;
-        8|9|10) echo "A withdrawal with a recorded request is resumed by rerunning. One without is reported as unconfirmed; see README-Lighter.md, Recovery." ;;
-        11) echo "lagoon-redeem resumes a pending or claimable redemption when rerun." ;;
+        8) echo "Nothing moved in this step; rerun. A failed NAV check means lagoon-settle posted a NAV that differs from the balances or the books: inspect with trade-executor show-valuation and check-accounts." ;;
+        9) echo "If $RUN_DIR/trader-transfer records only 'requested', the transfer may or may not have been sent: check arb's transfer history on Lighter, then delete the marker only if nothing was sent. Otherwise rerun; it does not send again." ;;
+        10) echo "If the donation transaction failed, delete $RUN_DIR/donation and rerun; if it succeeded, rerun and it does not send again." ;;
+        11|12|13) echo "A withdrawal with a recorded request is resumed by rerunning. One without is reported as unconfirmed; see README-Lighter.md, Recovery." ;;
+        14) echo "lagoon-redeem resumes a pending or claimable redemption when rerun." ;;
         *) echo "Fix the cause shown above, then rerun." ;;
     esac
 }
@@ -468,7 +496,7 @@ finish_money_step() {
     done_step "$number"
 }
 
-# Withdraw one Lighter account to the Safe (steps 8 to 10). The decision
+# Withdraw one Lighter account to the Safe (steps 11 to 13). The decision
 # comes from withdrawal-plan: resume a withdrawal an earlier run submitted,
 # withdraw the account's free USDC, or skip an account below Lighter's
 # 1 USDC withdrawal minimum. A withdrawal an earlier run started without
@@ -517,6 +545,52 @@ withdraw_account() {
     done_step "$number"
 }
 
+# check-accounts must fail now: the chain changed outside the executor
+# (steps 9 and 10). Passing would mean it cannot see such a change.
+expect_unclean_books() {
+    local what="$1"
+    log "check-accounts must now report $what; a failure below is expected"
+    if run --probe poetry run trade-executor check-accounts; then
+        fail "check-accounts did not report $what: its books match a chain that changed outside the executor."
+    fi
+    log "check-accounts reported $what, as it should"
+}
+
+# correct-accounts in its two modes. --dry-run must book nothing; the real
+# run books whatever differs, answering y to its confirmation, and leaves
+# books that check-accounts accepts. With "clean", the books matched
+# before, so the real run must book nothing too.
+#
+#   check_correct_accounts [clean]
+check_correct_accounts() {
+    local expectation="${1:-}" before after
+    LAST_COMMAND="lighter_manual books"
+    before="$(run "${LIGHTER_MANUAL[@]}" books)"
+    run poetry run trade-executor correct-accounts --dry-run
+    LAST_COMMAND="lighter_manual books"
+    after="$(run "${LIGHTER_MANUAL[@]}" books)"
+    [ "$before" = "$after" ] || fail "correct-accounts --dry-run changed the books: $before before, $after after."
+    run --stdin "y\n" poetry run trade-executor correct-accounts
+    LAST_COMMAND="lighter_manual books"
+    after="$(run "${LIGHTER_MANUAL[@]}" books)"
+    if [ "$expectation" = "clean" ] && [ "$before" != "$after" ]; then
+        fail "correct-accounts booked something although the books matched: $before before, $after after. Inspect the new balance updates with trade-executor show-positions."
+    fi
+    log "Books before correct-accounts: $before, after: $after"
+    run poetry run trade-executor check-accounts
+}
+
+# Post the NAV with lagoon-settle while no deposit or redemption waits, then
+# check it equals the expected amount, the live balances and the books.
+#
+#   settle_and_check_nav NAV
+settle_and_check_nav() {
+    local nav="$1"
+    run poetry run trade-executor lagoon-settle
+    run "${LIGHTER_MANUAL[@]}" expect-nav --nav "$nav" >/dev/null
+    run poetry run trade-executor show-valuation
+}
+
 write_env_file
 log "Lighter sub-account manual test, run directory $RUN_DIR"
 log "Log of this run: $RUN_LOG"
@@ -526,12 +600,13 @@ log "Repository commit $(git rev-parse --short HEAD 2>/dev/null || echo unknown)
 # Step 0: check the deployer can pay for the run
 # ---------------------------------------------------------------------------
 #
-# The deployer pays 1 USDC for Lighter's activation deposit and subscribes
-# SUBSCRIPTION_USDC as test capital, plus gas. check-funds also records the
-# starting balances in start.env; step 12 reconciles against them.
+# The deployer pays 1 USDC for Lighter's activation deposit, subscribes
+# SUBSCRIPTION_USDC as test capital and sends DONATION_USDC straight to the
+# Safe in step 10, plus gas. check-funds also records the starting
+# balances in start.env; step 15 reconciles against them.
 
 if step 0 "Check the deployer's ETH and USDC"; then
-    run poetry run python -m tradeexecutor.testing.lighter_manual check-funds --usdc "$((SUBSCRIPTION_USDC + 1))" --start-file "$RUN_DIR/start.env"
+    run poetry run python -m tradeexecutor.testing.lighter_manual check-funds --usdc "$((1 + SUBSCRIPTION_USDC + DONATION_USDC))" --start-file "$RUN_DIR/start.env"
     done_step 0
 fi
 
@@ -631,7 +706,8 @@ log "Lighter arb    $LIGHTER_ARB_INDEX: https://mainnet.zklighter.elliot.ai/api/
 # correct-accounts --process-redemption books what deployment already did:
 # the 1 USDC investor subscription and the 1 USDC now on the master. It asks
 # before applying the corrections; the script answers y. check-accounts then
-# confirms the books match the chain.
+# confirms the books match the chain, and check-wallet that the asset
+# manager has gas and that no deposit or redemption is left unclaimed.
 
 if step 3 "Initialise executor state and book the Lighter activation deposit"; then
     if [ -s "$STATE_FILE" ]; then
@@ -641,6 +717,7 @@ if step 3 "Initialise executor state and book the Lighter activation deposit"; t
     fi
     run --stdin "y\n" poetry run trade-executor correct-accounts --process-redemption
     run poetry run trade-executor check-accounts
+    run poetry run trade-executor check-wallet
     run poetry run python -m tradeexecutor.testing.lighter_manual expect-balances safe=0 master=1 trend=0 arb=0 >/dev/null
     show_balances
     done_step 3
@@ -737,7 +814,89 @@ if step 7 "Move $TRANSFER_USDC USDC from sub-account trend to arb" "a minute: on
 fi
 
 # ---------------------------------------------------------------------------
-# Steps 8 to 10: withdraw every Lighter account to the Safe
+# Step 8: audit clean books with capital on every account
+# ---------------------------------------------------------------------------
+#
+# With USDC on the Safe, the master and both sub-accounts, the books must
+# need no correction: correct-accounts, in dry-run mode and for real, books
+# nothing. lagoon-settle then posts the NAV with no deposit or redemption
+# waiting, and expect-nav checks the vault's NAV equals the Safe's USDC plus
+# every Lighter account's equity and the state's total equity. check-wallet
+# checks the asset manager's gas and the vault's queues. Only gas is spent.
+
+if step 8 "Audit the books, the NAV and the wallet with capital on every account" "a few minutes: one NAV settlement"; then
+    run poetry run trade-executor check-accounts
+    run poetry run trade-executor check-wallet
+    check_correct_accounts clean
+    settle_and_check_nav "$NAV_INVESTED"
+    run poetry run trade-executor show-positions
+    show_balances
+    done_step 8
+fi
+
+# ---------------------------------------------------------------------------
+# Step 9: a trader moves USDC between sub-accounts outside the executor
+# ---------------------------------------------------------------------------
+#
+# A sub-account's trader holds its API key and may move USDC to another
+# account of the Safe at any time; the executor books nothing. trader-transfer
+# signs such a transfer with arb's own key, from its hand-over record.
+# check-accounts must then report both sub-accounts differing from the books,
+# and correct-accounts must accept Lighter's equity as balance updates. The
+# NAV does not change: the USDC only moved between the vault's accounts.
+# A marker file stops a rerun from sending the transfer again.
+
+if step 9 "Move $TRADER_TRANSFER_USDC USDC from arb to trend with arb's own key, outside the executor" "a minute: one Lighter transfer and corrections"; then
+    if [ ! -e "$RUN_DIR/trader-transfer" ]; then
+        run poetry run trade-executor check-accounts
+        run "${LIGHTER_MANUAL[@]}" expect-balances "safe=$SAFE_AFTER_ARB" master=1 "trend=$TREND_AFTER_TRANSFER" "arb=$ARB_AFTER_TRANSFER" >/dev/null
+    fi
+    LAST_COMMAND="lighter_manual trader-transfer"
+    sent="$(run poetry run python -m tradeexecutor.testing.lighter_manual trader-transfer arb trend "$TRADER_TRANSFER_USDC" --marker "$RUN_DIR/trader-transfer" --timeout "$LIGHTER_TRANSFER_TIMEOUT")"
+    run poetry run python -m tradeexecutor.testing.lighter_manual expect-balances "safe=$SAFE_AFTER_ARB" master=1 "trend=$TREND_AFTER_TRADER" "arb=$ARB_AFTER_TRADER" >/dev/null
+    if [ "$sent" = "sent" ]; then
+        expect_unclean_books "the transfer arb's trader made"
+    else
+        log "An earlier run sent the transfer; its corrections may already be booked"
+    fi
+    check_correct_accounts
+    settle_and_check_nav "$NAV_INVESTED"
+    show_balances
+    done_step 9
+fi
+
+# ---------------------------------------------------------------------------
+# Step 10: USDC reaches the Safe outside the vault
+# ---------------------------------------------------------------------------
+#
+# The deployer sends USDC straight to the Safe, as an airdrop or a mistaken
+# transfer would, without a deposit request. No investor subscribed it, so
+# it is income the executor has not booked: check-accounts must report the
+# reserve differing from the books, correct-accounts books it, and the next
+# NAV settlement raises the share price. The deployer gets it back with its
+# shares in step 14. A marker file stops a rerun from sending again.
+
+if step 10 "Send $DONATION_USDC USDC straight to the Safe, outside the vault" "a few minutes: one Ethereum transfer, corrections and a NAV settlement"; then
+    if [ ! -e "$RUN_DIR/donation" ]; then
+        run poetry run trade-executor check-accounts
+        run "${LIGHTER_MANUAL[@]}" expect-balances "safe=$SAFE_AFTER_ARB" >/dev/null
+    fi
+    LAST_COMMAND="lighter_manual donate"
+    sent="$(run poetry run python -m tradeexecutor.testing.lighter_manual donate "$DONATION_USDC" --marker "$RUN_DIR/donation")"
+    run poetry run python -m tradeexecutor.testing.lighter_manual expect-balances "safe=$SAFE_AFTER_DONATION" master=1 "trend=$TREND_AFTER_TRADER" "arb=$ARB_AFTER_TRADER" >/dev/null
+    if [ "$sent" = "sent" ]; then
+        expect_unclean_books "USDC the vault did not book"
+    else
+        log "An earlier run sent the USDC; its correction may already be booked"
+    fi
+    check_correct_accounts
+    settle_and_check_nav "$NAV_AFTER_DONATION"
+    show_balances
+    done_step 10
+fi
+
+# ---------------------------------------------------------------------------
+# Steps 11 to 13: withdraw every Lighter account to the Safe
 # ---------------------------------------------------------------------------
 #
 # lighter-move-funds withdraws one account's free USDC to the Safe and
@@ -748,29 +907,30 @@ fi
 # direction, the amount and a confirmation; the script answers with w, the
 # account's free USDC and y.
 
-if step 8 "Withdraw sub-account arb to the Safe" "25 to 35 minutes: Lighter L1 withdrawal delay"; then
-    withdraw_account 8 arb "$LIGHTER_ARB_INDEX" sub-account
+if step 11 "Withdraw sub-account arb to the Safe" "25 to 35 minutes: Lighter L1 withdrawal delay"; then
+    withdraw_account 11 arb "$LIGHTER_ARB_INDEX" sub-account
 fi
 
-if step 9 "Withdraw sub-account trend to the Safe" "25 to 35 minutes: Lighter L1 withdrawal delay"; then
-    withdraw_account 9 trend "$LIGHTER_TREND_INDEX" sub-account
+if step 12 "Withdraw sub-account trend to the Safe" "25 to 35 minutes: Lighter L1 withdrawal delay"; then
+    withdraw_account 12 trend "$LIGHTER_TREND_INDEX" sub-account
 fi
 
-if step 10 "Withdraw the master to the Safe" "15 to 25 minutes: Lighter secure withdrawal delay"; then
-    withdraw_account 10 master "$LIGHTER_MASTER_INDEX"
+if step 13 "Withdraw the master to the Safe" "15 to 25 minutes: Lighter secure withdrawal delay"; then
+    withdraw_account 13 master "$LIGHTER_MASTER_INDEX"
 fi
 
 # ---------------------------------------------------------------------------
-# Step 11: redeem every share back to the deployer
+# Step 14: redeem every share back to the deployer
 # ---------------------------------------------------------------------------
 #
 # lagoon-redeem requests redemption of all the deployer's shares, posts NAV,
 # settles the redemption queue and claims the USDC. It finds every Lighter
 # account from the state. Lagoon pays a redemption only from the Safe, so
 # lagoon-redeem leaves Lighter balances that total less than 5 USDC, such as
-# dust below the withdrawal minimum, out of the NAV it posts.
+# dust below the withdrawal minimum, out of the NAV it posts. check-wallet
+# then confirms no deposit or redemption is left unclaimed.
 
-if step 11 "Redeem all shares back to the deployer" "a few minutes"; then
+if step 14 "Redeem all shares back to the deployer" "a few minutes"; then
     LAST_COMMAND="lighter_manual redeem-status"
     redeem_status="$(run poetry run python -m tradeexecutor.testing.lighter_manual redeem-status)"
     if [ "$redeem_status" = "redeem" ]; then
@@ -779,24 +939,26 @@ if step 11 "Redeem all shares back to the deployer" "a few minutes"; then
         log "The deployer has no shares or redemption left; nothing to redeem"
     fi
     run poetry run trade-executor check-accounts
+    run poetry run trade-executor check-wallet
     show_balances
-    done_step 11
+    done_step 14
 fi
 
 # ---------------------------------------------------------------------------
-# Step 12: sweep the Safe and reconcile
+# Step 15: sweep the Safe and reconcile
 # ---------------------------------------------------------------------------
 #
 # Once no shares are outstanding, whatever the Safe still holds belongs to
 # nobody but its owner: sweep-safe moves it to the deployer. reconcile then
-# explains the deployer's USDC change since step 0 by Lighter fees and dust,
-# and fails on anything else.
+# explains the deployer's USDC change since step 0 by Lighter fees, including
+# the fee of the trader's transfer in step 9, and dust, and fails on
+# anything else.
 
-if step 12 "Sweep the Safe and reconcile the deployer's balances"; then
+if step 15 "Sweep the Safe and reconcile the deployer's balances"; then
     run poetry run python -m tradeexecutor.testing.lighter_manual sweep-safe >/dev/null
-    run poetry run python -m tradeexecutor.testing.lighter_manual reconcile --start-file "$RUN_DIR/start.env" >/dev/null
+    run poetry run python -m tradeexecutor.testing.lighter_manual reconcile --start-file "$RUN_DIR/start.env" --trader-transfer-marker "$RUN_DIR/trader-transfer" >/dev/null
     show_balances
-    done_step 12
+    done_step 15
 fi
 
 log "Manual test complete. Artefacts, records and the log are in $RUN_DIR"

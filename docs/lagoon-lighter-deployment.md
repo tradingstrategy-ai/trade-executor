@@ -123,6 +123,16 @@ funds each sub-account and moves USDC between them with
 `perform-test-trade`, then withdraws every account, redeems all shares and
 returns the capital to the deployer.
 
+Between the funding and the withdrawals it stresses the accounting
+commands. With capital on every account, `correct-accounts` must book
+nothing, `lagoon-settle` must post a NAV equal to the Safe's and the Lighter
+accounts' balances and to the state's total equity, and `check-wallet` must
+pass. Then it changes the vault twice outside the executor: a trader moves
+1 USDC between the sub-accounts with its own key, and the deployer sends
+1 USDC straight to the Safe. After each, `check-accounts` must fail,
+`correct-accounts` must book the difference and `lagoon-settle` must post
+the NAV that follows.
+
 | Variable | Required | Use |
 |----------|----------|-----|
 | `JSON_RPC_ETHEREUM` | Yes | Ethereum mainnet archive RPC |
@@ -137,10 +147,10 @@ The script unsets every other `JSON_RPC_*` variable before it runs a command:
 `lagoon-deploy-vault --strategy-file` connects to each one it finds and
 refuses to deploy when they differ from the chains the strategy declares.
 
-The deployer needs `1 + SUBSCRIPTION_USDC` native USDC and ETH for the
-deployment, its contract verification and about 20 further transactions;
-the comparable live tutorial run on 2026-10-26 spent about 0.011 ETH of gas.
-The USDC comes back apart from any Lighter transfer fee and dust below the
+The deployer needs `1 + SUBSCRIPTION_USDC + 1` native USDC and ETH for the
+deployment, its contract verification and about 30 further transactions;
+the run of 2026-10-28 spent 0.0074 ETH of gas before the accounting steps
+were added. The USDC comes back apart from any Lighter transfer fee and dust below the
 1 USDC withdrawal minimum. A run takes about two hours, most of it the three
 Lighter withdrawals. The script prints a timestamped banner per step, every
 command before it runs and how long it took, a heartbeat while a command
@@ -162,7 +172,9 @@ in the same order on an Ethereum fork with a simulated Lighter sequencer.
 It passed live on 2026-10-28 in 1 hour 55 minutes: deployment took 15
 minutes, the two sub-account L1 withdrawals 28 and 27 minutes and the
 master's secure withdrawal 23 minutes. Lighter charged no transfer fee, the
-deployer got all 11 USDC back, and the run spent 0.0074 ETH of gas.
+deployer got all 11 USDC back, and the run spent 0.0074 ETH of gas. The
+accounting steps were added afterwards and have run only on the fork test
+so far.
 
 ## Pair a compatible strategy module
 

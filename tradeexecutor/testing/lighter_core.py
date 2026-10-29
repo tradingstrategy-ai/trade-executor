@@ -365,6 +365,8 @@ class FakeLighterCore:
             ("tradeexecutor.cli.commands.lighter_move_funds.request_usdc_withdrawal_from_lighter_account", self.request_usdc_withdrawal_from_lighter_account),
             ("tradeexecutor.cli.commands.lighter_move_funds.request_lighter_withdrawal", self.request_lighter_withdrawal),
             ("tradeexecutor.cli.commands.lighter_move_funds.wait_for_lighter_withdrawal_claimable", self.wait_for_lighter_withdrawal_claimable),
+            ("tradeexecutor.testing.lighter_manual.request_lighter_funding_transfer", self.request_lighter_funding_transfer),
+            ("tradeexecutor.testing.lighter_manual.wait_for_lighter_funding_transfer", self.wait_for_lighter_funding_transfer),
         ]
 
 

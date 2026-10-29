@@ -21,6 +21,7 @@ Nothing here prints a private key or an RPC URL.
 """
 
 import argparse
+import asyncio
 import json
 import logging
 import os
@@ -45,6 +46,7 @@ from web3.contract.contract import ContractFunction
 
 from tradeexecutor.exchange_account import lighter as lighter_reads
 from tradeexecutor.exchange_account.lighter import LIGHTER_DUST_USDC
+from tradeexecutor.exchange_account.lighter_operator import load_lighter_sub_account_operator_records, request_lighter_funding_transfer, wait_for_lighter_funding_transfer
 from tradeexecutor.exchange_account.sub_account import get_lighter_account_resolution
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
@@ -76,6 +78,9 @@ DEFAULT_MIN_ETH = Decimal("0.02")
 
 #: USDC precision used for amounts passed back to the shell.
 USDC_QUANTUM = Decimal("0.000001")
+
+#: Default wait for a transfer between Lighter accounts to show in the sender's history, in seconds.
+DEFAULT_TRANSFER_TIMEOUT = 600
 
 
 class ManualTestError(RuntimeError):
@@ -460,7 +465,7 @@ def reconcile_deployer(
     :param start_eth_wei:
         Deployer ETH before the run, in wei.
     :param fees:
-        Lighter transfer fees paid during the run.
+        Lighter transfer fees paid during the run, by the executor and by a trader.
     :param lighter_dust:
         USDC still on the Safe's Lighter accounts.
     :return:
@@ -494,8 +499,123 @@ def command_reconcile(args: argparse.Namespace) -> int:
     state = State.read_json_file(Path(require_env("STATE_FILE")))
     equity = fetch_lighter_equity(vault.safe_address)
     lighter_dust = sum((equity[index].get_total() for index in accounts.values() if index in equity), Decimal(0))
-    reconcile_deployer(web3, deployer, usdc, Decimal(start["START_USDC"]), int(start["START_ETH_WEI"]), get_lighter_funding_fees(state), lighter_dust)
+    fees = get_lighter_funding_fees(state)
+    if args.trader_transfer_marker is not None and args.trader_transfer_marker.exists():
+        fields = args.trader_transfer_marker.read_text().split()
+        if len(fields) != 2:
+            raise ManualTestError(f"{args.trader_transfer_marker} records no completed transfer; check the sub-account's transfer history on Lighter")
+        fees += Decimal(fields[1])
+    reconcile_deployer(web3, deployer, usdc, Decimal(start["START_USDC"]), int(start["START_ETH_WEI"]), fees, lighter_dust)
     print("ok")
+    return 0
+
+
+def command_trader_transfer(args: argparse.Namespace) -> int:
+    """Move USDC between two sub-accounts the way their trader would, outside the executor.
+
+    A trader holds its sub-account's API key and may move USDC to another
+    account of the same Safe at any time. The executor does not see such a
+    transfer: it is booked nowhere, so ``check-accounts`` must report both
+    accounts differing from the books and ``correct-accounts`` must accept
+    the new equity. The transfer is signed with the sending sub-account's
+    hand-over record from ``LIGHTER_SUB_ACCOUNT_OPERATOR_RECORD_FILES``.
+
+    The marker file is written before the request and records its hash and
+    Lighter's fee after, so a rerun never sends a second transfer: it prints
+    ``sent-earlier`` and the caller checks the balances instead. ``reconcile``
+    reads the fee from it, as no executor trade records it.
+
+    Prints ``sent`` or ``sent-earlier``.
+    """
+    marker: Path = args.marker
+    if marker.exists():
+        logger.info("%s records a transfer an earlier run started: %s; not sending another", marker, marker.read_text().strip() or "no hash recorded")
+        print("sent-earlier")
+        return 0
+    accounts = get_account_labels()
+    for name in (args.source, args.destination):
+        if name not in accounts:
+            raise ManualTestError(f"Unknown Lighter account {name!r}; expected one of {sorted(accounts)}")
+    signers = load_lighter_sub_account_operator_records(require_env("LIGHTER_SUB_ACCOUNT_OPERATOR_RECORD_FILES"))
+    signer = signers.get(accounts[args.source])
+    if signer is None:
+        raise ManualTestError(f"No hand-over record for sub-account {args.source} in LIGHTER_SUB_ACCOUNT_OPERATOR_RECORD_FILES")
+    marker.write_text("requested\n")
+    request = asyncio.run(request_lighter_funding_transfer(signer, accounts[args.destination], args.amount))
+    marker.write_text(f"{request.tx_hash} {request.fee}\n")
+    logger.info("Sent %s USDC from %s to %s with %s's own key, fee %s: %s", args.amount, args.source, args.destination, args.source, request.fee, request.tx_hash)
+    asyncio.run(wait_for_lighter_funding_transfer(signer, request.tx_hash, args.timeout))
+    logger.info("Lighter executed the transfer; the executor has not booked it")
+    print("sent")
+    return 0
+
+
+def command_donate(args: argparse.Namespace) -> int:
+    """Send USDC from the deployer straight to the Safe, bypassing the vault.
+
+    USDC that reaches the Safe without a deposit request is income the
+    executor did not book: ``check-accounts`` must report the reserve
+    differing from the books, and once ``correct-accounts`` books it, the
+    next settlement raises the share price. The marker file is written
+    before the transfer, so a rerun never sends twice.
+
+    Prints ``sent`` or ``sent-earlier``.
+    """
+    marker: Path = args.marker
+    if marker.exists():
+        logger.info("%s records a donation an earlier run started; not sending another", marker)
+        print("sent-earlier")
+        return 0
+    web3, deployer, usdc = connect()
+    vault = get_vault(web3)
+    marker.write_text(f"{args.amount}\n")
+    broadcast_and_wait(web3, deployer, usdc.transfer(vault.safe_address, args.amount), f"send {args.amount} USDC straight to the Safe {vault.safe_address}")
+    print("sent")
+    return 0
+
+
+def command_expect_nav(args: argparse.Namespace) -> int:
+    """Check the vault's settled NAV against the live balances and the books.
+
+    Run after ``lagoon-settle`` with no deposit or redemption waiting: the
+    vault's total assets are then the NAV the executor posted, which must
+    equal both the Safe's USDC plus every Lighter account's equity and the
+    state's total equity. With ``--nav`` the NAV must also be that amount.
+
+    Prints ``ok`` or ``mismatch``.
+    """
+    web3, deployer, usdc = connect()
+    vault = get_vault(web3)
+    accounts = get_account_labels()
+    balances = fetch_balances(web3, deployer, usdc, vault, accounts)
+    held = balances["safe"]["usdc"] + sum((balances[name]["equity"] for name in accounts), Decimal(0))
+    nav = vault.fetch_total_assets("latest")
+    state = State.read_json_file(Path(require_env("STATE_FILE")))
+    booked = Decimal(str(state.portfolio.get_total_equity()))
+    rows = [
+        ("Vault total assets (settled NAV)", nav, ""),
+        ("Safe and Lighter accounts", held, "ok" if abs(held - nav) <= args.tolerance else "DIFFERS"),
+        ("State total equity", booked, "ok" if abs(booked - nav) <= args.tolerance else "DIFFERS"),
+    ]
+    if args.nav is not None:
+        rows.append(("Expected NAV", args.nav, "ok" if abs(args.nav - nav) <= args.tolerance else "DIFFERS"))
+    ok = all(row[2] != "DIFFERS" for row in rows)
+    share_price = vault.fetch_share_price("latest")
+    logger.log(logging.INFO if ok else logging.WARNING, "NAV check %s, share price %s:\n%s", "passed" if ok else "failed", share_price, tabulate(rows, headers=["Source", "USDC", ""], tablefmt="simple"))
+    print("ok" if ok else "mismatch")
+    return 0 if ok else 1
+
+
+def command_books(args: argparse.Namespace) -> int:
+    """Print how many balance updates the state holds, to tell whether a command booked anything.
+
+    Prints ``balance-updates <count>``.
+    """
+    state = State.read_json_file(Path(require_env("STATE_FILE")))
+    positions = [*state.portfolio.get_all_positions(), *state.portfolio.reserves.values()]
+    count = sum(len(position.balance_updates) for position in positions)
+    logger.info("The state holds %d balance updates, total equity %s USDC", count, state.portfolio.get_total_equity())
+    print(f"balance-updates {count}")
     return 0
 
 
@@ -540,7 +660,29 @@ def create_parser() -> argparse.ArgumentParser:
 
     reconcile = commands.add_parser("reconcile", help="Explain the deployer's balance change over the run.")
     reconcile.add_argument("--start-file", type=Path, required=True, help="File written by check-funds.")
+    reconcile.add_argument("--trader-transfer-marker", type=Path, help="Marker written by trader-transfer, for the fee of a transfer the executor did not make.")
     reconcile.set_defaults(handler=command_reconcile)
+
+    trader_transfer = commands.add_parser("trader-transfer", help="Move USDC between sub-accounts with the sender's own key, outside the executor.")
+    trader_transfer.add_argument("source", help="Sending sub-account id.")
+    trader_transfer.add_argument("destination", help="Receiving account id, master or a sub-account.")
+    trader_transfer.add_argument("amount", type=parse_usdc, help="USDC to move.")
+    trader_transfer.add_argument("--marker", type=Path, required=True, help="File recording that the transfer was sent.")
+    trader_transfer.add_argument("--timeout", type=int, default=DEFAULT_TRANSFER_TIMEOUT, help="Seconds to wait for the transfer to show in the sender's history.")
+    trader_transfer.set_defaults(handler=command_trader_transfer)
+
+    donate = commands.add_parser("donate", help="Send USDC from the deployer straight to the Safe, outside the vault.")
+    donate.add_argument("amount", type=parse_usdc, help="USDC to send.")
+    donate.add_argument("--marker", type=Path, required=True, help="File recording that the USDC was sent.")
+    donate.set_defaults(handler=command_donate)
+
+    expect_nav = commands.add_parser("expect-nav", help="Check the settled NAV against the live balances and the books.")
+    expect_nav.add_argument("--nav", type=parse_usdc, help="Expected NAV in USDC.")
+    expect_nav.add_argument("--tolerance", type=parse_usdc, default=DEFAULT_TOLERANCE_USDC, help="Allowed difference in USDC.")
+    expect_nav.set_defaults(handler=command_expect_nav)
+
+    books = commands.add_parser("books", help="Print the number of balance updates in the state.")
+    books.set_defaults(handler=command_books)
     return parser
 
 
