@@ -42,6 +42,7 @@ def settle_vault(
     valuation_model: ValuationModel,
     unit_testing=False,
     sync_interest=True,
+    force_valuation: bool = False,
 ):
     """Settle vault logic"""
 
@@ -112,6 +113,7 @@ def settle_vault(
         state,
         list(universe.reserve_assets),
         post_valuation=True,
+        force_valuation=force_valuation,
     )
 
     logger.info("We received balance update events: %s", balance_updates)

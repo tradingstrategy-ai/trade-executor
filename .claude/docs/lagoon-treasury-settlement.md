@@ -17,6 +17,12 @@ transaction before it is sent.
 The empty-queue check also reads the latest Silo balances so a request newer
 than the reorganisation-buffered accounting block is not skipped.
 
+Before a final investor withdrawal, `lagoon-settle --force-valuation` posts the
+calculated NAV even when rounding losses or fees are below the normal tolerance.
+It passes `force_valuation=True` to the treasury sync. Guard budgets, cooldowns,
+frozen-position checks and disabled-broadcast protection still apply. A stale NAV
+slightly above available cash can otherwise leave a full redemption unclaimable.
+
 Settlement is a separate `settleDeposit(uint256)` transaction through
 the TradingStrategyModuleV0. Stock Lagoon v0.5 can settle both queued deposits
 and redemptions through this call. When an empty-queue NAV update is due, the

@@ -6,6 +6,7 @@
 import datetime
 from pathlib import Path
 from typing import Optional
+from typer import Option
 
 from . import shared_options
 from .app import app
@@ -58,6 +59,7 @@ def lagoon_settle(
     unit_testing: bool = shared_options.unit_testing,
     simulate: bool = shared_options.simulate,
     sync_interest: bool = True,
+    force_valuation: bool = Option(False, "--force-valuation", help="Post the calculated NAV even below the usual change threshold, for example before a final investor withdrawal. Guard limits and cooldowns still apply."),
 ):
     """Settle the Lagoon vault NAV and deposits.
 
@@ -184,6 +186,7 @@ def lagoon_settle(
         valuation_model=valuation_model,
         sync_interest=sync_interest,
         execution_context=execution_context,
+        force_valuation=force_valuation,
     )
 
     # Store the test trade data in the strategy history

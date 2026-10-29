@@ -6,6 +6,7 @@ from typing import Callable
 
 from eth_defi.compat import native_datetime_utc_now
 from eth_defi.erc_4626.vault import ERC4626Vault
+from eth_defi.vault.deposit_redeem import VaultFlowUnavailable
 from web3 import Web3
 
 from tradeexecutor.ethereum.vault.vault_routing import (
@@ -160,6 +161,14 @@ class VaultPricing(PricingModel):
                 block_identifier=block_number,
             )
 
+        if estimated_shares <= 0:
+            raise VaultFlowUnavailable(
+                f"Vault {vault.address} deposit quote returned no shares",
+                vault_address=vault.address,
+                direction="deposit",
+                phase="preflight",
+                preflight_result="deposit_zero_shares",
+            )
         price = float(reserve / estimated_shares)
         mid_price = price
 

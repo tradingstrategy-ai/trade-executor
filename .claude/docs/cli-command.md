@@ -2,6 +2,12 @@
 
 This note explains how CLI commands are built in `trade-executor`, which helper functions are considered the standard plumbing, and which common patterns new commands should follow.
 
+Follow the [state persistence rule](../../docs/state-persistence.md): the existing
+executor state is the main mechanism for data, transactions, journaling and
+checkpoints. Reuse its store and callbacks. Ask for explicit user permission
+before adding a separate persistence, journaling or recovery system, including
+for a manual command or tutorial.
+
 ## Where commands live
 
 - Typer app root: `tradeexecutor/cli/commands/app.py`
@@ -484,3 +490,36 @@ Comparing `repair_hypercore_dust` against `prune_state`, `correct_history`, `che
 - The normal mutation pattern is `create_state_store()` for existence checking, then `backup_state()` before edits, then `store.sync(state)`.
 - Commands with a crisp success contract should end with `logger.info("All ok")`; operators look for that line.
 - `strategy_file` can be optional for local-state-only commands, but `id` inference should still route through `prepare_executor_id()` when `state_file` is omitted.
+
+## Synchronous vault test trades
+
+Select a vault by chain and address, including when the same address exists on
+several chains. Separate a deposit from its full exit with:
+
+```shell
+trade-executor perform-test-trade --pair '(arbitrum, 0xVAULT)' --amount 1 --buy-only --no-test-short
+trade-executor perform-test-trade --pair '(arbitrum, 0xVAULT)' --close-only --no-test-short
+```
+
+`--close-only` accepts one home-chain synchronous ERC-4626 pair. It refuses ordinary strategy
+holdings, unresolved trades and custody balances that differ from the test
+position. It does not need reserve cash or a new deposit quote. Protocol capacity
+and rounding checks belong in eth-defi's shared deposit managers.
+
+The command uses the existing pre-broadcast callback and saves state after each
+execution leg and on failure. Run only one state writer. If execution is
+unresolved, inspect and reconcile the recorded transaction before retrying;
+the command does not repair or replace it. Simulation uses a non-writing store.
+
+The [Arbitrum tutorial](../../scripts/lagoon/manual-erc4626-cli.sh) deploys a
+dedicated test vault and returns its investor capital after five round trips.
+Its [funded run report](../../docs/reports/erc4626-manual-live-2026-10-29.md)
+records deployment, transactions and limitations. Before a final investor
+withdrawal, `lagoon-settle --force-valuation` refreshes small NAV changes while
+retaining Guard limits and cooldowns.
+
+When calling `call_create_trading_universe()` from a command, pass
+`strategy_parameters=mod.parameters`; engine 0.5 strategies use these values.
+If HyperSync is behind the chain tip, an unconfirmed-settlement check may defer
+the command. For this small manual run, unsetting `HYPERSYNC_API_KEY` selects the
+existing RPC log reader; retain the state and resume the unfinished leg.

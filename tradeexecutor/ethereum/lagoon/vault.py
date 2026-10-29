@@ -1116,6 +1116,7 @@ class LagoonVaultSyncModel(AddressSyncModel):
         supported_reserves: Optional[list[AssetIdentifier]] = None,
         end_block: BlockNumber | NoneType = None,
         post_valuation=False,
+        force_valuation: bool = False,
     ) -> list[BalanceUpdate]:
         """Sync Lagoon treasury.
 
@@ -1128,6 +1129,10 @@ class LagoonVaultSyncModel(AddressSyncModel):
             Broadcast NAV and settlement when the investor queue is nonempty
             or NAV exceeds the empty-queue tolerance. Treasury reconciliation
             still runs when this is false.
+
+        :param force_valuation:
+            Refresh even a small NAV change before a final withdrawal.
+            Does not bypass Guard settlement limits or cooldowns.
         """
 
         web3 = self.web3
@@ -1263,7 +1268,7 @@ class LagoonVaultSyncModel(AddressSyncModel):
                 flow_manager.fetch_pending_deposit("latest") == 0
                 and flow_manager.fetch_pending_redemption("latest") == 0
             )
-        if queue_is_empty:
+        if queue_is_empty and not force_valuation:
             settled_nav = vault.fetch_total_assets(safe_sync_block)
             nav_change = abs(valuation_decimal - settled_nav)
             below_tolerance = nav_change == 0 or (

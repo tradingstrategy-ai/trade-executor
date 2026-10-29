@@ -87,10 +87,12 @@ def perform_test_trade(
     all_vaults: bool = shared_options.all_vaults,
 
     buy_only: bool = Option(False, "--buy-only/--no-buy-only", help="Only perform the buy side of the test trade - leave position open."),
+    close_only: bool = Option(False, "--close-only", help="Close one home-chain synchronous ERC-4626 test position selected with --pair; do not deposit again."),
     single_pair: bool = Option(False, help="Test single pair in the trading universe."),
     test_short: bool = Option(True, "--test-short/--no-test-short", help="Perform test short trades as well."),
     test_credit_supply: bool = Option(False,"--test-credit-supply/--no-test-credit-supply", help="Deprecated argument. Do not use anymore. Inistead, specify --pair (...lending pair description...)"),
     amount: float = Option(1.0, envvar="AMOUNT", help="The USD value of the test trade. For a Lighter account, 1.0 is Lighter's minimum transfer."),
+    anvil_time_skip_seconds: int = Option(24 * 3600, min=0, help="Seconds to advance an Anvil fork before redemption; use 0 to test an immediate exit. Never advances a live chain."),
     simulate: bool = shared_options.simulate,
     lighter_operator_record_file: Path | None = shared_options.lighter_operator_record_file,
     lighter_sub_account_operator_record_files: str | None = shared_options.lighter_sub_account_operator_record_files,
@@ -115,7 +117,7 @@ def perform_test_trade(
 
     Test all vaults by its vault address:
 
-        trade-executor perform-test-trade --pair "0x959f3807f0aa7921e18c78b00b2819ba91e52fef"
+        trade-executor perform-test-trade --pair "(ethereum, 0x959f3807f0aa7921e18c78b00b2819ba91e52fef)"
 
     Test single vault:
 
@@ -139,12 +141,17 @@ def perform_test_trade(
     custody trade ``start`` would make, and a withdrawal waits up to
     ``LIGHTER_WITHDRAWAL_TIMEOUT`` for Lighter to make it claimable.
 
-    The command saves the state only when it finishes. That is an accepted
-    trade-off for a manual one-off check: an interrupted deposit or transfer
-    shows up in ``check-accounts`` and ``correct-accounts`` books it; an
-    interrupted withdrawal must be claimed into the Safe by hand first, as
-    ``README-Lighter.md`` describes.
+    Live EVM trades save their signed identity before broadcast and save
+    completed legs. Run with one state writer. ``--close-only`` never adds
+    capital and refuses positions containing ordinary strategy trades.
+    For the selected synchronous ERC-4626 pair, unresolved trades require
+    reconciliation before another test trade is made. An interrupted Lighter
+    withdrawal must still be claimed into the Safe as described in README-Lighter.md.
     """
+
+    if close_only:
+        if buy_only or not pair or lending_reserve or single_pair or all_pairs or all_vaults or lighter_transfer:
+            raise ValueError("--close-only requires one --pair and cannot be combined with --buy-only or bulk/transfer selections")
 
     if lighter_transfer:
         assert not (pair or lending_reserve or single_pair or all_pairs or all_vaults), "--lighter-transfer cannot be combined with --pair, --lending-reserve, --single-pair, --all-pairs or --all-vaults"
@@ -242,13 +249,19 @@ def perform_test_trade(
     if not state_file:
         state_file = f"state/{id}.json"
 
-    store = create_state_store(Path(state_file))
+    store = create_state_store(Path(state_file), simulate=simulate)
 
     if store.is_pristine():
         assert name, "Strategy state file has not been created. You must pass strategy name to create."
         state = store.create(name)
     else:
         state = store.load()
+
+    def sync_state() -> None:
+        if not simulate:
+            store.sync(state)
+
+    execution_model.set_pre_broadcast_state_sync_callback(sync_state)
 
     # Set up the strategy engine
     factory = make_factory_from_strategy_mod(mod)
@@ -334,32 +347,22 @@ def perform_test_trade(
 
     assert not (all_vaults and all_pairs), "Cannot specify both --all-vaults and --all-pairs"
 
-    # TODO: Cross-chain vault redemptions can record a balance baseline through
-    # ``sync_state_callback``, but this public command persists state only at
-    # command completion.  Deferred: thread the store callback through every
-    # ``make_test_trade()`` invocation before relying on crash-safe resume.
     try:
         if lighter_transfer:
             source, destination = lighter_transfer_accounts
             logger.info("Lighter transfer test trade: %s USDC from %s to %s%s", amount, source, destination, "" if buy_only else " and back")
-            try:
-                make_lighter_transfer_test_trade(
-                    execution_model,
-                    state,
-                    universe,
-                    runner.routing_model,
-                    routing_state,
-                    pricing_model,
-                    source=source,
-                    destination=destination,
-                    amount=Decimal(str(amount)),
-                    buy_only=buy_only,
-                )
-            except Exception:
-                # Keep an executed outward leg in the books when the return leg fails.
-                if not simulate:
-                    store.sync(state)
-                raise
+            make_lighter_transfer_test_trade(
+                execution_model,
+                state,
+                universe,
+                runner.routing_model,
+                routing_state,
+                pricing_model,
+                source=source,
+                destination=destination,
+                amount=Decimal(str(amount)),
+                buy_only=buy_only,
+            )
         elif all_vaults:
             logger.info("Testing all vaults")
 
@@ -383,8 +386,11 @@ def perform_test_trade(
                     pair=pair,
                     buy_only=buy_only,
                     test_short=test_short,
-                    amount=Decimal(amount),
+                    amount=Decimal(str(amount)),
                     web3config=web3config,
+                    sync_state_callback=sync_state,
+                    test_trade_checks=True,
+                    anvil_time_skip_seconds=anvil_time_skip_seconds,
                 )
         elif all_pairs:
             tradeable_pairs = [p for p in universe.iterate_pairs() if not p.is_cctp_bridge()]
@@ -411,8 +417,11 @@ def perform_test_trade(
                     pair=pair,
                     buy_only=buy_only,
                     test_short=test_short,
-                    amount=Decimal(amount),
+                    amount=Decimal(str(amount)),
                     web3config=web3config,
+                    sync_state_callback=sync_state,
+                    test_trade_checks=True,
+                    anvil_time_skip_seconds=anvil_time_skip_seconds,
                 )
         else:
 
@@ -433,18 +442,21 @@ def perform_test_trade(
                 lending_reserve_description=lending_reserve,
                 buy_only=buy_only,
                 test_short=test_short,
-                amount=Decimal(amount),
+                amount=Decimal(str(amount)),
                 web3config=web3config,
+                close_only=close_only,
+                sync_state_callback=sync_state,
+                test_trade_checks=True,
+                anvil_time_skip_seconds=anvil_time_skip_seconds,
             )
     except OutOfBalance as e:
         raise RuntimeError(f"Failed to a test trade, as we run out of balance. Make sure vault has enough stablecoins deposited for the test trades.") from e
+    finally:
+        # Preserve confirmed and uncertain execution even when later analysis
+        # or the return leg fails. Simulation's callback never writes the file.
+        sync_state()
 
-    # Store the test trade data in the strategy history,
-    # but only if we did not run the simulation
-    if not simulate:
-        logger.info("Storing the state data from test trades")
-        store.sync(state)
-    else:
+    if simulate:
         logger.info("Simulation, no state changes")
 
     logger.info("All ok")
