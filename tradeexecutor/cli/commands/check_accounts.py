@@ -41,6 +41,12 @@ from . import shared_options
 from .app import app
 
 
+#: Logged, or raised with ``--raise-on-unclean``, when the books differ from the chain.
+#: ``scripts/lagoon/manual-lighter-subaccounts-cli.sh`` requires this message, not only a
+#: non-zero exit, before it accepts that the command reported a change made outside the executor.
+ACCOUNTS_DO_NOT_MATCH = "Accounts do not match"
+
+
 @app.command()
 @shared_options.with_json_rpc_options()
 def check_accounts(
@@ -252,7 +258,7 @@ def check_accounts(
             logger.info("Unit test exit - nothing to be do ne")
     else:
         if raise_on_unclean:
-            raise UncleanState("Accounts do not match:\n%s", output)
+            raise UncleanState(ACCOUNTS_DO_NOT_MATCH + ":\n%s", output)
         else:
-            logger.warning("Accounts do not match:\n%s", output)
+            logger.warning(ACCOUNTS_DO_NOT_MATCH + ":\n%s", output)
             sys.exit(1)

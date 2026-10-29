@@ -70,7 +70,9 @@ state. Move the mode-`0600` JSON record to the secret manager after deployment.
 
 Deployment writes the private records only after the whole command returns.
 If it fails after a key has been registered on Lighter, that key is lost and
-the account needs a new key through a Safe `changePubKey`.
+the account needs a new key through a Safe `changePubKey`, unless
+`--lighter-key-backup-dir` is set: it saves each key to a mode-0600 file
+before registration and deletes the files once the records are written.
 
 ### Sub-accounts
 
@@ -97,9 +99,9 @@ by id with the `PositionManager` custody methods, see
 
 The live tutorial
 [`manual-trade-executor-lighter-subaccounts.py`](../scripts/lagoon/manual-trade-executor-lighter-subaccounts.py)
-needs 5 USDC plus gas: the 1 USDC bootstrap and a 4 USDC subscription. It
-saves each generated key to a mode-0600 temporary file until deployment
-completes, to work around the limitation above.
+needs 5 USDC plus gas: the 1 USDC bootstrap and a 4 USDC subscription. Its
+deployment saves each generated key with `--lighter-key-backup-dir` in the
+run directory until the records are written.
 [`manual-trade-executor-lighter-transfers.py`](../scripts/lagoon/manual-trade-executor-lighter-transfers.py)
 books every deposit, transfer and withdrawal as its own trade with a scripted
 strategy, including transfers signed by the sub-account keys given to
@@ -109,6 +111,72 @@ Lighter sequencer. See
 [README-Lighter.md](../tradeexecutor/exchange_account/README-Lighter.md#sub-accounts)
 for the custody model, fees, strategy setup, recovery and the verified
 mainnet results.
+
+## Test from the command line
+
+[`scripts/lagoon/manual-lighter-subaccounts-cli.sh`](../scripts/lagoon/manual-lighter-subaccounts-cli.sh)
+is a mainnet test of a vault with a Lighter master account and two
+sub-accounts that uses only `trade-executor` commands. Read it as the
+runbook of such a deployment: every step explains what it does to the vault,
+then runs plain commands. It deploys the vault, subscribes test capital,
+funds each sub-account and moves USDC between them with
+`perform-test-trade`, then withdraws every account, redeems all shares and
+returns the capital to the deployer.
+
+Between the funding and the withdrawals it stresses the accounting
+commands. With capital on every account, `correct-accounts` must book
+nothing, `lagoon-settle` must post a NAV equal to the Safe's and the Lighter
+accounts' balances and to the state's total equity, and `check-wallet` must
+pass. Then it changes the vault twice outside the executor: a trader moves
+1 USDC between the sub-accounts with its own key, and the deployer sends
+1 USDC straight to the Safe. After each, `check-accounts` must fail,
+`correct-accounts` must book the difference and `lagoon-settle` must post
+the NAV that follows.
+
+| Variable | Required | Use |
+|----------|----------|-----|
+| `JSON_RPC_ETHEREUM` | Yes | Ethereum mainnet archive RPC |
+| `LIGHTER_TEST_PRIVATE_KEY` | Yes | Funded deployer; the sole Safe owner and asset manager |
+| `ETHERSCAN_API_KEY` | Yes | Contract verification at deployment |
+| `TRADING_STRATEGY_API_KEY` | Yes | The Trading Strategy client every command creates |
+| `SUBSCRIPTION_USDC` | No | Test capital in whole USDC, default 10 |
+| `LIGHTER_RUN_DIR` | No | An earlier run's directory, to resume it |
+| `HEARTBEAT_SECONDS` | No | Progress interval while a command runs, default 60 |
+
+The script unsets every other `JSON_RPC_*` variable before it runs a command:
+`lagoon-deploy-vault --strategy-file` connects to each one it finds and
+refuses to deploy when they differ from the chains the strategy declares.
+
+The deployer needs `1 + SUBSCRIPTION_USDC + 1` native USDC and ETH for the
+deployment, its contract verification and about 30 further transactions;
+the run of 2026-10-29 spent 0.0066 ETH of gas. The USDC comes back apart from any Lighter transfer fee and dust below the
+1 USDC withdrawal minimum. A run takes about two hours, most of it the three
+Lighter withdrawals. The script prints a timestamped banner per step, every
+command before it runs and how long it took, a heartbeat while a command
+runs, and the balances after every money step, all also written to
+`run.log` in the run directory. A rerun with `LIGHTER_RUN_DIR` skips the
+completed steps and checks the books and the balances before any money
+step, so money is never moved twice. When an interruption left a state the
+script cannot resolve itself, such as a transfer that moved but was not
+saved, a withdrawal whose request was not recorded, or a deployment that
+did not complete, it stops and prints what to do; commands to run by hand
+start with `source <run directory>/env.sh`, which loads the run's public
+configuration. The actions outside the executor, such
+as the investor's deposit request and share claim, are subcommands of
+`python -m tradeexecutor.testing.lighter_manual`.
+
+`tests/lagoon/test_lagoon_lighter_cli_manual_e2e.py` runs the same commands
+in the same order on an Ethereum fork with a simulated Lighter sequencer.
+
+It passed live on 2026-10-28 in 1 hour 55 minutes: deployment took 15
+minutes, the two sub-account L1 withdrawals 28 and 27 minutes and the
+master's secure withdrawal 23 minutes. Lighter charged no transfer fee, the
+deployer got all 11 USDC back, and the run spent 0.0074 ETH of gas. With
+the accounting steps it passed again on 2026-10-29 in 2 hours 4 minutes:
+`correct-accounts` booked nothing on clean books, `check-accounts` reported
+both out-of-band changes, `correct-accounts` booked them, and every NAV
+`lagoon-settle` posted matched the balances and the books. The deployer got
+all 12 USDC back and the run spent 0.0066 ETH of gas.
 
 ## Pair a compatible strategy module
 

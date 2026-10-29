@@ -123,14 +123,25 @@ The executor reads a hand-over file only when an operator passes it in
 `LIGHTER_SUB_ACCOUNT_OPERATOR_RECORD_FILES`, and no sub-account key appears
 in any report.
 
-### Known limitation: keys are saved only after deployment
+### Saving keys before they are registered
 
-`lagoon-deploy-vault` writes the master and sub-account private keys only
-after the whole deployment returns. If it fails after a key has been
-registered on Lighter, that key exists nowhere else and the account needs a
-new key through a Safe `changePubKey`. Both tutorials work around this by
-saving each key to a mode-0600 temporary file as it is generated and
-deleting the files after a successful deployment.
+`lagoon-deploy-vault` writes the master and sub-account private keys to
+their records only after the deployment returns. If it fails after a key has
+been registered on Lighter, that key exists nowhere else and the account
+needs a new key through a Safe `changePubKey`. Pass
+`--lighter-key-backup-dir` (`LIGHTER_KEY_BACKUP_DIR`) to save each key to a
+mode-0600 file in that directory as soon as it is generated, before it is
+registered:
+
+```shell
+trade-executor lagoon-deploy-vault --generate-lighter-api-key \
+    --lighter-key-backup-dir /secure/path/key-backup ...
+```
+
+The files are deleted once every record is written and kept if the
+deployment fails. Each is created exclusively, so a retried deployment never
+overwrites an earlier attempt's keys. The tutorials deploy with this option,
+backing the keys up in their run directory.
 
 ### Optional: let the executor sign for sub-accounts
 
@@ -269,6 +280,21 @@ status and saved hashes, exits 1 and still prints the balance table. Then:
   request, waits for it, claims it into the Safe and completes the
   accounting, for automatic and manual withdrawals alike, without sending a
   second request.
+- **Withdrawal started without a recorded request:** `lighter-move-funds`
+  saves the withdrawal trade before it sends the request and records the
+  request id after, so an interruption in between leaves a pending trade
+  with no `lighter_withdrawal_request_id`. Rerunning would wait for a
+  request that may never have been sent, and `repair` cannot verify it,
+  as it needs the claim evidence. No command resolves this case. Check
+  whether the request was sent: for a sub-account, an L1 `withdraw` from the
+  Safe on Etherscan; for the master, the account's withdrawal history on
+  Lighter. If it was not sent, nothing moved: mark the trade failed in the
+  state, for example from `trade-executor console`. If it was, record its
+  hash in the trade's `other_data["lighter_withdrawal_request_id"]` and
+  rerun `lighter-move-funds` for the account to resume it. Back up the state
+  file first. `withdrawal-plan` in
+  [`lighter_manual.py`](../testing/lighter_manual.py) reports this case as
+  `unconfirmed`.
 - **Withdrawal whose Safe claim was broadcast:** `correct-accounts` or
   `repair` reconciles it from the claim receipt.
 - **Transfer the halted cycle never started:** `correct-accounts` or
@@ -291,6 +317,23 @@ tutorials end with the trade table of
 description, status, notes and Ethereum and Lighter hashes. Live runs
 resume from `progress.json` in their run directory; simulated runs always
 start fresh.
+
+[`scripts/lagoon/manual-lighter-subaccounts-cli.sh`](../../scripts/lagoon/manual-lighter-subaccounts-cli.sh)
+does the same lifecycle with command-line commands only, as an operator
+would: deployment, `perform-test-trade` for the sub-account funding and a
+sub-account to sub-account transfer, `lighter-move-funds` for the
+withdrawals and `lagoon-redeem`. In between it checks that `check-wallet`,
+`correct-accounts` and `lagoon-settle` leave clean books unchanged, and that
+`check-accounts` reports, and `correct-accounts` books, a trader's transfer
+between sub-accounts and USDC sent straight to the Safe. Its investor
+actions, out-of-band changes, balance and NAV checks and final sweep are
+subcommands of
+[`lighter_manual.py`](../testing/lighter_manual.py), which the Python
+tutorials share for the sweep and the reconciliation. It is live only;
+`tests/lagoon/test_lagoon_lighter_cli_manual_e2e.py` runs its command
+sequence on the fork. It passed live on 2026-10-28: every USDC came back
+to the deployer, no Lighter transfer fee, 0.0074 ETH of gas. See
+[the deployment guide](../../docs/lagoon-lighter-deployment.md#test-from-the-command-line).
 
 [`scripts/lagoon/manual-trade-executor-lighter-transfers.py`](../../scripts/lagoon/manual-trade-executor-lighter-transfers.py)
 is the executable specification of the transfer accounting. Its strategy,
@@ -390,8 +433,9 @@ with mode `0600`. Move it to a secret manager immediately. Do not put it in
 strategy configuration, command-line arguments, logs, support tickets or chat.
 Public outputs use an explicit metadata allowlist, so unknown SDK fields are
 not copied to them.
-A failed deployment can lose a key it already registered; see
-[Known limitation: keys are saved only after deployment](#known-limitation-keys-are-saved-only-after-deployment).
+A failed deployment can lose a key it already registered unless
+`--lighter-key-backup-dir` is set; see
+[Saving keys before they are registered](#saving-keys-before-they-are-registered).
 
 ## Example: deploy and test a Lighter vault
 
@@ -521,7 +565,26 @@ trade-executor perform-test-trade --single-pair --amount 1
 
 # Every account; a sub-account is funded through the master and withdrawn with the key-free L1 path
 trade-executor perform-test-trade --all-pairs --amount 1
+
+# One sub-account, by its id; --buy-only leaves the funding there
+trade-executor perform-test-trade --pair "(ethereum, lighter, LIGHTER-trend, USDC)" --buy-only --amount 2
+
+# Between two accounts, signed with the source's key; back again unless --buy-only
+export LIGHTER_SUB_ACCOUNT_OPERATOR_RECORD_FILES="/secure/path/vault-record.nautilus.trend.json,/secure/path/vault-record.nautilus.arb.json"
+trade-executor perform-test-trade --lighter-transfer trend:arb --buy-only --amount 1
 ```
+
+A Lighter account's pair is `LIGHTER-ACCOUNT` for the master and
+`LIGHTER-<id>` for a sub-account, on the `lighter` exchange.
+`--lighter-transfer SOURCE:DESTINATION` takes `master` or sub-account ids.
+It checks before the first leg that the executor holds the signer of every
+leg, the source and, without `--buy-only`, the destination, so a missing key
+never strands funds halfway. `--lighter-transfer master:trend` also completes
+a sub-account funding that stopped after its Safe deposit.
+
+[`manual-lighter-subaccounts-cli.sh`](../../scripts/lagoon/manual-lighter-subaccounts-cli.sh)
+runs the whole lifecycle with these commands, from deployment to the final
+redemption; see [the deployment guide](../../docs/lagoon-lighter-deployment.md#test-from-the-command-line).
 
 The operator record is required for any Lighter vault, whether or not the
 strategy sets `lighter_cash_management`; without it the command refuses
