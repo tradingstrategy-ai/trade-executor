@@ -221,8 +221,16 @@ the helper's public `pairs` command, a synthetic failure without traceback local
 and both repositories' whitespace checks also passed. No additional funded
 transaction was sent for cleanup.
 
-The executor integration pins shared sizing commit `7246ca089`, published in
+The executor integration pins the shared sizing fixes published in
 [eth-defi PR #1700](https://github.com/tradingstrategy-ai/web3-ethereum-defi/pull/1700).
 Merge that dependency before the executor integration. The live run's frozen
 strategy remains unchanged in its private run directory; later cleanup edits are
 covered by the checks above.
+
+CI exposed the same one-raw-share capacity rounding in EulerEarn. Its selected
+manager now permits only that discrepancy after a positive exact simulation;
+generic Euler capacity policy is unchanged. The existing guarded matrix verifies
+exact request/event quantities and zero residual shares for all seven profiles.
+The old Yearn dust expectation and the raw-share probe's missing capacity fixture
+were corrected. All seven guarded profiles and eight focused unit cases passed
+locally after reproducing the three original CI failures.
