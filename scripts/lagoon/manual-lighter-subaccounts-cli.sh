@@ -313,8 +313,14 @@ describe() {
 
 # Print "still running" every HEARTBEAT_SECONDS until killed.
 heartbeat() {
-    local what="$1" started=$SECONDS
-    while sleep "$HEARTBEAT_SECONDS"; do
+    local what="$1" started=$SECONDS sleep_pid=""
+    # Take the sleep down with the heartbeat: as an orphan it would keep a
+    # pipe the command's output went through open until its interval ends.
+    # bash runs a trap between commands, so sleep_pid is always set first.
+    trap 'kill "$sleep_pid" 2>/dev/null; exit' TERM
+    while true; do
+        sleep "$HEARTBEAT_SECONDS" & sleep_pid=$!
+        wait "$sleep_pid" || exit
         log "… still running $what ($(format_duration $((SECONDS - started))) elapsed)"
     done
 }
@@ -350,9 +356,6 @@ run() {
     else
         "$@" </dev/null || status=$?
     fi
-    # Kill the heartbeat's sleep too: as a child it would otherwise keep a
-    # pipe the command's output was sent through open until it ends.
-    pkill -P "$heartbeat_pid" 2>/dev/null || true
     kill "$heartbeat_pid" 2>/dev/null || true
     wait "$heartbeat_pid" 2>/dev/null || true
     if [ "$status" -eq 0 ]; then
