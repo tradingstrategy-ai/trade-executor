@@ -313,14 +313,11 @@ describe() {
 
 # Print "still running" every HEARTBEAT_SECONDS until killed.
 heartbeat() {
-    local what="$1" started=$SECONDS sleep_pid=""
-    # Take the sleep down with the heartbeat: as an orphan it would keep a
-    # pipe the command's output went through open until its interval ends.
-    # bash runs a trap between commands, so sleep_pid is always set first.
-    trap 'kill "$sleep_pid" 2>/dev/null; exit' TERM
-    while true; do
-        sleep "$HEARTBEAT_SECONDS" & sleep_pid=$!
-        wait "$sleep_pid" || exit
+    local what="$1" started=$SECONDS
+    # The sleep gets no pipe: run kills this subshell, which dies at once,
+    # but the sleep outlives it as an orphan and would otherwise keep a pipe
+    # the command's output went through open until its interval ends.
+    while sleep "$HEARTBEAT_SECONDS" 2>/dev/null; do
         log "… still running $what ($(format_duration $((SECONDS - started))) elapsed)"
     done
 }
