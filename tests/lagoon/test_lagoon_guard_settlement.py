@@ -202,7 +202,7 @@ def test_lagoon_guard_posts_nav_but_defers_flow_exceeding_window_budget(
 
     1. Bootstrap and finalise a below-cap deposit so the investor has redeemable shares.
     2. Queue opposing flows whose gross amount exceeds the remaining Guard budget.
-    3. Run the post-valuation treasury sync once more.
+    3. Force the post-valuation treasury sync without bypassing the Guard budget.
     4. Verify it broadcasts NAV only, preserves both queues and emits the budget error.
     """
     vault = guarded_lagoon_vault.vault
@@ -227,10 +227,10 @@ def test_lagoon_guard_posts_nav_but_defers_flow_exceeding_window_budget(
     vault_balance_before = base_usdc_token.fetch_balance_of(vault.address)
     nonce_before = web3.eth.get_transaction_count(asset_manager.address)
 
-    # 3. Run the post-valuation treasury sync once more.
+    # 3. Force the post-valuation treasury sync without bypassing the Guard budget.
     cycle = native_datetime_utc_now()
     with caplog.at_level(logging.ERROR):
-        events = sync_model.sync_treasury(cycle, state, post_valuation=True)
+        events = sync_model.sync_treasury(cycle, state, post_valuation=True, force_valuation=True)
 
     # 4. Verify it broadcasts NAV only, preserves both queues and emits the budget error.
     assert events == []

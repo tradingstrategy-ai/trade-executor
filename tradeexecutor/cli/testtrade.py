@@ -25,6 +25,7 @@ from tradingstrategy.pair import HumanReadableTradingPairDescription
 from tradingstrategy.exchange import ExchangeUniverse
 
 from tradeexecutor.ethereum.cctp.planner import _find_bridge_pair
+from tradeexecutor.cli.vault_test_trade import check_vault_test_capacity, check_vault_test_closed, get_test_position, is_synchronous_vault_test
 from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
 from tradeexecutor.ethereum.vault.settlement_retry import check_and_resolve_vault_settlements
 from tradeexecutor.ethereum.vault.vault_routing import get_vault_for_pair
@@ -46,6 +47,25 @@ from tradeexecutor.strategy.routing import RoutingModel, RoutingState
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
 
 logger = logging.getLogger(__name__)
+
+
+def resolve_test_pair(
+    universe: TradingStrategyUniverse,
+    pair: TradingPairIdentifier | HumanReadableTradingPairDescription,
+) -> TradingPairIdentifier:
+    """Resolve an explicit chain/address without an address-only dataset lookup."""
+    if isinstance(pair, TradingPairIdentifier):
+        return pair
+    if len(pair) == 2:
+        matches = [p for p in universe.iterate_pairs() if p.chain_id == int(pair[0]) and p.pool_address.lower() == pair[1].lower()]
+        if len(matches) != 1:
+            raise ValueError(f"Expected one pair for chain/address {pair}, found {len(matches)}")
+        return matches[0]
+    data_universe = universe.data_universe
+    exchanges = ExchangeUniverse.from_collection(data_universe.exchanges) if data_universe.exchanges else data_universe.exchange_universe
+    if exchanges is None:
+        raise RuntimeError("You need to provide the exchange_universe when creating the universe")
+    return translate_trading_pair(data_universe.pairs.get_pair(*pair, exchange_universe=exchanges))
 
 
 class BridgeProceedsUnavailable(RuntimeError):
@@ -1204,6 +1224,7 @@ def make_test_trade(
     force_async_settlement_on_anvil: bool = True,
     update_statistics_after_trade: bool = True,
     sync_state_callback: Callable[[], None] | None = None,
+    test_trade_checks: bool = False,
 ):
     """Perform a test trade.
 
@@ -1246,23 +1267,7 @@ def make_test_trade(
     if pair:
         assert not lending_reserve_description
 
-        if not isinstance(pair, TradingPairIdentifier):
-            # Resolve human description of the pair
-            if data_universe.exchanges:
-                exchange_universe = ExchangeUniverse.from_collection(data_universe.exchanges)
-            elif data_universe.exchange_universe:
-                exchange_universe = data_universe.exchange_universe
-            else:
-                raise RuntimeError("You need to provide the exchange_universe when creating the universe")
-
-            if len(pair) == 2:
-                # By chain id + address
-                raw_pair = data_universe.pairs.get_pair_by_smart_contract(pair[1])
-            else:
-                # By chain id + exchange + base + quote + optional fee
-                raw_pair = data_universe.pairs.get_pair(*pair, exchange_universe=exchange_universe)
-
-            pair = translate_trading_pair(raw_pair)
+        pair = resolve_test_pair(universe, pair)
 
         # Detect if this pair is on a satellite chain (cross-chain trade).
         # Only attempt cross-chain when web3config is explicitly provided
@@ -1281,7 +1286,7 @@ def make_test_trade(
             chain_name = ChainId(pair.chain_id).get_name()
             logger.info("Cross-chain pair detected: %s on %s (home chain: %s)",
                         pair.get_ticker(), chain_name, ChainId(home_chain_id).get_name())
-        else:
+        elif not close_only:
             logger.info("Getting price for pair %s using %s", pair, pricing_model)
             # Get estimated price for the asset we are going to buy
             assumed_price_structure = pricing_model.get_buy_price(
@@ -1304,6 +1309,14 @@ def make_test_trade(
         # Convert description to TradingPairIdentifier used in PositionManager
         assert type(lending_reserve_description) in (tuple, list), f"lending_reserve_description must be a tuple, got {type(lending_reserve_description)}"
         credit_pair = pair = lending_reserve = universe.get_lending_reserve_by_human_description(lending_reserve_description)
+
+    if test_trade_checks:
+        test_trade_checks = pair is not None and pair.is_vault() and not is_cross_chain and is_synchronous_vault_test(pricing_model, pair)
+        if close_only and not test_trade_checks:
+            raise ValueError("--close-only currently supports home-chain synchronous ERC-4626 test positions")
+    if test_trade_checks:
+        # Refuse before treasury sync or dispatch to another execution route.
+        get_test_position(state, pair)
 
     logger.info("Sync model is %s", sync_model)
     logger.info("Trading university reserve asset is %s", universe.get_reserve_asset())
@@ -1367,7 +1380,15 @@ def make_test_trade(
 
     logger.info("  Reserve currency balance: %s %s", reserve_currency_at_start, reserve_currency)
 
-    assert reserve_currency_at_start > 0, f"No deposits available to trade. Vault at {vault_address}"
+    if not close_only:
+        assert reserve_currency_at_start > 0, f"No deposits available to trade. Vault at {vault_address}"
+
+    def execute(trades: list[TradeExecution]) -> None:
+        try:
+            execution_model.execute_trades(ts, state, trades, routing_model, routing_state)
+        finally:
+            if sync_state_callback is not None:
+                sync_state_callback()
 
     # Create PositionManager helper class
     # that helps open and close positions
@@ -1437,6 +1458,8 @@ def make_test_trade(
         logger.info("Close-only mode: skipping buy, proceeding to close position %s", position)
 
     if position is None and not close_only:
+        if test_trade_checks:
+            check_vault_test_capacity(pricing_model, pair, amount, closing=False)
         # Create trades to open the position
         if lending_reserve_description:
             assert lending_reserve
@@ -1462,13 +1485,7 @@ def make_test_trade(
         # Compose the trades as approve() + swapTokenExact(),
         # broadcast them to the blockchain network and
         # wait for the confirmation
-        execution_model.execute_trades(
-            ts,
-            state,
-            trades,
-            routing_model,
-            routing_state,
-        )
+        execute(trades)
 
         position_id = trade.position_id
         position = state.portfolio.get_position_by_id(position_id)
@@ -1546,6 +1563,8 @@ def make_test_trade(
             )
             close_credit_supply_trade = trades[0]
         else:
+            if test_trade_checks:
+                check_vault_test_capacity(pricing_model, pair, position.get_quantity(), closing=True)
             trades = position_manager.close_position(
                 position,
                 notes=notes,
@@ -1554,13 +1573,7 @@ def make_test_trade(
         assert len(trades) == 1
         sell_trade = trades[0]
 
-        execution_model.execute_trades(
-                ts,
-                state,
-                [sell_trade],
-                routing_model,
-                routing_state,
-            )
+        execute([sell_trade])
 
         assert sell_trade.is_test()
 
@@ -1592,6 +1605,9 @@ def make_test_trade(
             logger.error("Revert reason: %s", sell_trade.blockchain_transactions[-1].revert_reason)
             logger.error("Trade dump:\n%s", sell_trade.get_debug_dump())
             raise AssertionError(f"Test sell failed: {sell_trade}, {sell_trade.get_revert_reason()}")
+
+        if test_trade_checks:
+            check_vault_test_closed(pricing_model, pair, position)
 
         _update_test_trade_statistics(
             state,

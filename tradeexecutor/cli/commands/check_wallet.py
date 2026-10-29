@@ -284,7 +284,7 @@ def check_wallet(
 
     # Debugging and unit testing
     unit_testing: bool = shared_options.unit_testing,
-    unit_test_force_anvil: bool = typer.Option(bool, envvar="UNIT_TEST_FORCE_ANVIL", help="Use Anvil backend regardless of what chain strategy module suggests"),
+    unit_test_force_anvil: bool = typer.Option(False, envvar="UNIT_TEST_FORCE_ANVIL", help="Use Anvil backend regardless of what chain strategy module suggests"),
 ):
     """Print out the token balances of the hot wallet.
 
@@ -329,6 +329,7 @@ def check_wallet(
     universe = call_create_trading_universe(
         mod.create_trading_universe,
         client=client,
+        strategy_parameters=mod.parameters,
         universe_options=mod.get_universe_options(execution_context.mode),
         execution_context=execution_context,
     )

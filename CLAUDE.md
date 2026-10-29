@@ -9,6 +9,7 @@ working on that area:
 |-----|-------------|
 | `.claude/docs/agent-tricks-and-troubleshooting.md` | **MANDATORY read before ANY Claude CLI or Codex CLI invocation** (reviews, sanity checks, or one-off runs) |
 | `.claude/docs/cli-command.md` | CLI command patterns for trade-executor |
+| [docs/state-persistence.md](docs/state-persistence.md) | Existing state mechanism for data, transactions, journaling and checkpoints; explicit user permission required before adding another system |
 | `.claude/docs/alpha-model.md` | Base synchronous `AlphaModel` — the signals → weights → targets → trades pipeline, risk caps, trade generation gates, diagnostics charts, with `hyper-ai.py` as the reference implementation |
 | `.claude/docs/vault-deposit-redeem.md` | Synchronous and async (ERC-7540 / Lagoon / Ostium) vault deposit and redeem flows |
 | `.claude/docs/lagoon-treasury-settlement.md` | Lagoon treasury NAV posting, GuardV0 settlement limits, cooldowns and Safe-governance recovery |
@@ -16,6 +17,15 @@ working on that area:
 | `.claude/docs/phase-aware-alpha-model.md` | Phase-aware alpha model — parking window-gated vault deposits in a yield-bearing queue vault, park/promote event log, correctness invariants, backtest window modelling, diagnostics charts |
 | `docs/vault-closure.md` and `docs/api/vault-closure.md` | Unified admission rules for strategies and charts; keep protocol evidence, live account restrictions and optional strategy policy separate |
 | `docs/strategy-parameters.md` | **Read before writing or editing a strategy module**: the one module-level variable, which `Parameters` the engine reads, and what must not go in `Parameters` (deployment output, protocol constants, test knobs, environment variables) |
+
+## State persistence
+
+Use the existing executor state mechanism as the main mechanism for all data,
+transactions, journaling, checkpoints and recovery progress. Reuse its models,
+state store and persistence callbacks. **Do not build additional systems for
+these purposes without first asking for and obtaining explicit permission from
+the user.** Read [State persistence](docs/state-persistence.md) before changing
+persistence or recovery behaviour, including in CLI commands and manual scripts.
 
 ## Agent review workflows
 
