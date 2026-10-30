@@ -2752,6 +2752,9 @@ class TradingPosition(GenericPosition):
     def get_held_assets(self) -> Iterable[Tuple[AssetIdentifier, Decimal]]:
         """Get the assumption of the portfolio asset amount for the account correction / accounting double check.
 
+        Pending vault sells are economic holdings but no longer wallet shares.
+        See .claude/docs/vault-deposit-redeem.md for escrow and claim valuation.
+
         :return:
             (Asset id, amount) iterables
         """

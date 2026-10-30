@@ -2,6 +2,7 @@
 
 ## 0.2
 
+- Support Atoma Index/RWA deposits and epoch withdrawals through existing vault routing, persisted claim recovery and Lagoon Guard deployment, with settled-claim valuation, total-loss accounting and a Typer `start` Anvil integration test (2026-10-30).
 - Lighter account positions report profit independently of deposits, withdrawals and transfers between accounts: the USD profit counts the capital withdrawn and invested, a closed position's return is money-weighted, a deposit after a total loss starts a new share-price series instead of crashing, and float residue no longer reads as a zero share price. The position timeline chart (`vault_position_timeline`) now draws exchange-account positions, with the internal share price as the price; `scripts/lagoon/manual-lighter-share-price-charts.py` renders it for inspection (2026-10-29).
 - Add ERC-4626 `perform-test-trade --close-only`, guarded full-share redemption checks and an Arbitrum Lagoon manual tutorial for generic, Morpho and Yearn vaults. `lagoon-settle --force-valuation` refreshes small NAV changes before a final investor withdrawal (2026-10-29).
 - Preserve exact redemption quantities for strategies and diagnostics through shared eth-defi managers: finite capacity shortfalls now refuse instead of silently shrinking the request, except for bounded EulerEarn, Morpho V1 and Yearn rounding confirmed by simulation (2026-10-29).

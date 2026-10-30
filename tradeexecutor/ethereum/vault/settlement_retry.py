@@ -8,6 +8,9 @@ settlement status and broadcasts the claim/reclaim transaction.
 Works with any vault protocol that implements the generic
 :py:class:`~eth_defi.vault.deposit_redeem.VaultDepositManager` interface
 (Ostium V1.5, ERC-7540 Lagoon, etc.) — no protocol-specific imports.
+
+See .claude/docs/vault-deposit-redeem.md for the shared lifecycle and
+docs/state-persistence.md for the pre-broadcast save contract.
 """
 
 import logging
@@ -16,12 +19,14 @@ from itertools import chain as ichain
 
 from eth_defi.abi import get_topic_signature_from_event
 from eth_defi.compat import native_datetime_utc_now
+from eth_defi.erc_4626.core import ERC4626Feature
 from eth_defi.event_reader.conversion import convert_bytes32_to_address, convert_bytes32_to_uint
 from eth_defi.hotwallet import HotWallet
 from eth_defi.provider.receipt import wait_for_transaction_receipt_robust
 from eth_defi.vault.deposit_redeem import (
     AsyncVaultRequestStatus,
     DepositRedeemEventAnalysis,
+    VaultFlowUnavailable,
 )
 from hexbytes import HexBytes
 from web3 import Web3
@@ -40,6 +45,21 @@ from tradeexecutor.state.trade import TradeExecution, TradeStatus
 logger = logging.getLogger(__name__)
 
 VAULT_SETTLEMENT_RECEIPT_TIMEOUT = 120
+
+
+def has_pending_atoma_settlement(state: State) -> bool:
+    """Does valuation need claim recovery before reading an Atoma entitlement?
+
+    Startup, normal ticks and manual NAV posting share this predicate so a paid
+    ticket cannot block the resolver behind a failed valuation. Resolution itself
+    still uses the generic execution-model hook and existing state records.
+    """
+    return any(
+        p.pair.is_vault()
+        and ERC4626Feature.atoma_like in (p.pair.get_vault_features() or set())
+        and p.has_pending_vault_settlement()
+        for p in state.portfolio.get_all_positions(pending=True)
+    )
 
 
 def _get_chain_aware_tx_builder(
@@ -518,11 +538,16 @@ def _resolve_single_vault_trade(
                 )
                 return
 
-            if direction == "deposit":
-                func = deposit_manager.finish_deposit(ticket)
-            elif not direct_payout:
-                func = deposit_manager.finish_redemption(ticket)
-            else:
+            try:
+                if direction == "deposit":
+                    func = deposit_manager.finish_deposit(ticket)
+                elif not direct_payout:
+                    func = deposit_manager.finish_redemption(ticket)
+                else:
+                    func = None
+            except VaultFlowUnavailable:
+                # The request is already consumed. Rebuilding optional calldata
+                # metadata must not block analysis of the actual mined receipt.
                 func = None
             action_label = "direct payout" if direct_payout else "claim"
             # Even recovered claims need the same read-after-write guard before
@@ -594,6 +619,10 @@ def _resolve_single_vault_trade(
             new_tx.other["vault_settlement_action"] = action_label
             trade.blockchain_transactions.append(new_tx)
 
+            # Persist the exact signed claim before it can move cash. This is
+            # the same callback used by normal execution, not another journal.
+            execution_model.sync_state_before_broadcast()
+
             # Broadcast and wait
             try:
                 confirmed_receipt = _broadcast_and_wait_for_settlement_tx(
@@ -660,7 +689,12 @@ def _resolve_single_vault_trade(
             executed_reserve=executed_reserve,
             lp_fees=0,
             native_token_price=0,
+            allow_zero_proceeds=direction == "redeem" and executed_reserve == 0,
         )
+        withdrawal_fee = getattr(analysis, "withdrawal_fee", None)
+        if withdrawal_fee is not None:
+            # The receipt's proceeds are already net. This is reporting evidence.
+            trade.other_data["vault_withdrawal_fee"] = str(withdrawal_fee)
 
         # Handle partial deposit refunds
         if direction == "deposit" and executed_reserve < trade.planned_reserve:

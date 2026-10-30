@@ -87,7 +87,7 @@ def perform_test_trade(
     all_vaults: bool = shared_options.all_vaults,
 
     buy_only: bool = Option(False, "--buy-only/--no-buy-only", help="Only perform the buy side of the test trade - leave position open."),
-    close_only: bool = Option(False, "--close-only", help="Close one home-chain synchronous ERC-4626 test position selected with --pair; do not deposit again."),
+    close_only: bool = Option(False, "--close-only", help="Close or resume one home-chain synchronous ERC-4626 or Atoma test position selected with --pair; do not deposit again."),
     single_pair: bool = Option(False, help="Test single pair in the trading universe."),
     test_short: bool = Option(True, "--test-short/--no-test-short", help="Perform test short trades as well."),
     test_credit_supply: bool = Option(False,"--test-credit-supply/--no-test-credit-supply", help="Deprecated argument. Do not use anymore. Inistead, specify --pair (...lending pair description...)"),

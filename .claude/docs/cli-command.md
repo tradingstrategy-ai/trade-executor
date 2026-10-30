@@ -491,7 +491,7 @@ Comparing `repair_hypercore_dust` against `prune_state`, `correct_history`, `che
 - Commands with a crisp success contract should end with `logger.info("All ok")`; operators look for that line.
 - `strategy_file` can be optional for local-state-only commands, but `id` inference should still route through `prepare_executor_id()` when `state_file` is omitted.
 
-## Synchronous vault test trades
+## Vault test trades
 
 Select a vault by chain and address, including when the same address exists on
 several chains. Separate a deposit from its full exit with:
@@ -501,10 +501,22 @@ trade-executor perform-test-trade --pair '(arbitrum, 0xVAULT)' --amount 1 --buy-
 trade-executor perform-test-trade --pair '(arbitrum, 0xVAULT)' --close-only --no-test-short
 ```
 
-`--close-only` accepts one home-chain synchronous ERC-4626 pair. It refuses ordinary strategy
+`--close-only` accepts one home-chain synchronous ERC-4626 or Atoma pair. It refuses ordinary strategy
 holdings, unresolved trades and custody balances that differ from the test
 position. It does not need reserve cash or a new deposit quote. Protocol capacity
 and rounding checks belong in eth-defi's shared deposit managers.
+
+Atoma requires at least 100 USDC per deposit at the reviewed deployment and
+locks new shares until the next epoch. Run buy-only, wait for unlocked shares,
+then close-only to request withdrawal. Further close-only invocations resume the
+same pending ticket; after the operator settles, they claim and close it without
+another request. Use the same state file. The canonical
+[async vault guide](vault-deposit-redeem.md) documents the shared resolver,
+valuation and persistence mechanisms. Fork tests advance time and invoke the
+real operator; live commands never impersonate the operator.
+
+As with `close-position`, resuming an Atoma test exit runs the shared resolver's
+portfolio-wide sweep; other pending vault trades that are ready can also finish.
 
 The command uses the existing pre-broadcast callback and saves state after each
 execution leg and on failure. Run only one state writer. If execution is
@@ -517,6 +529,12 @@ Its [funded run report](../../docs/reports/erc4626-manual-live-2026-10-29.md)
 records deployment, transactions and limitations. Before a final investor
 withdrawal, `lagoon-settle --force-valuation` refreshes small NAV changes while
 retaining Guard limits and cooldowns.
+
+The same tutorial accepts `--atoma` on a new run to select the two Atoma targets,
+with a default 400 USDC subscription and 100 USDC per test deposit. Resume using
+the saved public configuration and the same state file after each lock/settlement
+wait. The [Atoma Anvil report](../../docs/reports/atoma-executor-anvil-2026-10-30.md)
+records local fork evidence; it does not certify current mainnet availability.
 
 When calling `call_create_trading_universe()` from a command, pass
 `strategy_parameters=mod.parameters`; engine 0.5 strategies use these values.

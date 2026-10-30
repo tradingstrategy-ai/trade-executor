@@ -133,6 +133,8 @@ def close_position(
 
     assert not store.is_pristine(), f"Strategy state file does not exist: {state_file}"
     state = store.load()
+    if not simulate:
+        execution_model.set_pre_broadcast_state_sync_callback(lambda: store.sync(state))
 
     if simulate:
         def break_sync(x):

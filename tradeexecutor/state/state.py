@@ -917,6 +917,7 @@ class State:
         executed_collateral_consumption: Optional[Decimal] = None,
         executed_collateral_allocation: Optional[Decimal] = None,
         force: bool = False,
+        allow_zero_proceeds: bool = False,
     ):
         """After trade has been successfully executed, update the state of our internal ledged to reflect this.
 
@@ -927,6 +928,10 @@ class State:
         - Mark any LP and gas fees from the trade
 
         - If this was the final trade of the position, mark the position closed
+
+        :param allow_zero_proceeds:
+            Only set after validated async vault redemption evidence consumes
+            shares for zero net cash. Ordinary swaps and deposits stay strict.
         """
 
         position = self.portfolio.find_position_for_trade(trade, pending=True)
@@ -945,7 +950,14 @@ class State:
             if trade.is_buy():
                 assert executed_amount and executed_amount > 0, f"Executed amount was {executed_amount}"
             else:
-                assert executed_reserve > 0, f"Executed reserve must be positive for sell, got amount:{executed_amount}, reserve:{executed_reserve}"
+                zero_vault_redemption = (
+                    allow_zero_proceeds
+                    and trade.pair.is_vault()
+                    and trade.other_data.get("vault_async_flow")
+                    and executed_reserve == 0
+                    and executed_price == 0
+                )
+                assert executed_reserve > 0 or zero_vault_redemption, f"Executed reserve must be positive for sell, got amount:{executed_amount}, reserve:{executed_reserve}"
                 assert executed_amount < 0, f"Executed amount must be negative for sell, got amount:{executed_amount}, reserve:{executed_reserve}"
 
         logger.info(
@@ -1028,8 +1040,9 @@ class State:
                 executed_reserve,
                 reason=f"Returned cash from exchange account transfer #{trade.trade_id}",
             )
-        elif (trade.is_spot() or trade.is_vault()) and trade.is_sell():
+        elif (trade.is_spot() or trade.is_vault()) and trade.is_sell() and executed_reserve != 0:
             # For satellite chain trades, return capital to bridge position
+            # A validated total-loss vault claim has no capital to return.
             bridge_position = self.portfolio.get_bridge_position_for_chain(trade.pair.chain_id)
             if bridge_position is None and trade.pair.quote != trade.reserve_currency:
                 bridge_position = self.portfolio.reopen_closed_bridge_position_for_chain(
@@ -1218,6 +1231,9 @@ class State:
 
         Does NOT adjust reserves — they were already debited at trade start.
         Stores serialised ticket data from deposit_manager.serialize_deposit/redemption_ticket().
+
+        The shared execution-model resolver completes this same trade; see
+        .claude/docs/vault-deposit-redeem.md and docs/state-persistence.md.
 
         :param ticket_data:
             Dict from deposit_manager.serialize_deposit_ticket() or

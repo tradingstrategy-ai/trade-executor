@@ -16,7 +16,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from eth_defi.vault.deposit_redeem import AsyncVaultRequestStatus, DepositRedeemEventAnalysis
+from eth_defi.vault.deposit_redeem import AsyncVaultRequestStatus, DepositRedeemEventAnalysis, VaultFlowUnavailable
 from hexbytes import HexBytes
 from tradeexecutor.ethereum.vault.settlement_retry import check_and_resolve_vault_settlements
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
@@ -937,20 +937,20 @@ def test_vault_settlement_retry_rebroadcast_uses_robust_receipt_wait(
     wait_receipt.assert_called_once()
 
 
+@pytest.mark.parametrize("claim_consumed", [False, True])
 def test_vault_settlement_retry_recovers_claim_using_robust_receipt_wait(
     vault_pair: TradingPairIdentifier,
     usdc_arbitrum: AssetIdentifier,
+    claim_consumed: bool,
 ):
     """Verify an already-completed vault claim is recovered using the robust receipt wait.
 
     1. Create a vault buy trade whose request status is already consumed
-    2. Mock completed claim discovery for the consumed request
+    2. Mock completed claim discovery, including a builder refusing consumed requests
     3. Mock the robust receipt wait and recovered transaction creation
     4. Call check_and_resolve_vault_settlements
     5. Verify the recovered transaction is stored and the trade succeeds
     """
-    from tradeexecutor.ethereum.vault.settlement_retry import check_and_resolve_vault_settlements
-
     state = State()
     ts = datetime.datetime(2025, 1, 1)
 
@@ -985,6 +985,8 @@ def test_vault_settlement_retry_recovers_claim_using_robust_receipt_wait(
     mock_deposit_manager.get_deposit_request_status.return_value = AsyncVaultRequestStatus.none
     mock_deposit_manager.reconstruct_deposit_ticket.return_value = MagicMock()
     mock_deposit_manager.finish_deposit.return_value = MagicMock()
+    if claim_consumed:
+        mock_deposit_manager.finish_deposit.side_effect = VaultFlowUnavailable("claim_already_completed")
 
     mock_analysis = MagicMock(spec=DepositRedeemEventAnalysis)
     mock_analysis.denomination_amount = Decimal(100)

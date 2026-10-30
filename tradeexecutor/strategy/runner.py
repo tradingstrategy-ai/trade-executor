@@ -22,6 +22,7 @@ from tradeexecutor.cli.double_position import check_double_position
 from tradeexecutor.ethereum.ethereum_protocol_adapters import EthereumPairConfigurator
 from tradeexecutor.ethereum.lagoon.vault import LagoonVaultSyncModel
 from tradeexecutor.ethereum.tx import TransactionBuilder
+from tradeexecutor.ethereum.vault.settlement_retry import has_pending_atoma_settlement
 from tradeexecutor.state.store import StateStore
 from tradeexecutor.state.types import BlockNumber, Percent
 from tradeexecutor.statistics.core import update_statistics
@@ -820,6 +821,19 @@ class StrategyRunner(abc.ABC):
             routing_state = routing_setup.routing_state
             pricing_model = routing_setup.pricing_model
             valuation_model = routing_setup.valuation_model
+
+            if self.execution_context.mode.is_live_trading() and store is not None:
+                self.execution_model.set_pre_broadcast_state_sync_callback(lambda: store.sync(state))
+
+            # Atoma burns shares before its claim pays. Recover a saved claim
+            # before valuation/NAV can mistake its consumed ticket for a loss.
+            # When Atoma requires this sweep, it also resolves any other vaults
+            # that are ready; all use the same generic resolver.
+            if self.execution_context.live_trading and has_pending_atoma_settlement(state):
+                self.execution_model.resolve_pending_vault_settlements(
+                    state=state, ts=strategy_cycle_timestamp, pricing_model=pricing_model,
+                )
+                end_block = self.execution_model.get_safe_latest_block()
 
             # Needed for Lagoon.
             # sync_portfolio() posts valuation onchain to

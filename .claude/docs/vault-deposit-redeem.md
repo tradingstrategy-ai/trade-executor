@@ -40,6 +40,7 @@ We support:
 | Synchronous ERC-4626 | IPOR, Morpho, Euler | Immediately, in the deposit/redeem transaction |
 | ERC-7540 | Lagoon | The vault's operator settles the queue manually — there is **no schedule** and the wait is unknowable in advance |
 | Ostium V1.5 | Ostium OLP | A settlement id is assigned when the request is made; `tryNewSettlement()` becomes eligible after the vault's on-chain interval |
+| Atoma | Index / RWA on Arbitrum | Deposit is synchronous; `requestWithdrawal(shares)` escrows shares, the operator settles an epoch, and `claimWithdrawal(epoch)` pays net USDC |
 | Hypercore-native | Hyperliquid HLP | Not on-chain ERC-20 flows at all; handled by a separate Hypercore code path and out of scope here |
 
 The protocol differences are hidden behind one interface: every vault exposes a
@@ -66,6 +67,28 @@ Redemption is the mirror image — `requestRedeem()`, settle, claim with
 `redeem()` — with one important twist: **the share tokens leave our wallet at
 request time**, moved into the vault's escrow. While a redemption is pending we
 own a position whose tokens are visibly *not* in our wallet.
+
+Atoma burns those escrowed shares at operator settlement, before paying USDC.
+Keep the same position and pending sell: `VaultValuator` replaces the burned
+shares' quoted value with the ticket's current net entitlement, including fees
+and later haircuts. Remaining wallet shares and claims are valued once, using
+one block. The entitlement remains valued if liquidity temporarily prevents
+claiming; only a confirmed claim credits reserve cash. A validated zero-payout
+claim realises a loss and consumes shares without a cash credit.
+
+Atoma's quote and claim analysis require attribution to one ticket. An aggregate
+owner/epoch request requiring reconciliation stays pending and blocks a fresh
+valuation/NAV; this integration does not split one payout across several trades.
+Missing receipts or a consumed ticket are recovery cases, not evidence of zero
+proceeds. Because Atoma can pay before state accounting finishes, the live runner
+resolves its pending trades before revaluation and treasury sync, using the same
+resolver and pre-broadcast state callback. No separate claim ledger is used.
+
+Hand-built universes must carry a `VaultMetadata` object through pair translation
+so protocol features survive the dataset boundary. For Atoma, Lagoon deployment
+uses those features to select `whitelistAtoma()`; other deployment bindings keep
+their existing generic policy. A generic Atoma binding installs the wrong
+withdrawal selectors.
 
 Inside the trade executor each step maps onto the trade lifecycle. A trade that
 has broadcast its request but not yet claimed sits in the dedicated status
@@ -441,6 +464,7 @@ The protocol layer, in eth_defi:
 | `eth_defi/vault/deposit_redeem.py` | `VaultDepositManager` interface, request status enum, ticket (de)serialisation |
 | `eth_defi/erc_4626/vault_protocol/lagoon/deposit_redeem.py` | ERC-7540 implementation (Lagoon) |
 | `eth_defi/erc_4626/vault_protocol/gains/deposit_redeem.py` | Ostium V1.5 implementation |
+| `eth_defi/erc_4626/vault_protocol/atoma/deposit_redeem.py` | Atoma request parsing, epoch tickets, attributed claim quotes and real receipt analysis |
 | `eth_defi/erc_4626/vault_protocol/lagoon/testing.py` | `force_lagoon_settle()` for acting as the operator in tests |
 
 The execution layer, in trade-executor:
@@ -458,6 +482,9 @@ The execution layer, in trade-executor:
 | [tradeexecutor/strategy/chart/standard/vault.py](../../tradeexecutor/strategy/chart/standard/vault.py) | Pending settlement buffers and per-vault historical settlement observation table |
 | [tradeexecutor/strategy/chart/standard/weight.py](../../tradeexecutor/strategy/chart/standard/weight.py) | Asset bands and allocation-by-liquidity-state chart |
 | [tradeexecutor/strategy/asset.py](../../tradeexecutor/strategy/asset.py) | Escrow-aware expected balances for account reconciliation |
+| [tradeexecutor/ethereum/vault/vault_valuation.py](../../tradeexecutor/ethereum/vault/vault_valuation.py) | `VaultValuator`: existing position value, including settled Atoma entitlements; failed quotes do not refresh valuation timestamps |
+| [tradeexecutor/cli/vault_test_trade.py](../../tradeexecutor/cli/vault_test_trade.py) | Test-owned position checks and Atoma pending-exit resume admission |
+| [tradeexecutor/ethereum/lagoon/universe_config.py](../../tradeexecutor/ethereum/lagoon/universe_config.py) | Preserve Atoma protocol selection when configuring its specialised Guard whitelist |
 | [tradeexecutor/ethereum/vault/vault_utils.py](../../tradeexecutor/ethereum/vault/vault_utils.py) | Turning a vault into a tradeable pair identifier |
 | [tradeexecutor/cli/loop.py](../../tradeexecutor/cli/loop.py) | Startup-time settlement retry (non-halting, unlike CCTP) |
 | [tradeexecutor/cli/trade_ui_tui.py](../../tradeexecutor/cli/trade_ui_tui.py) | Settlement ETA display for pending deposits |
@@ -466,6 +493,19 @@ The execution layer, in trade-executor:
 ## Tests to read
 
 Each test doubles as a worked example:
+
+- [tests/erc_4626/test_atoma_async_cli.py](../../tests/erc_4626/test_atoma_async_cli.py)
+  — real Lagoon deployment and Guard, `init` and repeated Typer `start` calls
+  with the [dummy strategy](../../strategies/test_only/atoma_async.py), escrow,
+  operator settlement, restart, claim and investor withdrawal for both Atoma
+  deployments. Additional cases cover public test-trade resume, induced losses
+  and interrupted claim accounting. Only fork funding, time and operator/admin
+  setup are spoofed; production routing and receipts remain real.
+- [tests/ethereum/test_atoma_valuation.py](../../tests/ethereum/test_atoma_valuation.py)
+  — partial/illiquid entitlement arithmetic and zero-loss accounting using real
+  executor positions with a labelled manager stub. See the
+  [Atoma implementation plan](../../docs/plans/nb05-atoma-integration-subplan.md)
+  for scope and upstream provenance.
 
 - [tests/backtest/test_backtest_async_vault.py](../../tests/backtest/test_backtest_async_vault.py)
   — the backtest behaviour end to end: the two-stage lifecycle cycle by

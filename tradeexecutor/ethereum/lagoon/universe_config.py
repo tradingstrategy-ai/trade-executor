@@ -25,6 +25,7 @@ from decimal import Decimal
 from eth_defi.cctp.constants import TESTNET_CHAIN_IDS
 from eth_defi.cctp.whitelist import CCTPDeployment
 from eth_defi.erc_4626.classification import create_vault_instance
+from eth_defi.erc_4626.core import ERC4626Feature
 from eth_defi.erc_4626.vault_protocol.lagoon.deployment import (
     DEFAULT_LAGOON_SETTLEMENT_WINDOW, LagoonConfig, LagoonDeploymentParameters)
 from eth_defi.gmx.whitelist import GMXDeployment, fetch_all_gmx_markets
@@ -115,7 +116,7 @@ def _collect_universe_metadata(universe: TradingStrategyUniverse, all_chain_ids:
 def _collect_erc4626_vault_addresses(universe: TradingStrategyUniverse, all_chain_ids: set[int]) -> dict[int, list[str]]:
     """Collect on-chain ERC-4626 vault addresses per chain from the trading universe.
 
-    These vaults need explicit guard whitelisting via ``whitelistERC4626()``
+    These vaults need explicit manager-specific Guard whitelisting
     regardless of the ``anyAsset`` setting, because ``anyAsset`` only bypasses
     token-level checks — not target and approval destination checks.
 
@@ -438,7 +439,15 @@ def translate_trading_universe_to_lagoon_config(
         if vault_addresses:
             erc4626_vaults = []
             for addr in vault_addresses:
-                vault_instance = create_vault_instance(chain_web3[slug], addr)
+                # Atoma needs its specialised policy. Other protocol flags can
+                # select non-ERC4626Vault classes unsupported by this helper.
+                features = next(
+                    (pair.get_vault_features() for pair in universe.iterate_pairs()
+                     if pair.is_vault() and pair.base.chain_id == chain_id and pair.pool_address.lower() == addr.lower()),
+                    None,
+                )
+                atoma_features = features if features and ERC4626Feature.atoma_like in features else None
+                vault_instance = create_vault_instance(chain_web3[slug], addr, features=atoma_features)
                 assert vault_instance is not None, f"Failed to create vault instance for {addr}"
                 erc4626_vaults.append(vault_instance)
             config.erc_4626_vaults = erc4626_vaults

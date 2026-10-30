@@ -231,6 +231,10 @@ class ExecutionModel(abc.ABC):
         broadcasts the claim/reclaim transaction. The backtest execution model
         overrides this with a fully simulated resolver.
 
+        See .claude/docs/vault-deposit-redeem.md for manager tickets,
+        settlement_retry.check_and_resolve_vault_settlements(), accounting and
+        the startup/command entry points. Reuse this hook for new async vaults.
+
         :param state:
             Current strategy state.
 

@@ -11,6 +11,7 @@ from pathlib import Path
 import typer
 
 from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
+from eth_defi.erc_4626.core import ERC4626Feature
 from eth_defi.hotwallet import HotWallet
 from eth_defi.provider.multi_provider import create_multi_provider_web3
 from eth_defi.token import USDC_NATIVE_TOKEN, fetch_erc20_details
@@ -44,7 +45,10 @@ def load_universe(strategy_file: Path = STRATEGY_FILE) -> TradingStrategyUnivers
 def position_phase(state: State, universe: TradingStrategyUniverse, address: str) -> str:
     """Choose the next leg from the ledger, never merely from a shell marker."""
     pair = next(p for p in universe.iterate_pairs() if p.pool_address == address.lower())
-    position = get_test_position(state, pair)
+    position = get_test_position(
+        state, pair,
+        allow_pending_redemption=ERC4626Feature.atoma_like in (pair.get_vault_features() or set()),
+    )
     if position is not None:
         return "close"
     closed = [p for p in state.portfolio.closed_positions.values() if p.pair == pair]
