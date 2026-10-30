@@ -36,6 +36,7 @@ from tradeexecutor.testing.lighter_share_price_timelines import (
     replay_timeline,
 )
 from tradeexecutor.visual.image_output import render_plotly_figure_as_image_file
+from tradeexecutor.visual.position import calculate_position_timeline
 
 
 @pytest.mark.parametrize("timeline", TIMELINES, ids=[timeline.timeline_id for timeline in TIMELINES])
@@ -64,7 +65,7 @@ def test_lighter_flow_neutral_profit_old_state_recovery_and_reports() -> None:
     3. Recover a failed transfer once, then check a repeated completion is refused and changes nothing
     4. Check the stored statistics of a fresh funding chain carry the flow-neutral figures
     5. Draw the master with the existing position chart: flows are its trade markers, and it renders to PNG
-    6. Check trade analysis counts a closed account's profit as realised, which it reads only from closed positions
+    6. Check trade analysis and the position chart count a closed account's profit as realised, at its money-weighted return
     """
     funding_chain = next(timeline for timeline in TIMELINES if timeline.timeline_id == "funding-chain")
 
@@ -126,8 +127,13 @@ def test_lighter_flow_neutral_profit_old_state_recovery_and_reports() -> None:
     assert timeline["pnl"].iloc[-1] == pytest.approx(-0.5)
     assert len(render_plotly_figure_as_image_file(figure, width=800, height=600)) > 0
 
-    # 6. Check trade analysis counts a closed account's profit as realised, which it reads only from closed positions
+    # 6. Check trade analysis and the position chart count a closed account's profit as realised, at its money-weighted return
     write_off = next(timeline for timeline in TIMELINES if timeline.timeline_id == "write-off-and-close")
-    summary = build_trade_analysis(replay_timeline(write_off).state.portfolio).calculate_summary_statistics()
+    replay = replay_timeline(write_off)
+    summary = build_trade_analysis(replay.state.portfolio).calculate_summary_statistics()
     assert summary.realised_profit == pytest.approx(0.5)
     assert summary.unrealised_profit == pytest.approx(0)
+    # Trade analysis reads realised profit only from closed positions, and the
+    # write-off took the share price to zero, but the chart ends at +5%.
+    closed = calculate_position_timeline(replay.create_strategy_universe(), replay.positions["write-off-and-close"], state=replay.state).iloc[-1]
+    assert (closed["mark_price"], closed["realised_pnl"], closed["unrealised_pnl"], closed["total_pnl_pct"]) == pytest.approx((0, 0.5, 0, 0.05))

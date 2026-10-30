@@ -68,7 +68,10 @@ keep their earlier USD figure.
 
 The position chart, `vault_position_timeline`, draws an exchange account
 with its internal share price as the price and a trade marker wherever
-shares were minted or burned, from the position's recorded statistics.
+shares were minted or burned, from the position's recorded statistics. The
+statistics are recorded once a cycle, so a marker is the net change in
+shares over the cycle: a withdrawal and a deposit in the same cycle can
+cancel out.
 `scripts/lagoon/manual-lighter-share-price-charts.py` renders it for example
 accounts, for inspection.
 

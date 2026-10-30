@@ -37,10 +37,14 @@ What to look for in the position charts:
 - ``total-loss-and-refund`` drops to zero and restarts at 1.0 on the next
   deposit;
 - ``write-off-and-close`` ends at the close, with the share price at zero
-  from the write-off while the PnL USD panel ends at +0.5 and the table
-  shows a +5% closed return;
+  from the write-off while the PnL USD panel ends at +0.5, realised, and the
+  table shows a +5% closed return;
 - every chart starts at the account's first flow or valuation, with no
   negative shares and no gaps.
+
+The replay records statistics after every event, so each marker is one
+flow. A live executor records them once a cycle, where a marker is the net
+change over the cycle.
 
 The script stops before drawing if an account breaks a flow-neutrality
 invariant, naming the event and the figures.

@@ -196,7 +196,6 @@ covers the whole life, including the loss, because `total_invested` and
 | `tradeexecutor/visual/position.py`, `tradeexecutor/strategy/chart/standard/vault.py` | The existing position chart, `calculate_position_timeline()` and `visualise_position()` behind `vault_position_timeline()`, supports exchange-account positions: built from the recorded statistics, with the internal share price as the price and the internal shares as the quantity, so a change in shares is a trade marker. No new chart functions |
 | `scripts/lagoon/manual-lighter-share-price-charts.py` (new) | Manual chart inspection, below |
 | `tradeexecutor/testing/lighter_scripted_transfers.py` | `verify_lighter_scripted_transfers()` checks each account's USD profit is minus the fees it paid |
-| `tradeexecutor/cli/commands/perform_test_trade.py` | `--amount` converted to `Decimal` through `str`; see "Bugs found and fixed" |
 | `README-Lighter.md`, `docs/lagoon-lighter-deployment.md` | The two figures, under strategy accounting |
 | `CHANGELOG.md` | One dated line |
 
@@ -366,7 +365,13 @@ What to look for in the PNGs, also listed in the script header:
   with the re-funding marked ▲;
 - `write-off-and-close` ends at the close with no trailing points, its
   share price at zero from the write-off and its PnL USD at +0.5, realised
-  at the close.
+  at the close, with a closed return of +5%.
+
+A marker is the net change in shares between two statistics samples. The
+replay records statistics after every event, so each marker is one flow;
+in a live executor, which records them once a cycle, a withdrawal and a
+deposit within one cycle can cancel out, and a total loss and re-funding
+within one cycle shows as a net mint or burn rather than a restart.
 
 The existing chart annualises the return in its PnL % panel. Over the
 replay's hourly events that gives meaningless figures such as 4×10²⁴³ or a
@@ -492,5 +497,6 @@ designed, with the deviations and findings below.
 - **`perform-test-trade --amount` booked a float's binary expansion.**
   `Decimal(amount)` on a float made `--amount 3.3` book and transfer
   3.29999999999999982236431605997495353221893310546875 USDC on the `--pair`,
-  `--single-pair` and vault paths; they now convert through `str`, as
-  `--lighter-transfer` did. Found by the CLI fork test.
+  `--single-pair` and vault paths. Found by the CLI fork test; master fixed it
+  independently in #1694, converting through `str` as `--lighter-transfer`
+  did, so this branch no longer changes `perform_test_trade.py`.

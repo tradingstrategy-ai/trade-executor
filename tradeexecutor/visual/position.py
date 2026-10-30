@@ -18,6 +18,7 @@ from plotly.subplots import make_subplots
 
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
+from tradeexecutor.strategy.position_internal_share_price import calculate_closed_flow_neutral_return
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 
 
@@ -453,6 +454,16 @@ def _calculate_exchange_account_timeline(state: State, position: TradingPosition
     Rebuilding them from trades and balance updates would need the funding
     trades on other positions to tell a transfer out from a loss.
 
+    A marker is therefore the net change in shares between two statistics
+    samples, not a single flow: a withdrawal and a deposit within one cycle
+    can cancel out, and a total loss and re-funding within one cycle, with no
+    zero-price sample between them, shows as a net mint or burn instead of a
+    restarted series.
+
+    A closed position's last point carries its profit as realised and its
+    money-weighted return, as the position reports them, because closing
+    writes off the residual and takes the share price to zero.
+
     :param state:
         State holding the position's statistics.
     :param position:
@@ -489,14 +500,16 @@ def _calculate_exchange_account_timeline(state: State, position: TradingPosition
     df["cumulative_cost"] = df["value"] - df["pnl"]
     df["cumulative_value"] = df["value"]
     df["avg_price"] = df["mark_price"]
-    # An open exchange-account position reports its profit as unrealised, a
-    # closed one as realised, see TradingPosition.get_realised_profit_usd().
+    # An open exchange-account position reports its profit as unrealised.
     df["realised_pnl"] = 0.0
     df["unrealised_pnl"] = df["pnl"]
-    if position.is_closed():
-        df.loc[df.index[-1], ["realised_pnl", "unrealised_pnl"]] = [df["pnl"].iloc[-1], 0.0]
     df["realised_delta"] = 0.0
     df["pnl_pct"] = df["mark_price"] / initial_share_price - 1
+    closed_return = calculate_closed_flow_neutral_return(position)
+    if closed_return is not None:
+        # A closed one reports its profit as realised and its return
+        # money-weighted, see TradingPosition.get_realised_profit_usd().
+        df.loc[df.index[-1], ["realised_pnl", "unrealised_pnl", "pnl_pct"]] = [df["pnl"].iloc[-1], 0.0, closed_return]
     df["total_pnl_pct"] = df["pnl_pct"]
     df["duration"] = df.index - df.index[0]
     df["annual_periods"] = pd.Timedelta(days=365) / df["duration"]
