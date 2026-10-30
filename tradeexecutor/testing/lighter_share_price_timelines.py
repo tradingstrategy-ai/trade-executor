@@ -140,7 +140,8 @@ class AccountExpectation:
     #: :py:meth:`TradingPosition.get_total_profit_usd`.
     profit_usd: float
 
-    #: Whether the position is closed.
+    #: Whether the position is closed. A closed position must also report
+    #: ``profit_usd`` as realised and nothing as unrealised.
     closed: bool = False
 
 
@@ -259,11 +260,11 @@ TIMELINES: tuple[Timeline, ...] = (
         accounts=("write-off-and-close",),
         events=(
             _event(_K.deposit, "write-off-and-close", 10),
-            _event(_K.revalue, "write-off-and-close", "10.4"),
-            _event(_K.withdraw, "write-off-and-close", 10),
+            _event(_K.revalue, "write-off-and-close", "10.8"),
+            _event(_K.withdraw, "write-off-and-close", "10.5"),
             _event(_K.close, "write-off-and-close"),
         ),
-        expected={"write-off-and-close": AccountExpectation(units=None, share_price=None, return_pct=0, profit_usd=0, closed=True)},
+        expected={"write-off-and-close": AccountExpectation(units=None, share_price=None, return_pct=0.05, profit_usd=0.5, closed=True)},
     ),
     Timeline(
         timeline_id="total-loss-and-refund",
@@ -603,8 +604,15 @@ class TimelineReplay:
                 observed["units"] = state.total_supply
             if expected.share_price is not None:
                 observed["share_price"] = position.get_share_price_profit().current_share_price
+            wanted_values = {name: getattr(expected, name) for name in observed}
+            if expected.closed:
+                # A closed account reports its whole profit as realised, so trade analysis counts it.
+                observed["realised_profit_usd"] = position.get_realised_profit_usd()
+                observed["unrealised_profit_usd"] = position.get_unrealised_profit_usd()
+                wanted_values["realised_profit_usd"] = expected.profit_usd
+                wanted_values["unrealised_profit_usd"] = 0.0
             for name, value in observed.items():
-                wanted = getattr(expected, name)
+                wanted = wanted_values[name]
                 if (value != wanted) if isinstance(wanted, bool) else not math.isclose(value, wanted, rel_tol=1e-9, abs_tol=1e-6):
                     raise TimelineInvariantError(f"{timeline.timeline_id}, account {account}: {name} is {value}, expected {wanted}")
 

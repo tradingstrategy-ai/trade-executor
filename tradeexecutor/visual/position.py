@@ -489,9 +489,12 @@ def _calculate_exchange_account_timeline(state: State, position: TradingPosition
     df["cumulative_cost"] = df["value"] - df["pnl"]
     df["cumulative_value"] = df["value"]
     df["avg_price"] = df["mark_price"]
-    # An open exchange-account position reports its profit as unrealised.
+    # An open exchange-account position reports its profit as unrealised, a
+    # closed one as realised, see TradingPosition.get_realised_profit_usd().
     df["realised_pnl"] = 0.0
     df["unrealised_pnl"] = df["pnl"]
+    if position.is_closed():
+        df.loc[df.index[-1], ["realised_pnl", "unrealised_pnl"]] = [df["pnl"].iloc[-1], 0.0]
     df["realised_delta"] = 0.0
     df["pnl_pct"] = df["mark_price"] / initial_share_price - 1
     df["total_pnl_pct"] = df["pnl_pct"]

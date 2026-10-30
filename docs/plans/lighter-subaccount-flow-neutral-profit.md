@@ -12,7 +12,7 @@ Each position reports two figures:
 
 | Figure | Definition |
 |--------|------------|
-| Return % | Internal share price over its initial value, minus one |
+| Return % | Internal share price over its initial value, minus one; for a closed position, the USD profit over the capital invested (design 3) |
 | Profit USD | Current value + capital withdrawn − capital invested |
 
 The return is the existing internal share price: a flow mints or burns units
@@ -187,10 +187,11 @@ covers the whole life, including the loss, because `total_invested` and
 | File | Change |
 |------|--------|
 | `tradeexecutor/state/position_internal_share_price.py` | `total_withdrawn` field |
-| `tradeexecutor/strategy/position_internal_share_price.py` | Set on creation, carried forward, added on sells and capital outflows |
+| `tradeexecutor/strategy/position_internal_share_price.py` | Set on creation, carried forward, added on sells and capital outflows; `calculate_flow_neutral_profit_usd()` and `calculate_closed_flow_neutral_return()` |
 | `tradeexecutor/exchange_account/state.py` | `open_exchange_account_position()` mints into an existing state |
 | `tradeexecutor/strategy/position_internal_share_price.py` (buy branch) | New series on a deposit into a zero-priced position |
-| `tradeexecutor/state/position.py` | Flow-neutral `profit_usd`; closed-position split and money-weighted closed % |
+| `tradeexecutor/state/position.py` | Flow-neutral `profit_usd` in `get_share_price_profit()`; the profit methods call the share-price module's functions for the closed-position split and money-weighted closed % |
+| `tradeexecutor/state/state.py`, `tradeexecutor/exchange_account/state.py` | `mark_trade_success()` and `complete_exchange_account_funding()` pass the position's Decimal quantity, so an exit to exactly zero burns every share; see "Bugs found and fixed" |
 | `tradeexecutor/testing/lighter_share_price_timelines.py` (new) | The timelines of the state unit tests as data, a driver that applies their events to a `State` through the executor's own code, and the invariant checks; shared by the unit tests and the manual chart script |
 | `tradeexecutor/visual/position.py`, `tradeexecutor/strategy/chart/standard/vault.py` | The existing position chart, `calculate_position_timeline()` and `visualise_position()` behind `vault_position_timeline()`, supports exchange-account positions: built from the recorded statistics, with the internal share price as the price and the internal shares as the quantity, so a change in shares is a trade marker. No new chart functions |
 | `scripts/lagoon/manual-lighter-share-price-charts.py` (new) | Manual chart inspection, below |
@@ -255,7 +256,7 @@ computed with the current share-price functions plus the proposed
 | D. Funding chain, fee 0.5 per transfer | Master deposit 10; fund trend 4; trend revalued to 4.4; trend sends 2.2 to arb; arb revalued to 1.98; withdraw all three | Master −5%, USD −0.5; trend −2.5%, USD −0.1; arb −10%, USD −0.22. Sum −0.82 = +0.40 − 0.22 − 1.00 fees |
 | E. Valuation-seeded opening | Placeholder 0, first valuation 5; deposit 5; revalue to 11 | 10 units, return +10%, USD +1 |
 | F. Withdrawal fee | Deposit 10; withdraw 10, Safe credited 9.9 | Return 0%, USD −0.1 |
-| G. Write-off and close | Deposit 10; revalue to 10.4; withdraw 10; close, writing off 0.4 | Closed: unrealised 0, realised USD 0, closed % 0 (design 3) |
+| G. Write-off and close | Deposit 10; revalue to 10.8; withdraw 10.5; close, writing off 0.3 | Closed: unrealised 0, realised USD +0.5, closed % +5%, while the share price is 0 (design 3) |
 | H. Total loss and re-funding | Deposit 10; revalue to 0; deposit 5; revalue to 5.5 | No crash; a new series of 5 units, return +10% since the loss, USD −9.5 (design 5) |
 | I. Repeated allocation | Placeholder; valuation seeds 5; `open_exchange_account_position()` allocates 5, then 1 | Both minted into the existing state: 11 units, profit 0, `total_withdrawn` kept |
 | J. Tiny remainders | One account: deposit 1,000,000, withdraw 999,999.9995. Another: deposit 1,000,000, revalue to 0.0005, deposit 1 | The 0.0005 USDC balances are kept, not rounded to zero: 0.0005 units at 1.0; the second account's deposit mints at 5e-10 and its return stays −99.99999995% |
@@ -271,7 +272,9 @@ computed with the current share-price functions plus the proposed
 - after the funding chain, the master's last `PositionStatistics` carries
   the figures in `profit_usd`, `internal_profit_usd` and `profitability`, and
   the existing position chart marks its deposit as a mint and its transfer
-  out and withdrawal as burns, and renders to a non-empty PNG.
+  out and withdrawal as burns, and renders to a non-empty PNG;
+- trade analysis of timeline G counts the closed account's +0.5 as realised
+  profit and nothing as unrealised.
 
 ### Anvil fork with the Typer CLI
 
@@ -332,7 +335,8 @@ It:
    `inflow-before-loss`, `exit-and-reentry`, `valuation-seeded`,
    `withdrawal-fee`, `write-off-and-close`, `total-loss-and-refund`,
    `repeated-allocation`), with the funding chain of timeline D running from
-   the master through two more sub-accounts;
+   the master through two more sub-accounts and timeline J on `small-exit`
+   and `small-value`;
 2. replays every timeline's events with the shared driver, one event per
    simulated hour, and calls `update_statistics()` after each event, so the
    positions' `PositionStatistics` history has a point per event;
@@ -360,7 +364,9 @@ What to look for in the PNGs, also listed in the script header:
   expected value;
 - `total-loss-and-refund` drops to zero and restarts at the initial price,
   with the re-funding marked ▲;
-- `write-off-and-close` ends at the close with no trailing points.
+- `write-off-and-close` ends at the close with no trailing points, its
+  share price at zero from the write-off and its PnL USD at +0.5, realised
+  at the close.
 
 The existing chart annualises the return in its PnL % panel. Over the
 replay's hourly events that gives meaningless figures such as 4×10²⁴³ or a
@@ -429,10 +435,13 @@ designed, with the deviations and findings below.
 
 ### Verified by tests
 
-- `tests/exchange_account/test_lighter_flow_neutral_profit.py`: the nine
-  timelines, every invariant after every event and the final figures; an old
-  state reloaded without the new key; a failed transfer recovered once and a
-  repeated completion refused; the stored statistics; a PNG render.
+- `tests/exchange_account/test_lighter_flow_neutral_profit.py`: the ten
+  timelines, every invariant after every event and the final figures,
+  including a closed account's realised/unrealised split; an old state
+  reloaded without the new key; a failed transfer recovered once and a
+  repeated completion refused; the stored statistics; the existing position
+  chart's trade markers and a PNG render; trade analysis of a closed
+  account.
 - `tests/lagoon/test_lagoon_lighter_flow_neutral_profit_e2e.py`: the Typer
   CLI timeline on the fork with the fake Lighter Core. Final USD profits:
   master −2.5 (five transfer fees), trend −1.8, arb −0.38; their sum equals
@@ -448,9 +457,7 @@ designed, with the deviations and findings below.
   point is that the existing position charts work for these accounts.
   Inspecting the charts found a re-funding after a total loss drawn as a
   burn, fixed by counting a restarted series as minted, and a replay Safe too
-  small for the million-dollar timeline. The first inspection, of the
-  replaced charts, led to
-  account's first flow.
+  small for the million-dollar timeline.
 
 ### Deviations from the plan
 
