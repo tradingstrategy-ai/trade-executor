@@ -192,7 +192,7 @@ covers the whole life, including the loss, because `total_invested` and
 | `tradeexecutor/strategy/position_internal_share_price.py` (buy branch) | New series on a deposit into a zero-priced position |
 | `tradeexecutor/state/position.py` | Flow-neutral `profit_usd`; closed-position split and money-weighted closed % |
 | `tradeexecutor/testing/lighter_share_price_timelines.py` (new) | The timelines of the state unit tests as data, a driver that applies their events to a `State` through the executor's own code, and the invariant checks; shared by the unit tests and the manual chart script |
-| `tradeexecutor/strategy/chart/standard/exchange_account.py` (new) | `exchange_account_share_price(input: ChartInput) -> Figure`: one exchange-account position's share price, units, value and USD profit over time, with flow markers |
+| `tradeexecutor/visual/position.py`, `tradeexecutor/strategy/chart/standard/vault.py` | The existing position chart, `calculate_position_timeline()` and `visualise_position()` behind `vault_position_timeline()`, supports exchange-account positions: built from the recorded statistics, with the internal share price as the price and the internal shares as the quantity, so a change in shares is a trade marker. No new chart functions |
 | `scripts/lagoon/manual-lighter-share-price-charts.py` (new) | Manual chart inspection, below |
 | `tradeexecutor/testing/lighter_scripted_transfers.py` | `verify_lighter_scripted_transfers()` checks each account's USD profit is minus the fees it paid |
 | `tradeexecutor/cli/commands/perform_test_trade.py` | `--amount` converted to `Decimal` through `str`; see "Bugs found and fixed" |
@@ -270,7 +270,8 @@ computed with the current share-price functions plus the proposed
   `total_withdrawn` unchanged;
 - after the funding chain, the master's last `PositionStatistics` carries
   the figures in `profit_usd`, `internal_profit_usd` and `profitability`, and
-  its chart renders to a non-empty PNG.
+  the existing position chart marks its deposit as a mint and its transfer
+  out and withdrawal as burns, and renders to a non-empty PNG.
 
 ### Anvil fork with the Typer CLI
 
@@ -337,8 +338,9 @@ It:
    positions' `PositionStatistics` history has a point per event;
 3. runs the four invariants and stops with the failing position and event if
    one breaks, before drawing anything;
-4. renders `exchange_account_share_price()` for every position, and one
-   overview chart with every position's share price, to PNG files with
+4. renders the existing position chart, `vault_position_timeline()`, for
+   every position, and the existing `equity_curve_by_asset()` as an
+   overview, to PNG files with
    `render_plotly_figure_as_image_file()`;
 5. prints a `tabulate` table of each position's final return %, USD profit,
    units and `total_withdrawn`, next to the expected values, and the path of
@@ -350,16 +352,20 @@ Output goes to `OUTPUT_DIR`, default `/tmp/lighter-share-price-charts`.
 
 What to look for in the PNGs, also listed in the script header:
 
-- the share price is flat across every deposit, withdrawal and transfer
-  marker, except a fee step down on a funding source;
-- the share price moves only at revaluation markers;
-- units step only at flow markers, never at a revaluation;
-- the USD profit line moves only at revaluations and fees, and ends at the
+- the internal share price is flat at every trade marker, which marks
+  shares minted (▲, a deposit, allocation or transfer in) or burned (▼, a
+  withdrawal or transfer out), except a fee step down on a transfer out;
+- the share price moves only between markers, at valuations;
+- the PnL USD panel moves only at valuations and fees, and ends at the
   expected value;
-- `total-loss-and-refund` drops to zero and restarts at the initial price on
-  the re-funding;
-- `write-off-and-close` ends at the close with no trailing points;
-- no negative units, no gaps and no points before a position opened.
+- `total-loss-and-refund` drops to zero and restarts at the initial price,
+  with the re-funding marked ▲;
+- `write-off-and-close` ends at the close with no trailing points.
+
+The existing chart annualises the return in its PnL % panel. Over the
+replay's hourly events that gives meaningless figures such as 4×10²⁴³ or a
+flat −100%; it is the chart's design for daily data, not a defect of these
+accounts.
 
 A smoke test in the unit module renders one position's chart to PNG bytes
 and asserts they are not empty, so the chart and the script's rendering path
@@ -436,8 +442,14 @@ designed, with the deviations and findings below.
 - Regression: `tests/exchange_account/`, `tests/test_state.py`, the HyperCore
   profit attribution and accounting tests, and every Lighter test under
   `tests/lagoon/` pass.
-- `scripts/lagoon/manual-lighter-share-price-charts.py` renders twelve charts;
-  they were inspected and led to step lines and charts starting at the
+- `scripts/lagoon/manual-lighter-share-price-charts.py` renders the existing
+  position chart for every account and the existing per-asset equity curve.
+  An earlier version drew its own chart module, which was replaced: the
+  point is that the existing position charts work for these accounts.
+  Inspecting the charts found a re-funding after a total loss drawn as a
+  burn, fixed by counting a restarted series as minted, and a replay Safe too
+  small for the million-dollar timeline. The first inspection, of the
+  replaced charts, led to
   account's first flow.
 
 ### Deviations from the plan

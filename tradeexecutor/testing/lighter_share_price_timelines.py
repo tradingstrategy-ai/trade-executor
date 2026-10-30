@@ -28,7 +28,12 @@ import math
 from dataclasses import dataclass, field
 from decimal import Decimal
 
+from eth_defi.lighter.constants import LIGHTER_L1_CONTRACT
 from eth_defi.token import USDC_NATIVE_TOKEN
+from tradingstrategy.chain import ChainId
+from tradingstrategy.exchange import Exchange, ExchangeType
+from tradingstrategy.timebucket import TimeBucket
+from tradingstrategy.universe import Universe
 
 from tradeexecutor.exchange_account.lighter import create_lighter_exchange_account_pairs
 from tradeexecutor.exchange_account.state import (
@@ -46,6 +51,7 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.statistics.core import update_statistics
 from tradeexecutor.strategy.execution_context import ExecutionMode
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, create_pair_universe_from_code
 from tradeexecutor.strategy.position_internal_share_price import calculate_flow_neutral_profit_usd
 
 #: Lighter account index of the master account.
@@ -54,8 +60,10 @@ MASTER_ACCOUNT_INDEX = 700
 #: Lighter account index of the first sub-account; later ones count down, as Lighter's do.
 FIRST_SUB_ACCOUNT_INDEX = 2**48 - 1000
 
-#: USDC held in the Safe before any timeline event.
-SAFE_USDC = Decimal(10_000)
+#: USDC held in the Safe before any timeline event; enough for the
+#: million-dollar deposits of the tiny-remainders timeline, so the reserve
+#: never goes negative in the portfolio charts.
+SAFE_USDC = Decimal(10_000_000)
 
 #: Clock of the first event.
 TIMELINE_START = datetime.datetime(2026, 1, 1)
@@ -379,6 +387,37 @@ class TimelineReplay:
 
         self._sync_model = ExchangeAccountSyncModel(self._fetch_account_value)
         update_statistics(self.clock, self.state.stats, self.state.portfolio, ExecutionMode.unit_testing)
+
+    def create_strategy_universe(self) -> TradingStrategyUniverse:
+        """Create the strategy universe of the replayed accounts, as a live Lighter strategy has.
+
+        Mirrors :py:func:`tradeexecutor.exchange_account.lighter_strategy.create_lighter_account_universe`,
+        which resolves the accounts from deployment records a replay does not
+        have: one exchange-account pair per account and no candles. Chart
+        functions read the pairs from it.
+
+        :return:
+            Universe with the replay's pairs and its USDC reserve.
+        """
+        pairs = list(self.pairs.values())
+        exchange = Exchange(
+            chain_id=ChainId.ethereum,
+            chain_slug="ethereum",
+            exchange_id=1,
+            exchange_slug="lighter",
+            address=LIGHTER_L1_CONTRACT,
+            exchange_type=ExchangeType.lighter,
+            pair_count=len(pairs),
+        )
+        universe = Universe(
+            time_bucket=TimeBucket.d1,
+            chains={ChainId.ethereum},
+            exchanges={exchange},
+            pairs=create_pair_universe_from_code(ChainId.ethereum, pairs),
+            candles=None,
+            liquidity=None,
+        )
+        return TradingStrategyUniverse(data_universe=universe, reserve_assets=[self.usdc])
 
     def _fetch_account_value(self, pair: TradingPairIdentifier, block_identifier: int | None = None) -> Decimal:
         """Stub Lighter equity read: the value the replay tracks for the account.

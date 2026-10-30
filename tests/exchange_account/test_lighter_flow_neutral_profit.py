@@ -6,7 +6,7 @@ drive deposits, withdrawals, transfers between accounts, gains, losses,
 write-offs and closes through the executor's own state helpers, and check
 four invariants after every event. These tests replay them, and cover what
 the timelines do not: states saved before the withdrawn total was tracked,
-transfer recovery, the stored statistics and the chart.
+transfer recovery, the stored statistics and the existing position chart.
 """
 
 import json
@@ -21,8 +21,10 @@ from tradeexecutor.exchange_account.state import (
 )
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.chart.definition import ChartInput
-from tradeexecutor.strategy.chart.standard.exchange_account import exchange_account_share_price
-from tradeexecutor.strategy.execution_context import unit_test_execution_context
+from tradeexecutor.strategy.chart.standard.vault import vault_position_timeline
+from tradeexecutor.strategy.execution_context import unit_test_trading_execution_context
+from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet
+from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators
 from tradeexecutor.strategy.position_internal_share_price import calculate_flow_neutral_profit_usd
 from tradeexecutor.testing.lighter_share_price_timelines import (
     MASTER,
@@ -58,7 +60,8 @@ def test_lighter_flow_neutral_profit_old_state_recovery_and_chart() -> None:
     1. Book a deposit and a transfer, then save and reload the state without the new key
     2. Apply the rest of the funding chain: the reloaded accounts stay unknown on the old figures, an account first funded after the reload is tracked
     3. Recover a failed transfer once, then check a repeated completion is refused and changes nothing
-    4. Check the stored statistics and the chart of a fresh funding chain carry the flow-neutral figures
+    4. Check the stored statistics of a fresh funding chain carry the flow-neutral figures
+    5. Draw the master with the existing position chart: flows are its trade markers, and it renders to PNG
     """
     funding_chain = next(timeline for timeline in TIMELINES if timeline.timeline_id == "funding-chain")
 
@@ -101,12 +104,21 @@ def test_lighter_flow_neutral_profit_old_state_recovery_and_chart() -> None:
     assert (master.share_price_state.total_withdrawn, master.share_price_state.total_supply, trend.share_price_state.total_supply) == recovered
     assert calculate_flow_neutral_profit_usd(master) == pytest.approx(-0.5)
 
-    # 4. Check the stored statistics and the chart of a fresh funding chain carry the flow-neutral figures
+    # 4. Check the stored statistics of a fresh funding chain carry the flow-neutral figures
     replay = replay_timeline(funding_chain)
     master = replay.positions[MASTER]
     last_stats = replay.state.stats.positions[master.position_id][-1]
     assert last_stats.profit_usd == pytest.approx(-0.5)
     assert last_stats.internal_profit_usd == pytest.approx(-0.5)
     assert last_stats.profitability == pytest.approx(-0.05)
-    figure = exchange_account_share_price(ChartInput(execution_context=unit_test_execution_context, state=replay.state, pairs=[master.pair]))
+
+    # 5. Draw the master with the existing position chart: flows are its trade markers, and it renders to PNG
+    indicators = StrategyInputIndicators(strategy_universe=replay.create_strategy_universe(), available_indicators=IndicatorSet(), indicator_results={})
+    chart_input = ChartInput(execution_context=unit_test_trading_execution_context, state=replay.state, strategy_input_indicators=indicators, pairs=[master.pair])
+    figure, timeline = vault_position_timeline(chart_input)
+    flows = timeline.loc[timeline["delta"] != 0]
+    # The deposit mints shares; the transfer out and the withdrawal burn them, at the internal share price.
+    assert list(flows["delta"] > 0) == [True, False, False]
+    assert list(flows["mark_price"]) == pytest.approx([1.0, 0.95, 0.95])
+    assert timeline["pnl"].iloc[-1] == pytest.approx(-0.5)
     assert len(render_plotly_figure_as_image_file(figure, width=800, height=600)) > 0

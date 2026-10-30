@@ -66,10 +66,11 @@ outside the executor, is booked by `correct-accounts` as profit on one account
 and loss on the other. Positions saved before the withdrawn total was tracked
 keep their earlier USD figure.
 
-`scripts/lagoon/manual-lighter-share-price-charts.py` draws the share price,
-shares, value and profit of example accounts for inspection. A strategy can
-register the `exchange_account_share_price` chart to draw them for a live
-vault.
+The position chart, `vault_position_timeline`, draws an exchange account
+with its internal share price as the price and a trade marker wherever
+shares were minted or burned, from the position's recorded statistics.
+`scripts/lagoon/manual-lighter-share-price-charts.py` renders it for example
+accounts, for inspection.
 
 ## Sub-accounts
 
