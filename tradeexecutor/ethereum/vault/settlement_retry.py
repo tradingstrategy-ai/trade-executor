@@ -489,6 +489,7 @@ def _resolve_single_vault_trade(
         if has_existing_post_tx and not tx_already_confirmed:
             # Rebroadcast
             try:
+                execution_model.sync_state_before_broadcast()
                 confirmed_receipt = _broadcast_and_wait_for_settlement_tx(web3, existing_tx)
                 if confirmed_receipt["status"] == 1:
                     tx_already_confirmed = True

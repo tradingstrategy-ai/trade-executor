@@ -115,6 +115,9 @@ early-recovery predicate. The follow-up reported no blocking or important
 findings. Both reviews were read-only and did not run tests.
 
 The focused checks above total **223 passed and 4 pre-existing skipped cases**.
+The subsequent checkpoint regression covers failed initial saves and failed
+retry saves: neither may broadcast, and recovery reuses the signed claim. The
+shared settlement module passed **18 cases** with this regression included.
 During PR preparation, the executor was rebased onto `d6bf67aaf` and the
 dependency updated to `40f13c744`. The repeated state, Atoma valuation and
 guarded CLI checks passed with **55 passed and 4 pre-existing skips**; the

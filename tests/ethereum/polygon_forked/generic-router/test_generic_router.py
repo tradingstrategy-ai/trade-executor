@@ -4,6 +4,7 @@ import os
 import shutil
 from decimal import Decimal
 
+import flaky
 import pytest as pytest
 
 from eth_defi.balances import fetch_erc20_balances_by_token_list
@@ -166,6 +167,8 @@ def test_generic_routing_open_position_across_markets(
     assert balances[asset_usdc.address] == pytest.approx(9_500), f"Got balance: {balances}"
 
 
+# 2026-10-30: CI's 1delta close reverted despite successful eth_call replay; the exact test passed locally.
+@flaky.flaky
 def test_generic_routing_close_position_across_markets(
     web3: Web3,
     hot_wallet: HotWallet,

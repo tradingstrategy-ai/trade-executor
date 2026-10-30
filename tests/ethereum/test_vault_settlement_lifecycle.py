@@ -512,20 +512,20 @@ def test_vault_settlement_pending_metadata_stored(
     assert deserialised["vault_chain_id"] == 42161
 
 
+@pytest.mark.parametrize("checkpoint_fails", [False, True])
 def test_vault_settlement_retry_claimable(
     vault_pair: TradingPairIdentifier,
     usdc_arbitrum: AssetIdentifier,
-):
-    """Verify settlement retry resolves a claimable vault trade.
+    checkpoint_fails: bool,
+) -> None:
+    """Checkpoint both new and retried claims before allowing cash to move.
 
     1. Create a vault buy trade in vault_settlement_pending state
     2. Mock the deposit manager to return CLAIMABLE status
-    3. Mock the claim transaction and analysis
-    4. Call check_and_resolve_vault_settlements
+    3. Mock the claim transaction and analysis to isolate persistence ordering
+    4. Refuse broadcasts while saving fails, then resolve the same signed claim
     5. Verify trade is marked as success with correct amounts
     """
-    from unittest.mock import MagicMock, patch
-    from eth_defi.vault.deposit_redeem import AsyncVaultRequestStatus, DepositRedeemEventAnalysis
     state = State()
     ts = datetime.datetime(2025, 1, 1)
 
@@ -573,12 +573,13 @@ def test_vault_settlement_retry_claimable(
     mock_analysis.share_count = Decimal("96.15")
     mock_deposit_manager.analyse_deposit.return_value = mock_analysis
 
-    # 3. Mock vault and web3
+    # 3. Mock the claim transaction and analysis to isolate persistence ordering.
     mock_vault = MagicMock()
     mock_vault.get_deposit_manager.return_value = mock_deposit_manager
     mock_vault.vault_contract = MagicMock()
 
     mock_web3 = MagicMock()
+    mock_web3.eth.get_transaction_receipt.side_effect = RuntimeError("Claim not broadcast")
     mock_receipt = {"status": 1, "transactionHash": b"\x00" * 32, "blockNumber": 100}
     mock_web3.eth.send_raw_transaction.return_value = b"\x00" * 32
 
@@ -592,11 +593,19 @@ def test_vault_settlement_retry_claimable(
     mock_tx.other = {}
     mock_execution_model.tx_builder.sign_transaction.return_value = mock_tx
 
-    # 4. Patch get_vault_for_pair
+    # 4. Refuse broadcasts while saving fails, then resolve the same signed claim.
     with (
         patch("tradeexecutor.ethereum.vault.settlement_retry.get_vault_for_pair", return_value=mock_vault),
         patch("tradeexecutor.ethereum.vault.settlement_retry.wait_for_transaction_receipt_robust", return_value=mock_receipt),
     ):
+        if checkpoint_fails:
+            mock_execution_model.sync_state_before_broadcast.side_effect = OSError("Checkpoint unavailable")
+            for _ in range(2):
+                assert check_and_resolve_vault_settlements(state, mock_execution_model) == []
+                mock_web3.eth.send_raw_transaction.assert_not_called()
+                assert trade.get_status() == TradeStatus.vault_settlement_pending
+                assert trade.blockchain_transactions == [approve_tx, request_tx, mock_tx]
+            mock_execution_model.sync_state_before_broadcast.side_effect = None
         resolved = check_and_resolve_vault_settlements(
             state=state,
             execution_model=mock_execution_model,
@@ -608,6 +617,10 @@ def test_vault_settlement_retry_claimable(
     assert trade.vault_settlement_pending_at is None
     assert trade.executed_reserve == pytest.approx(Decimal(100))
     assert trade.executed_quantity == pytest.approx(Decimal("96.15"))
+    mock_execution_model.tx_builder.sign_transaction.assert_called_once()
+    mock_execution_model.sync_state_before_broadcast.assert_called()
+    assert mock_execution_model.sync_state_before_broadcast.call_count == (3 if checkpoint_fails else 1)
+    mock_web3.eth.send_raw_transaction.assert_called_once_with(HexBytes(mock_tx.signed_bytes))
 
 
 def test_vault_settlement_retry_repairs_legacy_missing_reserve_debit(
