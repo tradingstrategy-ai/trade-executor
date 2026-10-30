@@ -6,11 +6,13 @@ the standalone vault diagnostic runner.
 
 from decimal import Decimal
 
+from eth_defi.erc_4626.vault_protocol.atoma.deposit_redeem import AtomaDepositManager
 
 from tradeexecutor.ethereum.vault.vault_live_pricing import VaultPricing
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
+from tradeexecutor.state.trade import TradeStatus
 from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
 from tradeexecutor.strategy.pricing_model import PricingModel
 
@@ -24,7 +26,13 @@ def is_synchronous_vault_test(pricing_model: PricingModel, pair: TradingPairIden
     return manager.has_synchronous_deposit() and manager.has_synchronous_redemption()
 
 
-def get_test_position(state: State, pair: TradingPairIdentifier) -> TradingPosition | None:
+def is_atoma_vault_test(pricing_model: PricingModel, pair: TradingPairIdentifier) -> bool:
+    """Use the existing pending-ticket lifecycle for Atoma public test trades."""
+    pricing = pricing_model.route(pair) if isinstance(pricing_model, GenericPricing) else pricing_model
+    return isinstance(pricing, VaultPricing) and isinstance(pricing.get_vault(pair).get_deposit_manager(), AtomaDepositManager)
+
+
+def get_test_position(state: State, pair: TradingPairIdentifier, *, allow_pending_redemption: bool = False) -> TradingPosition | None:
     """Refuse ordinary or externally modified holdings before a test touches them."""
     positions = [p for p in state.portfolio.get_open_and_frozen_positions() if p.pair == pair]
     if len(positions) > 1:
@@ -34,7 +42,12 @@ def get_test_position(state: State, pair: TradingPairIdentifier) -> TradingPosit
     position = positions[0]
     if not position.trades or not all(t.is_test() for t in position.trades.values()) or position.balance_updates:
         raise RuntimeError(f"Refusing to trade non-test or externally modified position #{position.position_id}")
-    if position.is_frozen() or any(not t.is_success() for t in position.trades.values()):
+    if position.is_frozen() or any(
+        not t.is_success() and not (
+            allow_pending_redemption and t.is_sell() and t.get_status() == TradeStatus.vault_settlement_pending
+        )
+        for t in position.trades.values()
+    ):
         raise RuntimeError(f"Test position #{position.position_id} has unresolved trades; reconcile existing transactions before retrying")
     return position
 
@@ -58,7 +71,7 @@ def check_vault_test_capacity(
         return
     vault = pricing.get_vault(pair)
     manager = vault.get_deposit_manager()
-    if not (manager.has_synchronous_deposit() and manager.has_synchronous_redemption()):
+    if not isinstance(manager, AtomaDepositManager) and not (manager.has_synchronous_deposit() and manager.has_synchronous_redemption()):
         return
     owner = pricing.get_owner_address(pair)
     if owner is None:

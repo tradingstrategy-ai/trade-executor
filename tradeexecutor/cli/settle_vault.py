@@ -16,6 +16,7 @@ from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.sync_model import SyncModel
 from tradeexecutor.strategy.valuation import ValuationModel
 from tradeexecutor.strategy.valuation_update import update_position_valuations
+from tradeexecutor.ethereum.vault.settlement_retry import has_pending_atoma_settlement
 from tradingstrategy.types import Percent
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.execution_model import ExecutionModel
@@ -79,6 +80,10 @@ def settle_vault(
         vault = sync_model.vault
         logger.info("  Trading Strategy module address: %s", vault.trading_strategy_module_address)
         logger.info("  Safe address: %s", vault.safe_address)
+
+    # Complete saved Atoma claims before valuation reads their consumed tickets.
+    if has_pending_atoma_settlement(state):
+        execution_model.resolve_pending_vault_settlements(state=state, ts=ts)
 
     # Use unit_testing flag so this code path is easier to check
     if sync_model.has_async_deposits() or unit_testing:

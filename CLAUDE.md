@@ -8,10 +8,11 @@ working on that area:
 | Doc | Description |
 |-----|-------------|
 | `.claude/docs/agent-tricks-and-troubleshooting.md` | **MANDATORY read before ANY Claude CLI or Codex CLI invocation** (reviews, sanity checks, or one-off runs) |
+| [sanity-check-plan](.claude/skills/sanity-check-plan/SKILL.md) | Use after writing or substantially revising a software implementation plan: check conversation/scope, repository docs and code, reuse of existing mechanisms, meaningful validation and overengineering; directly correct the plan |
 | `.claude/docs/cli-command.md` | CLI command patterns for trade-executor |
 | [docs/state-persistence.md](docs/state-persistence.md) | Existing state mechanism for data, transactions, journaling and checkpoints; explicit user permission required before adding another system |
 | `.claude/docs/alpha-model.md` | Base synchronous `AlphaModel` — the signals → weights → targets → trades pipeline, risk caps, trade generation gates, diagnostics charts, with `hyper-ai.py` as the reference implementation |
-| `.claude/docs/vault-deposit-redeem.md` | Synchronous and async (ERC-7540 / Lagoon / Ostium) vault deposit and redeem flows |
+| [.claude/docs/vault-deposit-redeem.md](.claude/docs/vault-deposit-redeem.md) | **Read before changing vault integration, async settlement, recovery or accounting**: shared Lagoon / Ostium / Atoma managers, tickets, state, resolver, valuation and funding gates, with code/test map; reuse these mechanisms |
 | `.claude/docs/lagoon-treasury-settlement.md` | Lagoon treasury NAV posting, GuardV0 settlement limits, cooldowns and Safe-governance recovery |
 | `.claude/docs/hypercore-vault.md` | HyperCore native vault execution — properties, data structures, deposit/withdrawal phases, HyperEVM interactions, modules and diagrams |
 | `.claude/docs/phase-aware-alpha-model.md` | Phase-aware alpha model — parking window-gated vault deposits in a yield-bearing queue vault, park/promote event log, correctness invariants, backtest window modelling, diagnostics charts |

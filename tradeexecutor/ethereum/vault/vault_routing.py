@@ -1,4 +1,8 @@
-"""Route trades for ERC-4626 and similar vaults."""
+"""Route trades for ERC-4626 and similar vaults.
+
+Async requests become persisted tickets, then settlement_retry completes the
+same trade. See .claude/docs/vault-deposit-redeem.md before adding a vault flow.
+"""
 
 import logging
 from decimal import Decimal
@@ -12,6 +16,7 @@ from eth_defi.token import USDC_NATIVE_TOKEN
 from eth_defi.erc_4626.analysis import analyse_4626_flow_transaction
 from eth_defi.erc_4626.classification import create_vault_instance, create_vault_instance_autodetect
 from eth_defi.erc_4626.deposit_redeem import ERC4626DepositManager
+from eth_defi.erc_4626.vault_protocol.atoma.deposit_redeem import AtomaFlowAnalysis
 from eth_defi.erc_4626.vault import ERC4626Vault
 from eth_defi.provider.anvil import is_anvil
 from eth_defi.token import fetch_erc20_details, TokenDetails, TokenDiskCache
@@ -223,8 +228,11 @@ def convert_vault_flow_analysis(
         executed_amount = analysis.share_count
     else:
         executed_amount = -analysis.share_count
+    assert analysis.share_count > 0
     price = executed_reserve / analysis.share_count
-    assert executed_reserve > 0 and executed_amount != 0 and price > 0
+    zero_redemption = direction == "redeem" and isinstance(analysis, AtomaFlowAnalysis)
+    assert executed_reserve > 0 or (zero_redemption and executed_reserve == 0)
+    assert executed_amount != 0
     return executed_reserve, executed_amount, price
 
 
@@ -638,6 +646,8 @@ class VaultRouting(RoutingModel):
             )
             if direction == "redeem":
                 redemption_preflight = trade.other_data["vault_redemption_preflight"]
+                if hasattr(request, "implementation"):
+                    redemption_preflight["implementation"] = request.implementation
                 manager_calls = redemption_preflight.setdefault("manager_calls", [])
                 manager_calls.append(
                     _capture_wrapped_redemption_preflight(request_tx, tx_builder.web3)
@@ -765,6 +775,9 @@ class VaultRouting(RoutingModel):
                     trade,
                     request_function_count=len(redemption_request.funcs),
                 )
+                implementation = trade.other_data.get("vault_redemption_preflight", {}).get("implementation")
+                if implementation is not None and hasattr(redemption_request, "implementation"):
+                    redemption_request.implementation = implementation
                 parse_request = redemption_request.parse_redeem_transaction
 
             request_receipts: list[dict] = []

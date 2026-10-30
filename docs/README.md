@@ -17,6 +17,13 @@ For guarded ERC-4626 test trades, see the
 [Arbitrum manual tutorial](../scripts/lagoon/manual-erc4626-cli.sh) and its
 [funded run report](reports/erc4626-manual-live-2026-10-29.md).
 
+For **async vault integration**, start with the
+[shared vault lifecycle](../.claude/docs/vault-deposit-redeem.md) and its code/test
+map: managers, persisted tickets, settlement retry, valuation and funding gates.
+It covers external vault positions, including Lagoon, Ostium and Atoma.
+[Lagoon treasury settlement](../.claude/docs/lagoon-treasury-settlement.md)
+separately covers the strategy's own investor flows and NAV publication.
+
 For the Ethereum Lighter account activation and public NAV wiring, see
 [Lagoon Lighter deployment](./lagoon-lighter-deployment.md).
 

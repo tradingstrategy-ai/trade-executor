@@ -35,15 +35,21 @@
 # wrapper. Only investor funding is injected, never protocol liquidity. The test
 # additionally syncs settlement before snapshots for nested simulation forks.
 # Its results do not establish current mainnet availability.
+# Atoma mode: add --atoma on the first run. It uses the same commands and state,
+# with 100 USDC per deposit and a 400 USDC default subscription. Shares remain
+# locked until the next epoch; close-only then requests an exit, and later reruns
+# claim after the real operator settles. No timing or operator spoof runs live.
 
 set -Eeuo pipefail
 DEPLOY=false
 SUBSCRIBE=false
+export ERC4626_PROTOCOL="${ERC4626_PROTOCOL:-standard}"
 for argument in "$@"; do
     case "$argument" in
         --deploy) DEPLOY=true ;;
         --subscribe) SUBSCRIBE=true ;;
-        *) echo "Usage: $0 [--deploy] [--subscribe]" >&2; exit 2 ;;
+        --atoma) export ERC4626_PROTOCOL=atoma ;;
+        *) echo "Usage: $0 [--deploy] [--subscribe] [--atoma]" >&2; exit 2 ;;
     esac
 done
 umask 077
@@ -57,8 +63,13 @@ command -v jq >/dev/null
 export ERC4626_RUN_DIR="${ERC4626_RUN_DIR:-$HOME/.tradingstrategy/examples/erc4626-cli-$(date -u +%Y%m%d-%H%M%S)}"
 mkdir -p "$ERC4626_RUN_DIR/state"
 chmod 700 "$ERC4626_RUN_DIR"
-export SUBSCRIPTION_USDC="${SUBSCRIPTION_USDC:-10}"
-export AMOUNT="${AMOUNT:-1}"
+if [ "$ERC4626_PROTOCOL" = atoma ]; then
+    export SUBSCRIPTION_USDC="${SUBSCRIPTION_USDC:-400}"
+    export AMOUNT="${AMOUNT:-100}"
+else
+    export SUBSCRIPTION_USDC="${SUBSCRIPTION_USDC:-10}"
+    export AMOUNT="${AMOUNT:-1}"
+fi
 # Match the existing Lagoon funding/redemption commands' minimum gas balance.
 export MIN_GAS_BALANCE="${MIN_GAS_BALANCE:-0.001}"
 export EXECUTOR_ID=erc4626-cli
@@ -78,6 +89,9 @@ for variable in ${!JSON_RPC_@}; do
 done
 
 SOURCE_STRATEGY=strategies/test_only/erc4626_manual_strategy.py
+if [ "$ERC4626_PROTOCOL" = atoma ]; then
+    SOURCE_STRATEGY=strategies/test_only/atoma_async.py
+fi
 if [ -s "$STRATEGY_FILE" ]; then
     cmp -s "$SOURCE_STRATEGY" "$STRATEGY_FILE" || { echo "Strategy changed: inspect the saved run before reusing its permissions" >&2; exit 1; }
 else
@@ -90,7 +104,7 @@ fi
     printf ': "${ERC4626_TEST_PRIVATE_KEY:?Set the original investor key}"\n'
     printf ': "${JSON_RPC_ARBITRUM:?Set the original Arbitrum RPC}"\n'
     printf 'export PRIVATE_KEY="$ERC4626_TEST_PRIVATE_KEY"\n'
-    for setting in EXECUTOR_ID NAME STRATEGY_FILE STATE_FILE CACHE_PATH VAULT_RECORD_FILE ASSET_MANAGEMENT_MODE LOG_LEVEL SIMULATE MIN_GAS_BALANCE; do
+    for setting in EXECUTOR_ID NAME STRATEGY_FILE STATE_FILE CACHE_PATH VAULT_RECORD_FILE ASSET_MANAGEMENT_MODE LOG_LEVEL SIMULATE MIN_GAS_BALANCE ERC4626_PROTOCOL; do
         printf 'export %s=%q\n' "$setting" "${!setting}"
     done
 } > "$ERC4626_RUN_DIR/env.sh"
@@ -191,12 +205,23 @@ while IFS=$'\t' read -r label target_address; do
         run poetry run trade-executor perform-test-trade \
             --pair "(arbitrum, $target_address)" --amount "$AMOUNT" --buy-only --no-test-short
         phase="$("${MANUAL[@]}" phase --address "$target_address" < /dev/null)"
+        if [ "$ERC4626_PROTOCOL" = atoma ]; then
+            log "Deposit completed. Rerun with the same state after the share lock ends."
+            exit 0
+        fi
     fi
     if [ "$phase" = close ]; then
         run poetry run trade-executor perform-test-trade \
             --pair "(arbitrum, $target_address)" --close-only --no-test-short
     fi
-    [ "$("${MANUAL[@]}" phase --address "$target_address" < /dev/null)" = done ]
+    if [ "$("${MANUAL[@]}" phase --address "$target_address" < /dev/null)" != done ]; then
+        if [ "$ERC4626_PROTOCOL" = atoma ]; then
+            log "Exit remains pending. Keep this state and rerun after the vault operator settles."
+            exit 0
+        fi
+        log "Synchronous exit is incomplete; inspect the saved execution before resuming."
+        exit 1
+    fi
     run poetry run trade-executor check-accounts
     run poetry run trade-executor show-valuation
 done < "$ERC4626_RUN_DIR/pairs.tsv"
