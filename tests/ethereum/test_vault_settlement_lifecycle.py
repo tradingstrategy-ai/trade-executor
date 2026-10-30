@@ -512,6 +512,65 @@ def test_vault_settlement_pending_metadata_stored(
     assert deserialised["vault_chain_id"] == 42161
 
 
+@pytest.mark.parametrize("violation", ["duplicate", "parts", "marker", "onchain", "assertion"])
+def test_vault_settlement_halts_on_aggregate(
+    vault_pair: TradingPairIdentifier,
+    usdc_arbitrum: AssetIdentifier,
+    violation: str,
+) -> None:
+    """Unsupported aggregate evidence halts the batch without crediting cash.
+
+    1. Create a pending redemption and introduce a violated operating assumption.
+    2. Resolve with a stubbed protocol boundary to isolate batch/assertion handling.
+    3. Verify the assertion escapes, no unsafe resolution occurs and state stays pending.
+    """
+    # 1. Create a pending redemption and introduce a violated operating assumption.
+    state = State()
+    ts = datetime.datetime(2026, 10, 30)
+    reserve = state.portfolio.initialise_reserves(usdc_arbitrum)
+    reserve.quantity = Decimal(1000)
+    reserve.reserve_token_price = 1.0
+    trade = _create_vault_sell_trade(state, vault_pair, usdc_arbitrum, Decimal(10), ts)
+    state.start_execution(ts, trade)
+    trade.mark_broadcasted(ts)
+    state.mark_vault_settlement_pending(ts, trade, {
+        "vault_address": OLP_ARBITRUM_ADDRESS,
+        "vault_owner": "0xTestOwner",
+    })
+    if violation == "duplicate":
+        other = _create_vault_sell_trade(state, vault_pair, usdc_arbitrum, Decimal(10), ts)
+        state.start_execution(ts, other)
+        other.mark_broadcasted(ts)
+        state.mark_vault_settlement_pending(ts, other, dict(trade.other_data))
+    elif violation in {"parts", "marker"}:
+        trade.other_data.update(
+            atoma_schema=1,
+            atoma_parts=[{}, {}] if violation == "parts" else [{}],
+            atoma_reconciliation_required=violation == "marker",
+        )
+
+    # 2. Stub protocol resolution; adapter checks are covered upstream. This
+    # verifies that the shared retry wrapper cannot swallow invariant failures.
+    with patch("tradeexecutor.ethereum.vault.settlement_retry._resolve_single_vault_trade") as resolve:
+        if violation == "onchain":
+            resolve.side_effect = VaultFlowUnavailable(
+                "request_reconciliation_required", protocol="Atoma",
+                preflight_result="request_reconciliation_required",
+            )
+        elif violation == "assertion":
+            resolve.side_effect = AssertionError("aggregate invariant")
+        with pytest.raises(AssertionError):
+            check_and_resolve_vault_settlements(state, MagicMock())
+
+        # 3. No unsafe resolution occurs and pending evidence/cash are preserved.
+        if violation in {"duplicate", "parts", "marker"}:
+            resolve.assert_not_called()
+        else:
+            resolve.assert_called_once()
+    assert trade.get_status() is TradeStatus.vault_settlement_pending
+    assert state.portfolio.get_cash() == pytest.approx(1000)
+
+
 @pytest.mark.parametrize("checkpoint_fails", [False, True])
 def test_vault_settlement_retry_claimable(
     vault_pair: TradingPairIdentifier,

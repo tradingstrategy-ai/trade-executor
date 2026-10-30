@@ -403,7 +403,7 @@ def test_atoma_unreconciled_ticket_blocks_nav(atoma_environment: dict[str, str],
     wallet = HotWallet.from_private_key(atoma_environment["PRIVATE_KEY"])
     nonce = web3.eth.get_transaction_count(wallet.address)
     # 3. Restart start and verify no claim/NAV transaction or timestamp refresh occurs.
-    with pytest.raises(InvalidValuationOutput, match="reconciliation"):
+    with pytest.raises(AssertionError, match="reconciliation"):
         cli.main(args=["start"], standalone_mode=False)
     refused = State.read_json_file(state_path)
     assert refused.portfolio.open_positions[position.position_id].last_pricing_at == valued_at

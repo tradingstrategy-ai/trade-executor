@@ -77,8 +77,9 @@ claiming; only a confirmed claim credits reserve cash. A validated zero-payout
 claim realises a loss and consumes shares without a cash credit.
 
 Atoma's quote and claim analysis require attribution to one ticket. An aggregate
-owner/epoch request requiring reconciliation stays pending and blocks a fresh
-valuation/NAV; this integration does not split one payout across several trades.
+owner/epoch request is an invariant violation: assertions halt settlement or
+valuation before further claims or NAV publication. Its mined evidence remains
+in state. See the operating assumption below.
 Missing receipts or a consumed ticket are recovery cases, not evidence of zero
 proceeds. Because Atoma can pay before state accounting finishes, the live runner
 resolves its pending trades before revaluation and treasury sync, using the same
@@ -105,6 +106,36 @@ requests are outstanding, an already-claimable one is misreported as still
 pending.
 
 ## What a pending request means for the books
+
+### One redemption request per trade
+
+The supported operating model has one executor writing the custody account's
+state and at most one pending redemption per custody account and external vault.
+Strategies wait for that redemption to complete before requesting another exit.
+Do not submit independent/manual requests from the same custody account, run
+concurrent executors against it, or import component tickets for an aggregate
+claim. Under these assumptions, multiple requests combining into one payout
+will not occur in supported operation.
+
+Keep this restriction for now across generic vault integrations, including
+Lagoon, Ostium and Atoma. Each redemption is accounted for by its own
+`TradeExecution`; do not build aggregate reconciliation, ticket supersession or
+multi-trade payout allocation. Such machinery is outside the current scope,
+not an outstanding requirement for ordinary Atoma support. Protocol getters
+that aggregate balances, or operator transactions settling several independent
+owners, do not themselves violate this rule.
+
+The shared resolver asserts that pending redemptions do not compete for the
+same vault/owner before resolving the batch. Atoma also asserts one request
+contribution and no reconciliation marker when parsing, resolving and valuing
+a ticket; an adapter-reported aggregate mismatch halts settlement. Assertions
+must propagate out of settlement retry rather than becoming warnings and a
+retry on the next cycle. Keep the evidence, stop and inspect custody/state if
+an assumption is violated. Do not clear the marker, invent a payout split or
+submit a replacement request to continue. Ordinary operator delays, temporary
+illiquidity and indexer lag remain pending/retry conditions.
+
+### Accounting invariants
 
 Between request and claim the capital is in limbo, and the portfolio
 accounting is built around three invariants:
@@ -367,9 +398,10 @@ provider time to catch up before the resolver reads events and marks the trade
 The resolver also runs once at executor startup, so settlements left pending
 by a previous run are picked up before the first cycle. Unlike a stuck CCTP
 bridge transfer — which halts startup, because in-transit bridge funds are an
-error state — an unresolved vault settlement does not block: queues can
+error state — an ordinary unresolved vault settlement does not block: queues can
 legitimately take hours or days, and the trade simply resolves on a future
-tick.
+tick. An assertion failure for competing requests or an aggregate claim halts
+execution instead.
 
 ### Commands cannot wait for settlement
 

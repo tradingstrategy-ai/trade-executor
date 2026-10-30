@@ -2,6 +2,9 @@
 
 Async requests become persisted tickets, then settlement_retry completes the
 same trade. See .claude/docs/vault-deposit-redeem.md before adding a vault flow.
+One redemption request belongs to one trade. Strategies must wait for its
+completion before another exit from the same custody account/vault; external
+requests and aggregate payout allocation are outside the supported model.
 """
 
 import logging
@@ -16,7 +19,7 @@ from eth_defi.token import USDC_NATIVE_TOKEN
 from eth_defi.erc_4626.analysis import analyse_4626_flow_transaction
 from eth_defi.erc_4626.classification import create_vault_instance, create_vault_instance_autodetect
 from eth_defi.erc_4626.deposit_redeem import ERC4626DepositManager
-from eth_defi.erc_4626.vault_protocol.atoma.deposit_redeem import AtomaFlowAnalysis
+from eth_defi.erc_4626.vault_protocol.atoma.deposit_redeem import AtomaFlowAnalysis, AtomaRedemptionTicket
 from eth_defi.erc_4626.vault import ERC4626Vault
 from eth_defi.provider.anvil import is_anvil
 from eth_defi.token import fetch_erc20_details, TokenDetails, TokenDiskCache
@@ -812,6 +815,12 @@ class VaultRouting(RoutingModel):
             )
 
             state.mark_vault_settlement_pending(ts, trade, ticket_data)
+            # Retain mined evidence before halting on an unsupported request.
+            if isinstance(ticket, AtomaRedemptionTicket):
+                assert not ticket.reconciliation_required and len(ticket.parts) == 1, (
+                    f"Atoma trade #{trade.trade_id} requires reconciliation or contains an aggregate. "
+                    "Expected one request per trade; halt and inspect custody/state."
+                )
             logger.info(
                 "Vault trade #%d marked as settlement pending (direction=%s, ticket=%s)",
                 trade.trade_id, direction, ticket_data,
