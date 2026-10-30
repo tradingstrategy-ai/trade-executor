@@ -46,6 +46,7 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.statistics.core import update_statistics
 from tradeexecutor.strategy.execution_context import ExecutionMode
+from tradeexecutor.strategy.position_internal_share_price import calculate_flow_neutral_profit_usd
 
 #: Lighter account index of the master account.
 MASTER_ACCOUNT_INDEX = 700
@@ -396,7 +397,7 @@ class TimelineReplay:
             units=state.total_supply if state else 0.0,
             share_price=state.current_share_price if state else 0.0,
             value=float(position.get_quantity()) if position.is_open() else 0.0,
-            profit_usd=position.get_flow_neutral_profit_usd(),
+            profit_usd=calculate_flow_neutral_profit_usd(position),
         )
 
     def apply(self, event: TimelineEvent) -> None:

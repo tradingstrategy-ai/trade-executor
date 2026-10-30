@@ -23,6 +23,7 @@ from tradeexecutor.state.state import State
 from tradeexecutor.strategy.chart.definition import ChartInput
 from tradeexecutor.strategy.chart.standard.exchange_account import exchange_account_share_price
 from tradeexecutor.strategy.execution_context import unit_test_execution_context
+from tradeexecutor.strategy.position_internal_share_price import calculate_flow_neutral_profit_usd
 from tradeexecutor.testing.lighter_share_price_timelines import (
     MASTER,
     TIMELINES,
@@ -73,7 +74,7 @@ def test_lighter_flow_neutral_profit_old_state_recovery_and_chart() -> None:
     replay.allow_unknown_withdrawn = True
     replay.positions = {name: replay.state.portfolio.get_position_by_id(position.position_id) for name, position in replay.positions.items()}
     assert replay.positions[MASTER].share_price_state.total_withdrawn is None
-    assert replay.positions[MASTER].get_flow_neutral_profit_usd() is None
+    assert calculate_flow_neutral_profit_usd(replay.positions[MASTER]) is None
 
     # 2. Apply the rest of the funding chain: the reloaded accounts stay unknown on the old figures, an account first funded after the reload is tracked
     for event in funding_chain.events[2:]:
@@ -83,7 +84,7 @@ def test_lighter_flow_neutral_profit_old_state_recovery_and_chart() -> None:
     # The old closed formula: sells 5.5 minus invested 10, missing the 4 USDC that funded the sub-account.
     assert replay.positions[MASTER].get_total_profit_usd() == pytest.approx(-4.5)
     # chain-arb got its share-price state from its first transfer, after the reload.
-    assert replay.positions["chain-arb"].get_flow_neutral_profit_usd() == pytest.approx(-0.22)
+    assert calculate_flow_neutral_profit_usd(replay.positions["chain-arb"]) == pytest.approx(-0.22)
 
     # 3. Recover a failed transfer once, then check a repeated completion is refused and changes nothing
     recovery = TimelineReplay((MASTER, "chain-trend"))
@@ -98,7 +99,7 @@ def test_lighter_flow_neutral_profit_old_state_recovery_and_chart() -> None:
     with pytest.raises(ExchangeAccountTransferError):
         complete_exchange_account_funding(state=recovery.state, trade=trade, executed_amount=Decimal(4), fee=Decimal("0.5"), executed_at=recovery.clock)
     assert (master.share_price_state.total_withdrawn, master.share_price_state.total_supply, trend.share_price_state.total_supply) == recovered
-    assert master.get_flow_neutral_profit_usd() == pytest.approx(-0.5)
+    assert calculate_flow_neutral_profit_usd(master) == pytest.approx(-0.5)
 
     # 4. Check the stored statistics and the chart of a fresh funding chain carry the flow-neutral figures
     replay = replay_timeline(funding_chain)

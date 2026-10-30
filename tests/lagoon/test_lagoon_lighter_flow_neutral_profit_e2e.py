@@ -33,6 +33,7 @@ from pytest import CaptureFixture, MonkeyPatch
 
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
+from tradeexecutor.strategy.position_internal_share_price import calculate_flow_neutral_profit_usd
 from tradeexecutor.testing import lighter_manual
 from tradeexecutor.testing.lighter_tutorial import (
     SIMULATED_TRANSFER_FEE_USDC,
@@ -177,7 +178,7 @@ class Ledger:
                 # A sub-account is tracked from its first funding.
                 assert self.gains[name] == 0 and self.fees[name] == 0, f"{step}: {name} has gains or fees but no share-price state"
                 continue
-            profit = position.get_flow_neutral_profit_usd()
+            profit = calculate_flow_neutral_profit_usd(position)
             expected_profit = float(self.gains[name] - self.fees[name])
             assert profit is not None and profit == pytest.approx(expected_profit, abs=TOLERANCE), f"{step}: {name} profit {profit}, expected gains minus fees {expected_profit}"
             if name in revalued or before[name].share_price == 0:
@@ -286,7 +287,7 @@ def test_cli_lighter_account_profit_is_flow_neutral(tutorial: Tutorial, monkeypa
         withdraw(account, ledger.read_positions()[account].get_quantity())
         ledger.check(f"withdraw {account}")
     run_cli(["lagoon-redeem"], env)
-    profits = {name: position.get_flow_neutral_profit_usd() for name, position in ledger.read_positions().items()}
+    profits = {name: calculate_flow_neutral_profit_usd(position) for name, position in ledger.read_positions().items()}
     # Master: five transfer fees; trend: +0.4 - 1.7 and one fee; arb: +0.3 - 0.88 + 0.2.
     assert profits == pytest.approx({"master": -2.5, "trend": -1.8, "arb": -0.38}, abs=TOLERANCE)
     deployer_change = tutorial.usdc.fetch_balance_of(tutorial.deployer.address) - deployer_start

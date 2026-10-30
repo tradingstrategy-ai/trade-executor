@@ -8,10 +8,16 @@ See :py:class:`tradeexecutor.state.position_internal_share_price.PositionInterna
 import dataclasses
 import datetime
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from tradeexecutor.state.balance_update import BalanceUpdate
 from tradeexecutor.state.position_internal_share_price import PositionInternalSharePriceState
 from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.state.types import Percent, USDollarAmount
+
+if TYPE_CHECKING:
+    # TradingPosition calls this module, so it cannot be imported at runtime.
+    from tradeexecutor.state.position import TradingPosition
 
 
 def create_share_price_state(
@@ -289,6 +295,62 @@ def update_share_price_state_for_balance_update(
         last_updated_at=balance_update.block_mined_at,
         total_withdrawn=state.total_withdrawn,
     )
+
+
+def calculate_flow_neutral_profit_usd(position: "TradingPosition") -> USDollarAmount | None:
+    """Profit of an exchange-account position, independent of capital moved in and out.
+
+    Deposits, withdrawals and transfers between the strategy's own exchange
+    accounts are capital flows, not profit. The internal share price already
+    gives a flow-neutral return; this is the matching dollar figure, from the
+    cash-flow identity::
+
+        profit = current value + capital withdrawn - capital invested
+
+    ``total_invested`` and ``total_withdrawn`` come from the position's
+    :py:class:`PositionInternalSharePriceState`, which counts every flow as it
+    is booked, including transfers to another account that leave as balance
+    updates rather than trades. Fees and gains or losses change the value, so
+    they are profit.
+
+    :param position:
+        Position to measure.
+    :return:
+        Profit in dollars, or ``None`` when this is not an exchange-account
+        position or the withdrawn total is unknown: a state saved before it
+        was tracked, or rebuilt from history.
+    """
+    if not position.is_exchange_account():
+        return None
+    state = position.share_price_state
+    if state is None or state.total_withdrawn is None:
+        return None
+    value = float(position.get_value() or 0.0) if position.is_open() else 0.0
+    return value + state.total_withdrawn - state.total_invested
+
+
+def calculate_closed_flow_neutral_return(position: "TradingPosition") -> Percent | None:
+    """Money-weighted return of a closed exchange-account position, or ``None``.
+
+    A closed position's return cannot be its share price: closing writes off a
+    residual as a balance update, which takes the value of the remaining
+    internal shares, and so the share price, to zero. The flow-neutral profit
+    over the capital invested gives the return instead, as for closed
+    Hypercore vault positions.
+
+    :param position:
+        Position to measure.
+    :return:
+        Return as a fraction, or ``None`` if the position is open or its
+        flow-neutral profit is unknown.
+    """
+    if not position.is_closed():
+        return None
+    profit = calculate_flow_neutral_profit_usd(position)
+    if profit is None:
+        return None
+    invested = position.share_price_state.total_invested
+    return profit / invested if invested > 0 else 0.0
 
 
 def migrate_share_price_state(position: "TradingPosition") -> None:

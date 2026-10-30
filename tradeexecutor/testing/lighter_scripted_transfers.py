@@ -22,6 +22,7 @@ from tradeexecutor.exchange_account.lighter import LIGHTER_MASTER_ACCOUNT_ID
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution, TradeFlag
+from tradeexecutor.strategy.position_internal_share_price import calculate_flow_neutral_profit_usd
 
 logger = logging.getLogger(__name__)
 
@@ -268,7 +269,7 @@ def _check_flow_neutral_profit(state: State, positions: list[TradingPosition], p
     for position in positions:
         if position.share_price_state is None:
             continue
-        profit = position.get_flow_neutral_profit_usd()
+        profit = calculate_flow_neutral_profit_usd(position)
         expected = -float(fees_paid.get(position.position_id, Decimal(0)))
         if profit is None:
             problems.append(f"Lighter account {position.pair.get_exchange_account_id()} position #{position.position_id} has no withdrawn total, so its USD profit is unknown")
