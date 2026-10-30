@@ -2,6 +2,8 @@
 
 Async shares remain in the same position until the claim completes. Atoma burns
 shares at settlement, so their ticket entitlement replaces the share quote.
+Each redemption ticket belongs to one trade. Aggregate claims are outside the
+supported operating model and must halt valuation, never be split across trades.
 See .claude/docs/vault-deposit-redeem.md for the accounting and code map.
 """
 import datetime
@@ -67,8 +69,10 @@ class VaultValuator(ValuationModel):
                 if trade.get_status() != TradeStatus.vault_settlement_pending:
                     raise VaultFlowUnavailable("Atoma request must be parsed before valuation")
                 ticket = manager.reconstruct_redemption_ticket(trade.other_data)
-                if ticket.reconciliation_required:
-                    raise VaultFlowUnavailable("Atoma ticket requires reconciliation before valuation")
+                assert not ticket.reconciliation_required and len(ticket.parts) == 1, (
+                    "Atoma ticket requires reconciliation or contains an aggregate; "
+                    "expected one request per trade. Halt before valuation/NAV."
+                )
                 status = manager.get_redemption_request_status(ticket, block_identifier=block)
                 if status is AsyncVaultRequestStatus.none:
                     raise VaultFlowUnavailable("Recover the completed Atoma claim before valuation")

@@ -187,40 +187,26 @@ manager's fee evidence for reporting without deducting it again. Existing NAV
 calculation must see the resulting position value and cash without any
 Atoma-specific treasury accounting.
 
-### 4. Refuse aggregate claims that need reconciliation
+### 4. Assert one redemption request per trade
 
-Normal planning prevents duplicate pending exits, and the inspected adapter
-raises `epoch_request_already_exists` when an owner already has shares requested
-for the target epoch. This check is not a concurrency lock: historical, external
-or racing submissions can still produce an aggregate.
+Scope decision (30 October 2026): the supported operating model will not create
+aggregate claims. Use one executor/state writer and one pending redemption per
+custody account/vault; wait for completion before another exit. Independent
+manual requests, concurrent writers and imported aggregate components are
+outside this model. The adapter also refuses a new request in an occupied epoch.
+See the [shared vault operating assumption](../../.claude/docs/vault-deposit-redeem.md#one-redemption-request-per-trade).
 
-Reuse the adapter's existing claim validation: it refuses a ticket marked
-`reconciliation_required` or a mismatch between `userEpochShares(epoch, owner)`
-and `ticket.raw_shares`. Leave that trade pending, report the reconciliation
-requirement and submit no claim. Do not add another scanner, getter or duplicate
-executor admission check. Do not silently acknowledge an upstream reconciled
-ticket or distribute one payment across several trades.
+Use assertions to halt if competing pending exits, multiple Atoma request parts,
+a reconciliation marker or an adapter-reported aggregate mismatch appears.
+Preserve mined evidence and propagate the assertion out of settlement retry,
+before further claims or NAV publication. Inspect custody/state before resuming;
+never clear a marker or distribute a payment to make the assertion pass.
 
-`fetch_claim_amounts()` quotes the whole owner/epoch entitlement. Never assign
-that aggregate value to a single component trade: unresolved attribution must
-make valuation unavailable and prevent publishing an unsupported NAV. This needs
-an explicit failure propagated through existing valuation/command paths:
-`LagoonVaultSyncModel.calculate_valuation()` checks the age of the last valuation,
-so a recent old value still passes. Do not rely on that freshness threshold to
-detect an aggregate, nor mark a failed valuation fresh (`VaultValuator` currently
-sets `last_pricing_at` before fetching a quote). Ensure a failed revaluation
-prevents the subsequent NAV transaction, including on command reruns, while
-leaving the pending ticket recoverable. Likewise, completed-claim recovery must
-not credit an aggregate receipt to one component; the adapter's claim analysis
-already rejects a receipt whose consumed shares do not match the ticket.
-
-This release supports one attributable request per trade and safe refusal of
-aggregates. Automatic multi-trade allocation from the parent plan is explicitly
-deferred; no proportional distribution, rounding policy, component links or
-multi-trade settlement machinery is included. Existing upstream reconciliation
-can supply evidence for a separately reviewed recovery through normal state
-mechanisms. Generic `repair` does not resolve pending aggregate tickets, and this
-plan does not claim an automated manual-recovery command exists.
+Aggregate reconciliation, ticket supersession and multi-trade payout allocation
+are outside scope for now, not outstanding Atoma integration requirements. Do
+not add scanners, allocation policies or recovery infrastructure for this case.
+Ordinary claim recovery, indexer lag and temporary illiquidity continue through
+the existing shared lifecycle. Generic `repair` does not resolve aggregates.
 
 ### 5. Commands, deployment and documentation
 

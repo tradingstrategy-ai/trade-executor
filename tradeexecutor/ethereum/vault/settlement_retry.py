@@ -7,7 +7,12 @@ settlement status and broadcasts the claim/reclaim transaction.
 
 Works with any vault protocol that implements the generic
 :py:class:`~eth_defi.vault.deposit_redeem.VaultDepositManager` interface
-(Ostium V1.5, ERC-7540 Lagoon, etc.) — no protocol-specific imports.
+(Ostium V1.5, ERC-7540 Lagoon, Atoma, etc.).
+
+Each custody account has at most one pending redemption per vault. A claim
+belongs to that trade alone: concurrent/external requests and aggregate payout
+allocation are outside the supported operating model. Assert and halt if this
+invariant is violated; do not reconcile or split aggregate claims automatically.
 
 See .claude/docs/vault-deposit-redeem.md for the shared lifecycle and
 docs/state-persistence.md for the pre-broadcast save contract.
@@ -303,10 +308,41 @@ def check_and_resolve_vault_settlements(
         len(pending_trades),
     )
 
+    # Validate the entire batch before any claim can move cash. Separate vaults
+    # and custody accounts may settle independently, but one vault/owner cannot
+    # have competing redemption trades, even with different request epochs.
+    redemption_owners = set()
+    for trade in pending_trades:
+        if trade.is_sell():
+            data = trade.other_data
+            identity = (
+                data.get("vault_chain_id", trade.pair.chain_id),
+                data.get("vault_address", trade.pair.pool_address).lower(),
+                data.get("vault_owner", data.get("vault_owner_address", "")).lower(),
+            )
+            assert identity not in redemption_owners, (
+                f"Multiple pending vault redemptions for {identity}: trade #{trade.trade_id}. "
+                "Aggregate claims are unsupported; halt and inspect custody/state."
+            )
+            redemption_owners.add(identity)
+            if "atoma_schema" in data:
+                assert not data["atoma_reconciliation_required"] and len(data["atoma_parts"]) == 1, (
+                    f"Atoma trade #{trade.trade_id} requires reconciliation or contains an aggregate. "
+                    "Expected one request per trade; halt and inspect custody/state."
+                )
+
     for trade in pending_trades:
         try:
             _resolve_single_vault_trade(state, trade, execution_model, web3config, resolved)
+        except AssertionError:
+            # An accounting invariant is not temporary settlement unavailability.
+            raise
         except Exception as e:
+            assert not (
+                isinstance(e, VaultFlowUnavailable)
+                and e.protocol == "Atoma"
+                and e.preflight_result == "request_reconciliation_required"
+            ), f"Atoma trade #{trade.trade_id} has an unexpected aggregate claim; halt and inspect custody/state: {e}"
             logger.warning(
                 "Failed to resolve vault settlement for trade #%d: %s",
                 trade.trade_id, e,

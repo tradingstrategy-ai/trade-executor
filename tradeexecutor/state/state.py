@@ -1234,6 +1234,9 @@ class State:
 
         The shared execution-model resolver completes this same trade; see
         .claude/docs/vault-deposit-redeem.md and docs/state-persistence.md.
+        Each redemption belongs to one trade, with at most one pending exit per
+        custody account/vault. Strategies must wait for completion; combining
+        tickets or allocating an aggregate payout across trades is unsupported.
 
         :param ticket_data:
             Dict from deposit_manager.serialize_deposit_ticket() or

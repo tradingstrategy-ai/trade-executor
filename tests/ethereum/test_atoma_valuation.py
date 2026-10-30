@@ -47,7 +47,7 @@ def pending_atoma() -> tuple[State, TradingPosition, VaultValuator, Mock]:
     manager = Mock(spec=AtomaDepositManager)
     manager.vault = Mock()
     manager.web3.eth.block_number = 100
-    manager.reconstruct_redemption_ticket.return_value = SimpleNamespace(raw_shares=4, reconciliation_required=False)
+    manager.reconstruct_redemption_ticket.return_value = SimpleNamespace(raw_shares=4, reconciliation_required=False, parts=(object(),))
     manager.get_redemption_request_status.return_value = AsyncVaultRequestStatus.claimable
     manager.fetch_claim_amounts.return_value = (20, 0, 20)
     manager.vault.share_token.convert_to_decimals.return_value = Decimal(4)
@@ -83,6 +83,16 @@ def test_atoma_pending_entitlement_valuation(pending_atoma: tuple[State, Trading
         valuator(ts + datetime.timedelta(minutes=1), position)
     assert position.last_pricing_at == ts
     assert position.get_value() == pytest.approx(80)
+    ticket = manager.reconstruct_redemption_ticket.return_value
+    for parts, reconciliation_required in [((object(), object()), False), ((object(),), True)]:
+        ticket.parts = parts
+        ticket.reconciliation_required = reconciliation_required
+        with pytest.raises(AssertionError, match="reconciliation.*aggregate"):
+            valuator(ts + datetime.timedelta(minutes=1), position)
+        assert position.last_pricing_at == ts
+        assert position.get_value() == pytest.approx(80)
+    ticket.parts = (object(),)
+    ticket.reconciliation_required = False
     # 3. Refuse a consumed ticket so receipt recovery, rather than zero valuation, runs.
     manager.get_redemption_request_status.return_value = AsyncVaultRequestStatus.none
     with pytest.raises(VaultFlowUnavailable, match="Recover"):
