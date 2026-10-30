@@ -17,6 +17,7 @@ from tradeexecutor.state.trade import TradeExecution, TradeFlag, TradeStatus, Tr
 from tradeexecutor.strategy.position_internal_share_price import (
     apply_capital_outflow,
     create_share_price_state,
+    update_share_price_state,
     update_share_price_state_for_balance_update,
 )
 
@@ -374,7 +375,7 @@ def complete_exchange_account_funding(
     )
     booked.append(principal.balance_update_id)
     if source_position.share_price_state is not None:
-        source_position.share_price_state = apply_capital_outflow(source_position.share_price_state, float(executed_amount), executed_at)
+        source_position.share_price_state = apply_capital_outflow(source_position.share_price_state, float(executed_amount), executed_at, remaining_quantity=source_position.get_quantity())
     trade.other_data["funding_source_balance_update_ids"] = booked
     trade.other_data["funding_fee_usdc"] = str(fee)
     return trade
@@ -618,10 +619,15 @@ def open_exchange_account_position(
         force=True,
     )
 
-    # Seed share price state for real capital allocations (not placeholders).
-    # Placeholder trades ($0 or $1 from correct-accounts) are excluded —
-    # their share_price_state is created from the first valuation sync instead.
-    if reserve_amount > 1:
+    # create_trade() can return an existing position. An allocation into a
+    # tracked position is capital of any size: mint it into the existing
+    # state, which replacing would lose with its history and withdrawn total.
+    # Otherwise seed a state only for real capital: placeholder trades ($0 or
+    # $1 from correct-accounts) get theirs from the first valuation sync.
+    if position.share_price_state is not None:
+        if reserve_amount > 0:
+            position.share_price_state = update_share_price_state(position.share_price_state, trade)
+    elif reserve_amount > 1:
         position.share_price_state = create_share_price_state(trade)
 
     return [trade]

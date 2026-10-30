@@ -17,6 +17,8 @@ from plotly.graph_objs import Figure
 from plotly.subplots import make_subplots
 
 from tradeexecutor.state.position import TradingPosition
+from tradeexecutor.state.state import State
+from tradeexecutor.strategy.position_internal_share_price import calculate_closed_flow_neutral_return
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 
 
@@ -436,11 +438,91 @@ def track_lot_profitability_detailed(df: pd.DataFrame) -> pd.DataFrame:
 
 
 
+def _calculate_exchange_account_timeline(state: State, position: TradingPosition) -> pd.DataFrame:
+    """Build the position timeline of an exchange-account position from its recorded statistics.
+
+    An exchange-account position, such as a Lighter account, has no candles:
+    its quantity is its USD value and its price is always 1.0. Its
+    performance is its internal share price, which flows mint and burn shares
+    against without moving, so the timeline uses the internal share price as
+    the price and the internal shares as the quantity. A change in shares is
+    a flow, drawn as a trade marker; the price moves only on valuations and
+    fees.
+
+    The figures come from the per-cycle :py:class:`~tradeexecutor.state.statistics.PositionStatistics`,
+    which record the share price, shares, value and flow-neutral USD profit.
+    Rebuilding them from trades and balance updates would need the funding
+    trades on other positions to tell a transfer out from a loss.
+
+    A marker is therefore the net change in shares between two statistics
+    samples, not a single flow: a withdrawal and a deposit within one cycle
+    can cancel out, and a total loss and re-funding within one cycle, with no
+    zero-price sample between them, shows as a net mint or burn instead of a
+    restarted series.
+
+    A closed position's last point carries its profit as realised and its
+    money-weighted return, as the position reports them, because closing
+    writes off the residual and takes the share price to zero.
+
+    :param state:
+        State holding the position's statistics.
+    :param position:
+        Exchange-account position.
+    :return:
+        DataFrame indexed by timestamp, with the columns
+        :py:func:`visualise_position` reads. Points before the share-price
+        state existed are dropped.
+    """
+    rows = [
+        {
+            "timestamp": stat.calculated_at,
+            "mark_price": stat.internal_share_price,
+            "quantity": stat.internal_total_supply,
+            "value": stat.value,
+            "pnl": stat.internal_profit_usd,
+        }
+        for stat in state.stats.positions.get(position.position_id, [])
+        if stat.internal_share_price is not None
+    ]
+    assert rows, f"No internal share price statistics recorded for {position}"
+    df = pd.DataFrame(rows).set_index("timestamp").sort_index().astype(float)
+    initial_share_price = position.share_price_state.initial_share_price if position.share_price_state else 1.0
+
+    df["delta"] = df["quantity"].diff().fillna(df["quantity"])
+    # A deposit after a total loss burns the worthless shares and starts a new
+    # series: count every share of the new series as minted, not the net change.
+    restarted = (df["mark_price"].shift() == 0) & (df["mark_price"] > 0)
+    df.loc[restarted, "delta"] = df.loc[restarted, "quantity"]
+    df["executed_price"] = df["mark_price"].where(df["delta"] != 0)
+    df["fee"] = 0.0
+    df["pnl"] = df["pnl"].fillna(0.0)
+    # Capital still invested, so value minus it is the profit.
+    df["cumulative_cost"] = df["value"] - df["pnl"]
+    df["cumulative_value"] = df["value"]
+    df["avg_price"] = df["mark_price"]
+    # An open exchange-account position reports its profit as unrealised.
+    df["realised_pnl"] = 0.0
+    df["unrealised_pnl"] = df["pnl"]
+    df["realised_delta"] = 0.0
+    df["pnl_pct"] = df["mark_price"] / initial_share_price - 1
+    closed_return = calculate_closed_flow_neutral_return(position)
+    if closed_return is not None:
+        # A closed one reports its profit as realised and its return
+        # money-weighted, see TradingPosition.get_realised_profit_usd().
+        df.loc[df.index[-1], ["realised_pnl", "unrealised_pnl", "pnl_pct"]] = [df["pnl"].iloc[-1], 0.0, closed_return]
+    df["total_pnl_pct"] = df["pnl_pct"]
+    df["duration"] = df.index - df.index[0]
+    df["annual_periods"] = pd.Timedelta(days=365) / df["duration"]
+    df["pnl_annualised"] = (1 + df["pnl_pct"]) ** df["annual_periods"] - 1
+    return df
+
+
 def calculate_position_timeline(
     strategy_universe: TradingStrategyUniverse,
     position: TradingPosition,
     end_at: datetime.datetime | None = None,
     pnl_method: Callable = calculate_pnl,
+    state: State | None = None,
 ) -> pd.DataFrame:
     """Calculatea visualisation dato for a single position.
 
@@ -469,12 +551,21 @@ def calculate_position_timeline(
 
         Only relevant for open positions, as closed positions have no ambiguity of their PnL values.
 
+    :param state:
+        State holding the position's statistics. Required for an
+        exchange-account position, whose timeline is built from them; see
+        :py:func:`_calculate_exchange_account_timeline`.
+
     :return:
         DataFrame with columns as above,
     """
 
     assert isinstance(strategy_universe, TradingStrategyUniverse), f"Expected TradingStrategyUniverse, got {type(strategy_universe)}"
     assert isinstance(position, TradingPosition), f"Expected TradingPosition, got {type(position)}"
+
+    if position.is_exchange_account():
+        assert state is not None, f"An exchange-account position timeline needs the state for its statistics: {position}"
+        return _calculate_exchange_account_timeline(state, position)
 
     assert position.is_spot() or position.is_vault(), "Interest calculations missing"
     assert not position.is_short(), "This function has not been tested for short positions yet"
@@ -840,7 +931,8 @@ def visualise_position(
     )
 
     # Update y-axis labels
-    fig.update_yaxes(title_text="Price", row=1, col=1)
+    # An exchange account's price is its internal share price, see _calculate_exchange_account_timeline().
+    fig.update_yaxes(title_text="Internal share price" if position.is_exchange_account() else "Price", row=1, col=1)
     fig.update_yaxes(title_text="Value (USD)", row=2, col=1)
     fig.update_yaxes(title_text="PnL annualised (%)", row=3, col=1)
     fig.update_yaxes(title_text="PnL (USD)", row=4, col=1)

@@ -43,6 +43,38 @@ The Safe remains the Lighter account owner. Its guarded module can deposit USDC
 to that account and claim withdrawals back to the Safe. Trading uses a delegated
 Lighter API key registered in a numbered key slot.
 
+### Profit per account
+
+Each account's position reports its profit independently of the capital moved
+in and out of it. Deposits, withdrawals and transfers between the vault's own
+accounts are flows; gains, losses and the fees an account pays are profit.
+
+- **Return %** is the change in the position's internal share price: a flow mints or burns
+  internal shares at the current price without moving it, so only valuations
+  and transfer fees move the return. A withdrawal fee shows in the USD profit
+  only. A closed position reports its USD profit over the
+  capital invested instead, because writing off its residual sets the share
+  price to zero.
+- **USD profit** is the current value plus the capital withdrawn minus the
+  capital invested, where withdrawn counts what the Safe received and the
+  principal sent to other accounts.
+
+A deposit into an account valued at zero, such as a liquidated sub-account,
+starts a new share-price series, so the return covers the time since the loss;
+the USD profit still includes it. A transfer a trader makes with its own key,
+outside the executor, is booked by `correct-accounts` as profit on one account
+and loss on the other. Positions saved before the withdrawn total was tracked
+keep their earlier USD figure.
+
+The position chart, `vault_position_timeline`, draws an exchange account
+with its internal share price as the price and a trade marker wherever
+shares were minted or burned, from the position's recorded statistics. The
+statistics are recorded once a cycle, so a marker is the net change in
+shares over the cycle: a withdrawal and a deposit in the same cycle can
+cancel out.
+`scripts/lagoon/manual-lighter-share-price-charts.py` renders it for example
+accounts, for inspection.
+
 ## Sub-accounts
 
 A vault can split its Lighter capital between the Safe-owned master account

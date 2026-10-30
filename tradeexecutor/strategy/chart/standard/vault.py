@@ -212,6 +212,7 @@ def vault_position_timeline(
         strategy_universe,
         position,
         end_at,
+        state=state,
     )
 
     if cut_off_date:

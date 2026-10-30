@@ -439,3 +439,9 @@ Safe and Lighter, including Lighter's dynamic secure-withdrawal delay, and
 resume only after the public account response and Safe balance reflect the
 settlement. A negative or malformed Lighter equity response aborts the cycle;
 it is never cached, written to state or posted as NAV.
+
+Each Lighter account's position reports a return and a USD profit that do
+not depend on the capital moved in and out of it: flows mint and burn
+internal shares, and the USD profit counts the capital withdrawn and
+invested. See
+[Profit per account](../tradeexecutor/exchange_account/README-Lighter.md#profit-per-account).

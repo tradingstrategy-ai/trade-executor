@@ -22,6 +22,7 @@ from tradeexecutor.exchange_account.lighter import LIGHTER_MASTER_ACCOUNT_ID
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution, TradeFlag
+from tradeexecutor.strategy.position_internal_share_price import calculate_flow_neutral_profit_usd
 
 logger = logging.getLogger(__name__)
 
@@ -154,8 +155,10 @@ def verify_lighter_scripted_transfers(
     accounts; the trade succeeded; a fixed amount was moved exactly; a
     withdrawal claimed what it moved; and a funding's source position carries
     balance updates for the amount and the fee. Then checks that no transfer
-    is pending, that every Lighter position is empty, and that the Lighter
-    inflows, revaluations, outflows and fees add up.
+    is pending, that every Lighter position is empty, that the Lighter
+    inflows, revaluations, outflows and fees add up, and that each account's
+    flow-neutral USD profit is minus the fees it paid: the script only moves
+    capital, so no account earns anything.
 
     :param state:
         Executor state after the vault has been wound up.
@@ -193,6 +196,7 @@ def verify_lighter_scripted_transfers(
         if position.get_quantity() != 0:
             problems.append(f"Lighter account {position.pair.get_exchange_account_id()} position #{position.position_id} still holds {position.get_quantity()} USDC")
     _check_conservation(positions, problems)
+    _check_flow_neutral_profit(state, positions, problems)
 
     if problems:
         raise AssertionError("Scripted Lighter transfers were not booked correctly:\n" + "\n".join(problems))
@@ -241,6 +245,36 @@ def _check_conservation(positions: list[TradingPosition], problems: list[str]) -
     remaining = sum((position.get_quantity() for position in positions), Decimal(0))
     if inflow + revalued - outflow - fees != remaining:
         problems.append(f"Lighter inflow {inflow} plus revaluations {revalued} minus outflow {outflow} and fees {fees} is not the remaining {remaining}")
+
+
+def _check_flow_neutral_profit(state: State, positions: list[TradingPosition], problems: list[str]) -> None:
+    """Check that moving capital left each account with a profit of minus the fees it paid.
+
+    The fees are the Lighter transfer fees of the funding trades the account
+    sent, and the shortfall of its withdrawals, where the Safe received less
+    than the account was debited. The scripted run starts from a fresh vault,
+    so every tracked position must know its withdrawn total; an unknown one
+    is a problem rather than a skipped check.
+    """
+    fees_paid: dict[int, Decimal] = {}
+    for trade in state.portfolio.get_all_trades():
+        if not trade.is_success():
+            continue
+        if trade.is_internal_account_transfer():
+            source_id = int(trade.other_data["funding_source_position_id"])
+            fees_paid[source_id] = fees_paid.get(source_id, Decimal(0)) + Decimal(trade.other_data.get("funding_fee_usdc", "0"))
+        elif trade.is_external_account_transfer() and trade.is_sell():
+            shortfall = -trade.executed_quantity - trade.executed_reserve
+            fees_paid[trade.position_id] = fees_paid.get(trade.position_id, Decimal(0)) + shortfall
+    for position in positions:
+        if position.share_price_state is None:
+            continue
+        profit = calculate_flow_neutral_profit_usd(position)
+        expected = -float(fees_paid.get(position.position_id, Decimal(0)))
+        if profit is None:
+            problems.append(f"Lighter account {position.pair.get_exchange_account_id()} position #{position.position_id} has no withdrawn total, so its USD profit is unknown")
+        elif abs(profit - expected) > 1e-6:
+            problems.append(f"Lighter account {position.pair.get_exchange_account_id()} position #{position.position_id} reports a USD profit of {profit}, expected minus its fees {expected}")
 
 
 def _verify_transfer(state: State, trade: TradeExecution, transfer: ScriptedTransfer, problems: list[str]) -> dict[str, Any]:

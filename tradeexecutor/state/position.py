@@ -27,6 +27,7 @@ from tradeexecutor.state.trade import TradeType, TradeFlag
 from tradeexecutor.state.trade import TradeExecution, TradeStatus
 from tradeexecutor.state.trigger import Trigger
 from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice, Percent, LeverageMultiplier, LegacyDataException
+from tradeexecutor.strategy.position_internal_share_price import calculate_closed_flow_neutral_return, calculate_flow_neutral_profit_usd
 from tradeexecutor.state.valuation import ValuationUpdate
 from tradeexecutor.strategy.dust import (
     HYPERCORE_ACCEPTED_RESIDUAL_USD,
@@ -1690,6 +1691,12 @@ class TradingPosition(GenericPosition):
             `None` if the position lacks any realised profit (contains only unrealised).
         """
 
+        if self.is_closed():
+            # A closed exchange account has realised its whole flow-neutral profit.
+            flow_neutral = calculate_flow_neutral_profit_usd(self)
+            if flow_neutral is not None:
+                return flow_neutral
+
         if self.is_frozen():
             return 0
 
@@ -1771,6 +1778,9 @@ class TradingPosition(GenericPosition):
                 return self.get_cash_flow_profit_usd() - (
                     self.get_realised_profit_usd(include_interest=False) or 0.0
                 )
+            if self.is_closed() and calculate_flow_neutral_profit_usd(self) is not None:
+                # A closed exchange account reports its profit as realised.
+                return 0.0
             if self.share_price_state is not None:
                 return self.get_share_price_profit().profit_usd
             return 0
@@ -1847,6 +1857,9 @@ class TradingPosition(GenericPosition):
                 # partial withdrawals sometimes recorded net USDC as vault
                 # quantity, corrupting the proportional internal-share burn.
                 return self.get_cash_flow_profit_percent()
+            closed_return = calculate_closed_flow_neutral_return(self)
+            if closed_return is not None:
+                return closed_return
             if self.share_price_state is not None:
                 data = self.get_share_price_profit()
                 return data.profit_pct
@@ -2107,6 +2120,9 @@ class TradingPosition(GenericPosition):
             Return ``0`` if the position profitability cannot be calculated,
             e.g. due to broken trades.
         """
+        closed_return = calculate_closed_flow_neutral_return(self)
+        if closed_return is not None:
+            return closed_return
         if self.pair.is_hyperliquid_vault() and self.is_closed():
             # Historical partial withdrawals may have corrupt vault quantities,
             # but the completed position's USDC cash flows remain reliable. For
@@ -2321,6 +2337,9 @@ class TradingPosition(GenericPosition):
                 if self.is_closed():
                     return 0.0
                 return self._calculate_cash_flow_return(self.get_unrealised_profit_usd())
+            if self.is_closed() and calculate_flow_neutral_profit_usd(self) is not None:
+                # A closed exchange account reports its return as realised.
+                return 0.0
             # Share price state is initialised on the first valuation sync.
             # Until then, profit is unknown.
             if self.share_price_state is not None:
@@ -2444,7 +2463,11 @@ class TradingPosition(GenericPosition):
             # Calculate profit
             profit_pct = (current_share_price / state.initial_share_price) - 1
 
-            if state.total_supply > 0:
+            if self.is_exchange_account() and state.total_withdrawn is not None:
+                # Flow-neutral: count the capital withdrawn, including transfers
+                # to other accounts that leave as balance updates, not trades.
+                profit_usd = total_assets + state.total_withdrawn - state.total_invested
+            elif state.total_supply > 0:
                 profit_usd = total_assets - (state.total_supply * state.initial_share_price)
             else:
                 total_sold = sum(t.get_value() for t in self.trades.values() if t.is_sell())
