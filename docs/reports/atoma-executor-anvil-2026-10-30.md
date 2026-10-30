@@ -128,11 +128,10 @@ checked with the read-only `pairs` command. The wrapper itself was not run
 against mainnet. Local Markdown links and whitespace checks passed, and the
 changed prose was checked for UK English and sentence-case headings.
 
-The dependency tip for PR handoff is commit
-`40f13c744` on `atoma-executor-consumer-fixes-20261030`. It contains the tested
-consumer fix `29d6cb319`, the Euler-preserving merge `53a282040`, and current
-upstream master. These dependency commits are published in
+The executor pins merged dependency commit `f377761f2` from
 [web3-ethereum-defi PR #1703](https://github.com/tradingstrategy-ai/web3-ethereum-defi/pull/1703).
-Merge that dependency fix before the executor change. The separate vault
+Its tree matches the green dependency CI revision `d00b000e6`, including the
+Atoma consumer corrections, preserved Euler fixes and current Nest FACTOR tags.
+The separate vault
 inventory assessment was not present here; this report supplies evidence for
 its two Atoma rows without changing an external PR.
