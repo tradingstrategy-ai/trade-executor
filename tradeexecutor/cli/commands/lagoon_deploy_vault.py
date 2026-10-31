@@ -88,7 +88,7 @@ from eth_defi.aave_v3.constants import AAVE_V3_DEPLOYMENTS
 from eth_defi.aave_v3.deployment import \
     fetch_deployment as fetch_aave_deployment
 from eth_defi.abi import ONE_ADDRESS_STR
-from eth_defi.erc_4626.classification import create_vault_instance
+from eth_defi.erc_4626.classification import create_vault_instance, create_vault_instance_autodetect
 from eth_defi.erc_4626.core import ERC4626Feature
 from eth_defi.erc_4626.vault import ERC4626Vault
 from eth_defi.erc_4626.vault_protocol.lagoon.config import \
@@ -1653,7 +1653,7 @@ def lagoon_deploy_vault(
         erc_4626_vaults = []
         for addr in erc_4626_vault_addresses:
             logger.info("Resolving ERC-4626 vault at %s", addr)
-            vault = cast(ERC4626Vault, create_vault_instance(web3, addr, token_cache=token_cache))
+            vault = cast(ERC4626Vault, create_vault_instance_autodetect(web3, addr, token_cache=token_cache))
             assert vault.is_valid(), f"Invalid ERC-4626 vault at {addr}"
             logger.info("Preparing vault %s for whitelisting", vault.name)
             erc_4626_vaults.append(vault)

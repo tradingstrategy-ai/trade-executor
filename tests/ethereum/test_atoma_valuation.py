@@ -11,7 +11,7 @@ from unittest.mock import Mock
 
 import pytest
 from eth_defi.erc_4626.vault_protocol.atoma.deposit_redeem import AtomaDepositManager, AtomaFlowAnalysis
-from eth_defi.vault.deposit_redeem import AsyncVaultRequestStatus, VaultFlowUnavailable
+from eth_defi.vault.deposit_redeem import VaultDepositManager, AsyncVaultRequestStatus, VaultFlowUnavailable
 from hexbytes import HexBytes
 
 from tradeexecutor.ethereum.vault.vault_live_pricing import VaultPricing
@@ -47,9 +47,11 @@ def pending_atoma() -> tuple[State, TradingPosition, VaultValuator, Mock]:
     manager = Mock(spec=AtomaDepositManager)
     manager.vault = Mock()
     manager.web3.eth.block_number = 100
-    manager.reconstruct_redemption_ticket.return_value = SimpleNamespace(raw_shares=4, reconciliation_required=False, parts=(object(),))
+    manager.reconstruct_redemption_ticket.return_value = SimpleNamespace(owner="0x" + "33" * 20, raw_shares=4, reconciliation_required=False, parts=(object(),))
     manager.get_redemption_request_status.return_value = AsyncVaultRequestStatus.claimable
     manager.fetch_claim_amounts.return_value = (20, 0, 20)
+    type(manager).fetch_pending_redemption_value = AtomaDepositManager.fetch_pending_redemption_value
+    manager._unavailable.side_effect = lambda reason, *args: VaultFlowUnavailable(reason)
     manager.vault.share_token.convert_to_decimals.return_value = Decimal(4)
     manager.vault.denomination_token.convert_to_decimals.return_value = Decimal(20)
     manager.estimate_redeem.side_effect = lambda *, owner, shares, block_identifier: shares * Decimal(10)
@@ -130,3 +132,19 @@ def test_atoma_zero_redemption_accounting(pending_atoma: tuple[State, TradingPos
     assert position.get_quantity() == Decimal(6)
     assert state.portfolio.get_cash() == pytest.approx(100)
     assert position.get_realised_profit_usd() == pytest.approx(-40)
+
+
+def test_plain_pending_vault_keeps_share_valuation(pending_atoma: tuple[State, TradingPosition, VaultValuator, Mock], monkeypatch: pytest.MonkeyPatch) -> None:
+    """Leave ordinary queued managers on the existing share-price path.
+
+    1. Model a manager using the shared default instead of ticket valuation.
+    2. Value a pending position without reconstructing protocol-specific tickets.
+    """
+    state, position, valuator, manager = pending_atoma
+    # 1. Model a manager using the shared default instead of ticket valuation.
+    monkeypatch.setattr(type(manager), "fetch_pending_redemption_value", VaultDepositManager.fetch_pending_redemption_value)
+    valuator.pricing_model.get_sell_price.return_value = SimpleNamespace(price=10.0)
+    # 2. Value a pending position without reconstructing protocol-specific tickets.
+    event = valuator(datetime.datetime(2026, 10, 30, 1), position)
+    assert event.new_value == pytest.approx(100)
+    manager.reconstruct_redemption_ticket.assert_not_called()

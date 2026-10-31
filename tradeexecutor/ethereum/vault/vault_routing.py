@@ -29,6 +29,7 @@ from eth_defi.vault.deposit_redeem import (
     DepositRedeemEventFailure,
     UnsupportedVaultSimulation,
     VaultFlowUnavailable,
+    VaultDepositManager,
 )
 
 from tradeexecutor.ethereum.swap import get_swap_transactions, report_failure
@@ -116,6 +117,8 @@ def resolve_multi_asset_deposit_token(
     :raise IncompatibleDepositAsset:
         When the selected token is not accepted by the vault.
     """
+    if getattr(type(deposit_manager), "supports_multi_asset_deposit", True) is False:
+        return None
     fetch_accepted = getattr(type(deposit_manager), "fetch_accepted_assets", None)
     if fetch_accepted is None:
         # A manager may deliberately bind an adapter method on the instance.
@@ -448,6 +451,13 @@ class VaultRouting(RoutingModel):
             token_cache=routing_state.token_cache,
         )
 
+        funding_asset = reserve_asset.address if target_vault.chain_id == reserve_asset.chain_id else USDC_NATIVE_TOKEN.get(target_vault.chain_id)
+        if funding_asset is None or target_vault.denomination_token.address_lower != funding_asset.lower():
+            raise IncompatibleDepositAsset(
+                "Vault withdrawal asset differs from the funded reserve; verify an existing spot conversion route before trading this vault",
+                selected_asset=funding_asset,
+            )
+
         if trade.is_buy():
             token_in = reserve_asset
             token_out = trade.pair.base
@@ -557,6 +567,8 @@ class VaultRouting(RoutingModel):
                 self.deposit_asset_override,
             )
             if accepted_asset is not None:
+                if accepted_asset.lower() != funding_asset.lower():
+                    raise IncompatibleDepositAsset("Selected deposit asset differs from the trade input; use the existing spot route to convert first", selected_asset=accepted_asset)
                 deposit_kwargs["accepted_asset"] = HexAddress(accepted_asset)
             request = deposit_manager.create_deposit_request(**deposit_kwargs)
             is_async = not deposit_manager.has_synchronous_deposit()
@@ -605,34 +617,30 @@ class VaultRouting(RoutingModel):
 
         txs: list[BlockchainTransaction] = []
 
-        # Current eth-defi request classes expose manager lifecycle calls in
-        # ``funcs`` and a manager-level approval target.  Preserve the selected
-        # asset's approval as a separate prerequisite; a request-provided
-        # approval call remains in ``funcs`` and is a request transaction.
+        # Managers can supply their own input approval. Keep that call in the
+        # request sequence so persisted ordinals remain compatible, and avoid
+        # generating a duplicate prerequisite for the same token and spender.
         if trade.is_buy():
-            get_approval_target = getattr(
-                deposit_manager,
-                "get_deposit_approval_target",
-                None,
+            approval_target = deposit_manager.get_deposit_approval_target()
+            deposit_token = resolve_multi_asset_deposit_token(deposit_manager, target_vault.chain_id, self.deposit_asset_override) or target_vault.denomination_token
+            has_input_approval = any(
+                function.fn_name == "approve"
+                and function.address.lower() == deposit_token.address_lower
+                and function.args[0].lower() == approval_target.lower()
+                and int(function.args[1]) >= request.raw_amount
+                for function in request.funcs
             )
-            approval_target = (
-                get_approval_target()
-                if get_approval_target is not None
-                else target_vault.vault_address
-            )
-            approve_call = target_vault.denomination_token.approve(
-                approval_target,
-                swap_amount,
-            )
-            approve_tx = tx_builder.sign_transaction(
-                contract=target_vault.denomination_token.contract,
-                args_bound_func=approve_call,
-                gas_limit=500_000,
-                asset_deltas=[],
-                notes=trade.notes,
-            )
-            _mark_vault_transaction(approve_tx, role="vault_approval")
-            txs.append(approve_tx)
+            if not has_input_approval:
+                approve_call = deposit_token.approve(approval_target, swap_amount)
+                approve_tx = tx_builder.sign_transaction(
+                    contract=deposit_token.contract,
+                    args_bound_func=approve_call,
+                    gas_limit=500_000,
+                    asset_deltas=[],
+                    notes=trade.notes,
+                )
+                _mark_vault_transaction(approve_tx, role="vault_approval")
+                txs.append(approve_tx)
 
         for ordinal, function in enumerate(request.funcs):
             request_tx = tx_builder.sign_transaction(
@@ -663,6 +671,7 @@ class VaultRouting(RoutingModel):
         # Persist request identity and reconstruction inputs.  The transaction
         # indices and roles survive a re-sign; the hashes do not define identity.
         trade.other_data["vault_async_flow"] = True
+        trade.other_data["vault_requires_ticket_valuation"] = type(deposit_manager).fetch_pending_redemption_value is not VaultDepositManager.fetch_pending_redemption_value
         trade.other_data["vault_direction"] = direction
         trade.other_data["vault_owner_address"] = address
         trade.other_data["vault_request_tx_count"] = len(request.funcs)
@@ -754,26 +763,12 @@ class VaultRouting(RoutingModel):
                 )
                 parse_request = deposit_request.parse_deposit_transaction
             else:
-                # Reconstruct redemption request using shares (Decimal) —
-                # Lagoon asserts `not raw_shares` so we must pass the decimal form.
-                # Fall back to raw_shares for adapters that only support raw form.
-                # check_enough_token=False: the real requestRedeem() already moved
-                # the shares to the vault escrow, so the owner balance now reads zero;
-                # we only rebuild the request to parse the broadcast transaction.
-                redeem_shares_str = trade.other_data.get("vault_redeem_shares")
-                if redeem_shares_str:
-                    redemption_request = deposit_manager.create_redemption_request(
-                        owner=owner_address,
-                        shares=Decimal(redeem_shares_str),
-                        check_enough_token=False,
-                    )
-                else:
-                    # Legacy path: older trades stored only vault_raw_amount
-                    redemption_request = deposit_manager.create_redemption_request(
-                        owner=owner_address,
-                        raw_shares=int(trade.other_data["vault_raw_amount"]),
-                        check_enough_token=False,
-                    )
+                # Parsing mined requests must not repeat admission against
+                # post-request state (shares may already be escrowed).
+                redemption_request = deposit_manager.create_redemption_request_for_analysis(
+                    owner=owner_address,
+                    raw_shares=int(trade.other_data["vault_raw_amount"]),
+                )
                 request_transactions = get_async_vault_request_transactions(
                     trade,
                     request_function_count=len(redemption_request.funcs),

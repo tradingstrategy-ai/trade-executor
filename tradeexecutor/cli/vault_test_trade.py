@@ -9,6 +9,7 @@ from decimal import Decimal
 from eth_defi.erc_4626.vault_protocol.atoma.deposit_redeem import AtomaDepositManager
 
 from tradeexecutor.ethereum.vault.vault_live_pricing import VaultPricing
+from tradeexecutor.ethereum.vault.vault_routing import resolve_multi_asset_deposit_asset
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
@@ -26,8 +27,17 @@ def is_synchronous_vault_test(pricing_model: PricingModel, pair: TradingPairIden
     return manager.has_synchronous_deposit() and manager.has_synchronous_redemption()
 
 
+def is_queued_redemption_vault_test(pricing_model: PricingModel, pair: TradingPairIdentifier) -> bool:
+    """Use existing pending state for synchronous deposits with queued exits."""
+    pricing = pricing_model.route(pair) if isinstance(pricing_model, GenericPricing) else pricing_model
+    if not isinstance(pricing, VaultPricing):
+        return False
+    manager = pricing.get_vault(pair).get_deposit_manager()
+    return manager.has_synchronous_deposit() and not manager.has_synchronous_redemption()
+
+
 def is_atoma_vault_test(pricing_model: PricingModel, pair: TradingPairIdentifier) -> bool:
-    """Use the existing pending-ticket lifecycle for Atoma public test trades."""
+    """Retain the existing public helper while callers move to capabilities."""
     pricing = pricing_model.route(pair) if isinstance(pricing_model, GenericPricing) else pricing_model
     return isinstance(pricing, VaultPricing) and isinstance(pricing.get_vault(pair).get_deposit_manager(), AtomaDepositManager)
 
@@ -71,7 +81,7 @@ def check_vault_test_capacity(
         return
     vault = pricing.get_vault(pair)
     manager = vault.get_deposit_manager()
-    if not isinstance(manager, AtomaDepositManager) and not (manager.has_synchronous_deposit() and manager.has_synchronous_redemption()):
+    if not manager.has_synchronous_deposit():
         return
     owner = pricing.get_owner_address(pair)
     if owner is None:
@@ -86,7 +96,9 @@ def check_vault_test_capacity(
             raise RuntimeError("Test redemption must match its exact custody share balance")
         manager.create_redemption_request(owner=owner, raw_shares=raw_amount)
     else:
-        manager.create_deposit_request(owner=owner, raw_amount=raw_amount)
+        asset = resolve_multi_asset_deposit_asset(manager, pair.chain_id)
+        kwargs = {"accepted_asset": asset} if asset is not None else {}
+        manager.create_deposit_request(owner=owner, raw_amount=raw_amount, **kwargs)
 
 
 def check_vault_test_closed(pricing_model: PricingModel, pair: TradingPairIdentifier, position: TradingPosition) -> None:

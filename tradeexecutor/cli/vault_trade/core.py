@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import Any
 
 from eth_account import Account
+from eth_defi.erc_4626.vault_protocol.upshift.vault import UpshiftVault
+from eth_defi.erc_4626.core import ERC4626Feature
 from eth_defi.cctp.constants import CHAIN_ID_TO_CCTP_DOMAIN
 from eth_defi.cctp.whitelist import CCTPDeployment
 from eth_defi.erc_4626.vault import ERC4626Vault
@@ -29,6 +31,7 @@ from tradingstrategy.chain import ChainId
 from tradingstrategy.candle import Candle
 from tradingstrategy.timebucket import TimeBucket
 
+from tradeexecutor.state.identifier import _normalise_erc_4626_features
 from tradeexecutor.ethereum.web3config import get_chain_slug, get_rpc_env_var_name
 from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.trading_strategy_universe import (
@@ -114,7 +117,11 @@ def _create_simulated_lagoon_chain_config(
             (spec.chain_id, spec.vault_address)
         )
         display_name = getattr(vault, "name", None) or spec.vault_address
-        whitelist_vaults.append(_SimulatedWhitelistVault(web3, spec, display_name))
+        features = _normalise_erc_4626_features(getattr(vault, "features", ()) or getattr(getattr(vault, "metadata", None), "features", ())) or set()
+        if ERC4626Feature.upshift_like in features:
+            whitelist_vaults.append(UpshiftVault(web3, spec, features=features))
+        else:
+            whitelist_vaults.append(_SimulatedWhitelistVault(web3, spec, display_name))
 
     # The hub may send to all supported satellites; a satellite needs only its
     # return route to the hub.  Unsupported chains still get a local Lagoon Safe

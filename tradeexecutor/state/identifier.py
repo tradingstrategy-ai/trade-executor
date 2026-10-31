@@ -984,6 +984,19 @@ class TradingPairIdentifier:
         if not self.is_vault():
             return False
         features = self.get_vault_features()
+        if features and features & DELAYED_VAULT_REDEMPTION_FEATURES:
+            # Existing window/operator protocols remain conservative even if
+            # their request itself is synchronous when a window is open.
+            return True
+        # Live pricing refreshes lifecycle metadata for configurable vaults,
+        # including zero-lag variants without an existing delayed feature.
+        flow = (self.other_data or {}).get("vault_redemption_flow")
+        if flow is not None:
+            return flow == "asynchronous"
+        if features and ERC4626Feature.upshift_like in features:
+            lockup = (self.other_data or {}).get("vault_lockup_days")
+            # Missing delay is conservative; never spend unproved queue cash.
+            return lockup is None or lockup > 0
         if features is None:
             return False
         if not features:

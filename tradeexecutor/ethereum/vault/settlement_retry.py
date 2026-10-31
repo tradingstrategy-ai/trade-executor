@@ -29,6 +29,7 @@ from eth_defi.event_reader.conversion import convert_bytes32_to_address, convert
 from eth_defi.hotwallet import HotWallet
 from eth_defi.provider.receipt import wait_for_transaction_receipt_robust
 from eth_defi.vault.deposit_redeem import (
+    VaultDepositManager,
     AsyncVaultRequestStatus,
     DepositRedeemEventAnalysis,
     VaultFlowUnavailable,
@@ -53,7 +54,7 @@ VAULT_SETTLEMENT_RECEIPT_TIMEOUT = 120
 
 
 def has_pending_atoma_settlement(state: State) -> bool:
-    """Does valuation need claim recovery before reading an Atoma entitlement?
+    """Does valuation need claim recovery before reading a pending entitlement?
 
     Startup, normal ticks and manual NAV posting share this predicate so a paid
     ticket cannot block the resolver behind a failed valuation. Resolution itself
@@ -61,8 +62,11 @@ def has_pending_atoma_settlement(state: State) -> bool:
     """
     return any(
         p.pair.is_vault()
-        and ERC4626Feature.atoma_like in (p.pair.get_vault_features() or set())
         and p.has_pending_vault_settlement()
+        and (
+            ERC4626Feature.atoma_like in (p.pair.get_vault_features() or set())
+            or any(t.other_data.get("vault_requires_ticket_valuation", False) or "upshift_year" in t.other_data for t in p.trades.values() if t.is_sell() and t.is_vault_settlement_in_flight())
+        )
         for p in state.portfolio.get_all_positions(pending=True)
     )
 
@@ -346,7 +350,6 @@ def check_and_resolve_vault_settlements(
             logger.warning(
                 "Failed to resolve vault settlement for trade #%d: %s",
                 trade.trade_id, e,
-                exc_info=True,
             )
 
     return resolved
@@ -553,21 +556,17 @@ def _resolve_single_vault_trade(
             )
             return
         elif status == AsyncVaultRequestStatus.none:
-            recovered_tx_hash = _find_already_completed_claim_tx_hash(
-                web3,
-                vault,
-                ticket,
-                direction,
-            )
-            direct_payout = False
-            if recovered_tx_hash is None and direction == "redeem":
-                # Operator-finalised protocols do not emit a user claim. Their
-                # manager validates the protocol-specific direct payout event
-                # before exposing it as a terminal transaction.
-                recovered_tx_hash = deposit_manager.fetch_completed_redemption_tx_hash(
-                    ticket
-                )
+            recovery = getattr(type(deposit_manager), "fetch_completed_redemption_tx_hash", None)
+            native_recovery = direction == "redeem" and recovery is not None and recovery is not VaultDepositManager.fetch_completed_redemption_tx_hash
+            if native_recovery:
+                # The manager's indexed lookup validates protocol-specific
+                # identity. An indexer miss remains pending; do not fall back
+                # to generic event discovery for a different ABI.
+                recovered_tx_hash = deposit_manager.fetch_completed_redemption_tx_hash(ticket)
                 direct_payout = recovered_tx_hash is not None
+            else:
+                recovered_tx_hash = _find_already_completed_claim_tx_hash(web3, vault, ticket, direction)
+                direct_payout = False
             if recovered_tx_hash is None:
                 logger.warning(
                     "Unexpected NONE status for vault trade #%d (direction=%s)",

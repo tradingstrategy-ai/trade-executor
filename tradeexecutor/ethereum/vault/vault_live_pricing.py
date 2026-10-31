@@ -98,6 +98,8 @@ class VaultPricing(PricingModel):
         vault = self.get_vault(pair)
 
         deposit_manager = vault.get_deposit_manager()
+        pair.other_data = pair.other_data or {}
+        pair.other_data["vault_redemption_flow"] = "synchronous" if deposit_manager.has_synchronous_redemption() else "asynchronous"
         estimated_usd = deposit_manager.estimate_redeem(
             owner=self.get_owner_address(pair),
             shares=quantity,
@@ -136,6 +138,8 @@ class VaultPricing(PricingModel):
         vault = self.get_vault(pair)
 
         deposit_manager = vault.get_deposit_manager()
+        pair.other_data = pair.other_data or {}
+        pair.other_data["vault_redemption_flow"] = "synchronous" if deposit_manager.has_synchronous_redemption() else "asynchronous"
         # Multi-asset vaults (e.g. Upshift) cannot estimate a deposit without an
         # explicitly selected accepted asset; they expose an asset-aware
         # estimator. Resolve the accepted asset (native USDC default on the
@@ -264,6 +268,8 @@ class VaultPricing(PricingModel):
         """Check protocol-specific redemption request availability."""
         vault = self.get_vault(pair)
         deposit_manager = vault.get_deposit_manager()
+        pair.other_data = pair.other_data or {}
+        pair.other_data["vault_redemption_flow"] = "synchronous" if deposit_manager.has_synchronous_redemption() else "asynchronous"
 
         owner = self.get_owner_address(pair)
         if owner is None:

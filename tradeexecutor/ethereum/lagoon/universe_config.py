@@ -439,15 +439,15 @@ def translate_trading_universe_to_lagoon_config(
         if vault_addresses:
             erc4626_vaults = []
             for addr in vault_addresses:
-                # Atoma needs its specialised policy. Other protocol flags can
+                # Atoma and Upshift need their specialised policies. Other flags can
                 # select non-ERC4626Vault classes unsupported by this helper.
                 features = next(
                     (pair.get_vault_features() for pair in universe.iterate_pairs()
                      if pair.is_vault() and pair.base.chain_id == chain_id and pair.pool_address.lower() == addr.lower()),
                     None,
                 )
-                atoma_features = features if features and ERC4626Feature.atoma_like in features else None
-                vault_instance = create_vault_instance(chain_web3[slug], addr, features=atoma_features)
+                policy_features = features if features and features & {ERC4626Feature.atoma_like, ERC4626Feature.upshift_like} else None
+                vault_instance = create_vault_instance(chain_web3[slug], addr, features=policy_features)
                 assert vault_instance is not None, f"Failed to create vault instance for {addr}"
                 erc4626_vaults.append(vault_instance)
             config.erc_4626_vaults = erc4626_vaults
