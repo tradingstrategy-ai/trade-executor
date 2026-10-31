@@ -515,8 +515,8 @@ The execution layer, in trade-executor:
 | [tradeexecutor/strategy/chart/standard/weight.py](../../tradeexecutor/strategy/chart/standard/weight.py) | Asset bands and allocation-by-liquidity-state chart |
 | [tradeexecutor/strategy/asset.py](../../tradeexecutor/strategy/asset.py) | Escrow-aware expected balances for account reconciliation |
 | [tradeexecutor/ethereum/vault/vault_valuation.py](../../tradeexecutor/ethereum/vault/vault_valuation.py) | `VaultValuator`: existing position value, including settled Atoma entitlements; failed quotes do not refresh valuation timestamps |
-| [tradeexecutor/cli/vault_test_trade.py](../../tradeexecutor/cli/vault_test_trade.py) | Test-owned position checks and Atoma pending-exit resume admission |
-| [tradeexecutor/ethereum/lagoon/universe_config.py](../../tradeexecutor/ethereum/lagoon/universe_config.py) | Preserve Atoma protocol selection when configuring its specialised Guard whitelist |
+| [tradeexecutor/cli/vault_test_trade.py](../../tradeexecutor/cli/vault_test_trade.py) | Test-owned position checks and capability-based pending-exit resume admission |
+| [tradeexecutor/ethereum/lagoon/universe_config.py](../../tradeexecutor/ethereum/lagoon/universe_config.py) | Pass vault identities and known features to shared guard setup |
 | [tradeexecutor/ethereum/vault/vault_utils.py](../../tradeexecutor/ethereum/vault/vault_utils.py) | Turning a vault into a tradeable pair identifier |
 | [tradeexecutor/cli/loop.py](../../tradeexecutor/cli/loop.py) | Startup-time settlement retry (non-halting, unlike CCTP) |
 | [tradeexecutor/cli/trade_ui_tui.py](../../tradeexecutor/cli/trade_ui_tui.py) | Settlement ETA display for pending deposits |
@@ -577,13 +577,23 @@ The shared closure analytics expose unknown evidence, optional policy blocks and
 
 Upshift uses the shared manager, request ticket, pending trade and settlement
 resolver. Multi-asset vaults mint a separate LP token and need its approval
-before a queued request. Lagoon deployment retains Upshift features and uses
-existing guard validators for the exact ABI family. The standalone simulated
-runner normalises downloaded feature strings before configuring that policy.
-The explicit `--erc-4626-vaults` deployment option specialises only Atoma and
-Upshift; other protocols keep its existing generic descriptor. Live flow
-metadata overrides allocation delay only for Upshift, whose lag is configurable.
-Other protocols retain their existing settlement rules.
+before a queued request. Deployment callers pass ordinary vault descriptors
+and their known features to the existing `setup_guard()`. It resolves Atoma
+and Upshift with the shared vault factory, then configures existing guard
+validators for the actual ABI family. Address-only inputs are detected there;
+other protocols keep the generic descriptor. CLI commands, strategy universes
+and simulated diagnostics do not select Upshift guard policies themselves.
+
+Upshift uses the existing conservative delayed-redemption allocation category,
+like Atoma. Expected sale proceeds do not fund same-cycle purchases, including
+when current Upshift lag is zero. Actual instant or queued execution follows
+the manager's capabilities; pricing does not write a separate lifecycle cache.
+This category also selects the existing asynchronous backtest simulator and
+defers satellite bridging until a later cycle. Without a per-vault override,
+backtests use `vault_settlement_delay` (two days by default), including zero-lag
+Upshift exits. This does not model a vault's actual configured lag. Set the
+existing `vault_settlement_delay_overrides` for calibrated simulations, notably
+NEMO's 30-day queue. A zero override still settles on the next backtest cycle.
 
 Legacy zero-lag requests pay immediately; multi-asset zero-lag exits use the
 instant selector. Delayed legacy entitlement is fixed at request time, while
@@ -592,6 +602,9 @@ multi-asset entitlement floats until claim. `VaultValuator` asks the shared
 insufficient; Atoma uses the same hook for burned claims. Mined request parsing
 uses `create_redemption_request_for_analysis()` so it never repeats Upshift's
 live admission checks against shares already moved to escrow.
+Pre-valuation recovery uses `has_pending_vault_claims()` and the existing
+trade's `vault_requires_ticket_valuation` flag. It does not infer behaviour
+from an Upshift ticket's date fields.
 
 The ordinary public test command resumes delayed, synchronous-deposit vaults
 by manager capability and saved test position, including Upshift and Atoma.

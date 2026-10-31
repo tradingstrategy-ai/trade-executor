@@ -6,38 +6,13 @@ from unittest.mock import MagicMock
 
 import pytest
 from eth_defi.erc_4626.core import ERC4626Feature
-from eth_defi.erc_4626.vault import ERC4626Vault
-from eth_defi.token import TokenDiskCache, USDC_NATIVE_TOKEN
-from eth_typing import HexAddress
+from eth_defi.token import USDC_NATIVE_TOKEN
 
-from tradeexecutor.cli.commands import lagoon_deploy_vault as deployment
 from tradeexecutor.ethereum.vault import vault_routing
+from tradeexecutor.ethereum.vault.settlement_retry import has_pending_vault_claims
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
-
-
-@pytest.mark.parametrize("features", [set(), {ERC4626Feature.mellow_like}, {ERC4626Feature.atoma_like}, {ERC4626Feature.upshift_like, ERC4626Feature.upshift_multi_asset_like}])
-def test_explicit_guard_vault_preserves_generic_protocols(monkeypatch: pytest.MonkeyPatch, features: set[ERC4626Feature]) -> None:
-    """Specialise only guard policies supported by the deployment option.
-
-    1. Replace RPC-owned detection and construction with observable boundaries.
-    2. Resolve an explicit address through the deployment helper.
-    3. Preserve generic support and forward complete Atoma/Upshift features.
-    """
-    # 1. Replace RPC-owned detection and construction with observable boundaries.
-    web3 = MagicMock()
-    cache = MagicMock(spec=TokenDiskCache)
-    address = HexAddress("0x1111111111111111111111111111111111111111")
-    descriptor = MagicMock(spec=ERC4626Vault)
-    factory = MagicMock(return_value=descriptor)
-    monkeypatch.setattr(deployment, "detect_vault_features", lambda *args, **kwargs: features)
-    monkeypatch.setattr(deployment, "create_vault_instance", factory)
-    # 2. Resolve an explicit address through the deployment helper.
-    assert deployment._fetch_erc_4626_guard_vault(web3, address, token_cache=cache) is descriptor
-    # 3. Preserve generic support and forward complete Atoma/Upshift features.
-    expected = features if features & {ERC4626Feature.atoma_like, ERC4626Feature.upshift_like} else None
-    factory.assert_called_once_with(web3, address, features=expected, token_cache=cache)
 
 
 @pytest.mark.parametrize("target_chain", [1, 42161], ids=("home", "satellite"))
@@ -101,27 +76,48 @@ def test_routing_rejects_accepted_input_without_funding_conversion(monkeypatch: 
 
 
 @pytest.mark.parametrize(
-    "features,flow,expected",
+    "features,expected",
     [
-        ({ERC4626Feature.upshift_like}, "synchronous", False),
-        ({ERC4626Feature.upshift_like}, "asynchronous", True),
-        (set(), "synchronous", True),
-        ({ERC4626Feature.gains_like}, "asynchronous", False),
-        ({ERC4626Feature.d2_like}, "synchronous", True),
+        ({ERC4626Feature.upshift_like}, True),
+        ({ERC4626Feature.lagoon_like}, True),
+        ({ERC4626Feature.atoma_like}, True),
+        (set(), True),
+        ({ERC4626Feature.gains_like}, False),
+        ({ERC4626Feature.d2_like}, True),
     ],
 )
-def test_live_flow_preserves_other_protocol_settlement_rules(features: set[ERC4626Feature], flow: str, expected: bool) -> None:
-    """Refresh configurable Upshift delays without reclassifying other vaults.
+def test_delayed_redemption_uses_existing_protocol_classification(features: set[ERC4626Feature], expected: bool) -> None:
+    """Use the same conservative allocation rule for queued vault protocols.
 
-    1. Construct persisted feature and live-flow metadata on a real pair.
+    1. Construct ordinary protocol metadata on a real pair.
     2. Evaluate the allocation cash-settlement rule.
     3. Retain conservative unknown/window rules and existing protocol behaviour.
     """
-    # 1. Construct persisted feature and live-flow metadata on a real pair.
+    # 1. Construct ordinary protocol metadata on a real pair.
     quote = AssetIdentifier(1, USDC_NATIVE_TOKEN[1], "USDC", 6)
     base = AssetIdentifier(1, "0x1111111111111111111111111111111111111111", "shares", 18)
-    pair = TradingPairIdentifier(base, quote, base.address, base.address, fee=0, kind=TradingPairKind.vault, other_data={"vault_features": features, "vault_protocol": "custom", "vault_redemption_flow": flow})
+    pair = TradingPairIdentifier(base, quote, base.address, base.address, fee=0, kind=TradingPairKind.vault, other_data={"vault_features": features, "vault_protocol": "custom"})
     # 2. Evaluate the allocation cash-settlement rule.
     delayed = pair.has_delayed_vault_redemption()
     # 3. Retain conservative unknown/window rules and existing protocol behaviour.
     assert delayed is expected
+
+
+@pytest.mark.parametrize("metadata,expected", [({"vault_requires_ticket_valuation": True}, True), ({"upshift_year": 2026}, False)])
+def test_pending_claim_recovery_uses_generic_trade_metadata(metadata: dict, expected: bool) -> None:
+    """Use the persisted generic recovery flag without interpreting ticket fields.
+
+    1. Supply an in-flight sell in the existing portfolio state interface.
+    2. Check whether valuation needs prior claim recovery.
+    3. Require the generic flag rather than protocol-specific date fields.
+
+    Lightweight state stand-ins isolate this predicate from RPC and execution.
+    """
+    # 1. Supply an in-flight sell in the existing portfolio state interface.
+    trade = SimpleNamespace(other_data=metadata, is_sell=lambda: True, is_vault_settlement_in_flight=lambda: True)
+    position = SimpleNamespace(pair=SimpleNamespace(is_vault=lambda: True, get_vault_features=lambda: {ERC4626Feature.upshift_like}), has_pending_vault_settlement=lambda: True, trades={1: trade})
+    state = SimpleNamespace(portfolio=SimpleNamespace(get_all_positions=lambda **kwargs: [position]))
+    # 2. Check whether valuation needs prior claim recovery.
+    recovery_needed = has_pending_vault_claims(state)
+    # 3. Require the generic flag rather than protocol-specific date fields.
+    assert recovery_needed is expected

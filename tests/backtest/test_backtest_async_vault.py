@@ -820,12 +820,12 @@ def test_backtest_atoma_withdrawal_fee_and_delayed_redemption():
 
 
 @pytest.mark.timeout(300)
-def test_backtest_async_vault_settlement_due_defaults():
+def test_backtest_async_vault_settlement_due_defaults() -> None:
     """Settlement due-time defaults and precedence for async vault backtesting.
 
     Async simulation switches on automatically for any vault whose metadata
-    carries async features, so the defaults must be realistic rather than a
-    silent next-cycle settlement.
+    carries async features. Defaults must be explicit; calibrated timing uses
+    the existing protocol metadata or per-vault overrides.
 
     1. The global default delay is non-zero (two days, so the pending window
        spans a full one-day decision cycle).
@@ -837,6 +837,7 @@ def test_backtest_async_vault_settlement_due_defaults():
        settlement hour, regardless of the global delay.
     6. A per-vault override beats both the global default and the Ostium schedule.
     7. Override-only vaults (no features) are detected as async; plain vaults are not.
+    8. Upshift exits use the existing default or explicit zero/30-day override.
     """
     from tradeexecutor.backtest.backtest_execution import (
         BacktestExecution,
@@ -873,6 +874,7 @@ def test_backtest_async_vault_settlement_due_defaults():
     plutus_pair = _make_pair("VPLU", "0x" + "ab" * 20, {ERC4626Feature.erc_7540_like, ERC4626Feature.plutus_like}, 706)
     override_only_pair = _make_pair("VOVR", VAULT_C_ADDRESS, None, 702)
     plain_pair = _make_pair("VPLAIN", "0x" + "dd" * 20, None, 703)
+    upshift_pair = _make_pair("VUP", "0x" + "cd" * 20, {ERC4626Feature.upshift_like}, 707)
 
     execution = BacktestExecution(
         SimulatedWallet(),
@@ -915,6 +917,15 @@ def test_backtest_async_vault_settlement_due_defaults():
     assert execution._is_async_vault(ostium_pair)
     assert execution._is_async_vault(override_only_pair)
     assert not execution._is_async_vault(plain_pair)
+
+    # 8. Upshift exits use the existing default or explicit zero/30-day override.
+    assert execution._is_async_vault(upshift_pair, is_buy=False)
+    assert not execution._is_async_vault(upshift_pair, is_buy=True)
+    assert execution._get_settlement_due(upshift_pair, ts) == datetime.datetime(2024, 1, 3, 9, 30)
+    instant = BacktestExecution(SimulatedWallet(), vault_settlement_delay_overrides={upshift_pair.pool_address: datetime.timedelta(0)})
+    queued = BacktestExecution(SimulatedWallet(), vault_settlement_delay_overrides={upshift_pair.pool_address: datetime.timedelta(days=30)})
+    assert instant._get_settlement_due(upshift_pair, ts) == ts
+    assert queued._get_settlement_due(upshift_pair, ts) == datetime.datetime(2024, 1, 31, 9, 30)
 
 
 @pytest.mark.timeout(300)

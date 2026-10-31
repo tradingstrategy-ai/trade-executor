@@ -30,7 +30,7 @@ from tradingstrategy.timebucket import TimeBucket
 
 from tradeexecutor.analysis.pair import display_strategy_universe
 from tradeexecutor.ethereum.nonce import refresh_hot_wallet_nonces
-from tradeexecutor.ethereum.vault.settlement_retry import has_pending_atoma_settlement, check_and_resolve_vault_settlements
+from tradeexecutor.ethereum.vault.settlement_retry import has_pending_vault_claims, check_and_resolve_vault_settlements
 from tradeexecutor.cli.watchdog import create_watchdog_registry, register_worker, mark_alive, start_background_watchdog, \
     WatchdogMode
 from tradeexecutor.state.metadata import Metadata
@@ -1554,8 +1554,8 @@ class ExecutionLoop:
                 )
 
         # Startup treasury sync precedes StrategyRunner.tick(). Recover paid
-        # Atoma claims here too, before its pending-ticket valuation can run.
-        if has_pending_atoma_settlement(state):
+        # claims here too, before pending-ticket valuation can run.
+        if has_pending_vault_claims(state):
             self.execution_model.set_pre_broadcast_state_sync_callback(lambda: self.store.sync(state))
             self.execution_model.resolve_pending_vault_settlements(state=state, ts=native_datetime_utc_now())
             self.store.sync(state)

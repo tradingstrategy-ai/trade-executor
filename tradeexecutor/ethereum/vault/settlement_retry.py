@@ -53,19 +53,22 @@ logger = logging.getLogger(__name__)
 VAULT_SETTLEMENT_RECEIPT_TIMEOUT = 120
 
 
-def has_pending_atoma_settlement(state: State) -> bool:
+def has_pending_vault_claims(state: State) -> bool:
     """Does valuation need claim recovery before reading a pending entitlement?
 
     Startup, normal ticks and manual NAV posting share this predicate so a paid
     ticket cannot block the resolver behind a failed valuation. Resolution itself
     still uses the generic execution-model hook and existing state records.
+
+    :param state: Existing executor portfolio and persisted pending trades.
+    :return: Whether claim recovery must precede portfolio valuation.
     """
     return any(
         p.pair.is_vault()
         and p.has_pending_vault_settlement()
         and (
             ERC4626Feature.atoma_like in (p.pair.get_vault_features() or set())
-            or any(t.other_data.get("vault_requires_ticket_valuation", False) or "upshift_year" in t.other_data for t in p.trades.values() if t.is_sell() and t.is_vault_settlement_in_flight())
+            or any(t.other_data.get("vault_requires_ticket_valuation", False) for t in p.trades.values() if t.is_sell() and t.is_vault_settlement_in_flight())
         )
         for p in state.portfolio.get_all_positions(pending=True)
     )

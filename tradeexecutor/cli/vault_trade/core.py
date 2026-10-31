@@ -14,7 +14,6 @@ from pathlib import Path
 from typing import Any
 
 from eth_account import Account
-from eth_defi.erc_4626.vault_protocol.upshift.vault import UpshiftVault
 from eth_defi.erc_4626.core import ERC4626Feature
 from eth_defi.cctp.constants import CHAIN_ID_TO_CCTP_DOMAIN
 from eth_defi.cctp.whitelist import CCTPDeployment
@@ -30,6 +29,7 @@ from eth_defi.vault.base import VaultSpec
 from tradingstrategy.chain import ChainId
 from tradingstrategy.candle import Candle
 from tradingstrategy.timebucket import TimeBucket
+from web3 import Web3
 
 from tradeexecutor.state.identifier import _normalise_erc_4626_features
 from tradeexecutor.ethereum.web3config import get_chain_slug, get_rpc_env_var_name
@@ -58,10 +58,18 @@ class _SimulatedWhitelistVault(ERC4626Vault):
     shared simulated Lagoon deployment.
     """
 
-    def __init__(self, web3, spec: VaultSpec, name: str):
-        """Initialise an address-only vault descriptor with a display name."""
+    def __init__(self, web3: Web3, spec: VaultSpec, name: str, features: set[ERC4626Feature] | None = None) -> None:
+        """Carry catalogue metadata to guard setup without probing adapters.
 
-        super().__init__(web3, spec)
+        The shared setup resolves supported policies using the supplied hints.
+
+        :param web3: Deployment chain connection.
+        :param spec: Vault identity.
+        :param name: Downloaded display name.
+        :param features: Known catalogue features, or ``None`` when unavailable.
+        """
+
+        super().__init__(web3, spec, features=features)
         self._simulated_name = name
 
     @property
@@ -109,8 +117,7 @@ def _create_simulated_lagoon_chain_config(
 ) -> LagoonConfig:
     """Build one chain's guard whitelist and optional CCTP permissions."""
 
-    # Keep generic address-only descriptors for diagnostic attempts, while
-    # Upshift needs its specialised target and share-token guard policy.
+    # Pass metadata to the existing guard setup; protocol policy belongs there.
     whitelist_vaults = []
     for spec in vault_specs:
         vault = vault_universe.get_by_vault_spec(
@@ -118,10 +125,7 @@ def _create_simulated_lagoon_chain_config(
         )
         display_name = getattr(vault, "name", None) or spec.vault_address
         features = _normalise_erc_4626_features(getattr(vault, "features", ()) or getattr(getattr(vault, "metadata", None), "features", ())) or set()
-        if ERC4626Feature.upshift_like in features:
-            whitelist_vaults.append(UpshiftVault(web3, spec, features=features))
-        else:
-            whitelist_vaults.append(_SimulatedWhitelistVault(web3, spec, display_name))
+        whitelist_vaults.append(_SimulatedWhitelistVault(web3, spec, display_name, features=features or None))
 
     # The hub may send to all supported satellites; a satellite needs only its
     # return route to the hub.  Unsupported chains still get a local Lagoon Safe

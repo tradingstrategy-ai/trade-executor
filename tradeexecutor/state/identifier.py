@@ -88,10 +88,13 @@ ASYNC_VAULT_FEATURES = {
 #: D2 and Atoma redemptions are bounded by epoch windows and Plutus Hedge
 #: redemptions may require operator fulfilment. Their deposits remain synchronous, so they
 #: intentionally do not belong to :py:data:`ASYNC_VAULT_FEATURES`.
+#: Upshift uses this same conservative funding rule even when its current lag
+#: is zero; the deposit manager independently selects instant or queued execution.
 DELAYED_VAULT_REDEMPTION_FEATURES = ASYNC_VAULT_FEATURES | {
     ERC4626Feature.d2_like,
     ERC4626Feature.plutus_like,
     ERC4626Feature.atoma_like,
+    ERC4626Feature.upshift_like,
 }
 
 
@@ -984,19 +987,6 @@ class TradingPairIdentifier:
         if not self.is_vault():
             return False
         features = self.get_vault_features()
-        if features and features & DELAYED_VAULT_REDEMPTION_FEATURES:
-            # Existing window/operator protocols remain conservative even if
-            # their request itself is synchronous when a window is open.
-            return True
-        if features and ERC4626Feature.upshift_like in features:
-            # Upshift's lag is configurable; use its current manager flow.
-            # Other protocols retain their existing conservative rules.
-            flow = (self.other_data or {}).get("vault_redemption_flow")
-            if flow is not None:
-                return flow == "asynchronous"
-            lockup = (self.other_data or {}).get("vault_lockup_days")
-            # Missing delay is conservative; never spend unproved queue cash.
-            return lockup is None or lockup > 0
         if features is None:
             return False
         if not features:
