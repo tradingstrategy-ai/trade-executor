@@ -571,3 +571,53 @@ Each test doubles as a worked example:
 Strategies and charts use `tradeexecutor.strategy.vault_closure`: `is_vault_closed()` reports closure, while `can_interact_with_vault()` applies interaction policy. See [protocol cases and API controls](../../docs/vault-closure.md). Do not reinterpret raw maximum-capacity fields at call sites.
 
 The shared closure analytics expose unknown evidence, optional policy blocks and total interactions blocked by the strategy rules separately. Account restrictions in live adapters are not global vault closures. `strategy.deposit_check` is a compatibility import shim. See [the unified rule](../../docs/vault-closure.md).
+
+
+## Upshift
+
+Upshift uses the shared manager, request ticket, pending trade and settlement
+resolver. Multi-asset vaults mint a separate LP token and need its approval
+before a queued request. Lagoon deployment retains Upshift features and uses
+existing guard validators for the exact ABI family. The standalone simulated
+runner normalises downloaded feature strings before configuring that policy.
+The explicit `--erc-4626-vaults` deployment option specialises only Atoma and
+Upshift; other protocols keep its existing generic descriptor. Live flow
+metadata overrides allocation delay only for Upshift, whose lag is configurable.
+Other protocols retain their existing settlement rules.
+
+Legacy zero-lag requests pay immediately; multi-asset zero-lag exits use the
+instant selector. Delayed legacy entitlement is fixed at request time, while
+multi-asset entitlement floats until claim. `VaultValuator` asks the shared
+`fetch_pending_redemption_value()` hook where ordinary share valuation is
+insufficient; Atoma uses the same hook for burned claims. Mined request parsing
+uses `create_redemption_request_for_analysis()` so it never repeats Upshift's
+live admission checks against shares already moved to escrow.
+
+The ordinary public test command resumes delayed, synchronous-deposit vaults
+by manager capability and saved test position, including Upshift and Atoma.
+A repeat close-only invocation resolves the original request before considering
+another withdrawal. Public batch payouts use the existing indexed completion
+hook. Ambiguous receiver/date aggregates halt; the restriction and the risk
+that an outside dust request can force a halt remain intentional.
+
+`strategies/test_only/upshift.py` and `tests/erc_4626/test_upshift_cli.py` cover
+real Lagoon-guarded execution on the shared Ethereum midnight fork, both public
+test-trade commands, and pending-state reload. The standalone command also uses
+the real licensed metadata catalogue when its credentials are supplied.
+
+Upshift's denomination is its native withdrawal payout token, returned by
+`asset()`. Additional deposit inputs do not change it: Axis pays USDx, Tori
+Ecosystem pays trUSD and earnAUSD pays AUSD even when a deposit uses USDC.
+Routing refuses a payout token different from the funded reserve until an
+explicit conversion route is supported. Keep accepted inputs separate from
+the denomination in metadata and valuation.
+
+Account admission also varies by deployment. USPC Custody Vault requires
+approved accounts and is excluded from permissionless strategy shortlists,
+even when one particular custody account is admitted. Reuse
+`mark_whitelisted_vaults_ignored()` with the published `deposit_permission`;
+do not use adapter capability, an accepted-token list or a public app listing
+as evidence of public admission. Eth-defi's numbered migrations 017 and 018
+must be applied and the normal scanner must publish corrected metadata before
+the downloaded universe reflects these fixes. A current adapter preflight
+remains necessary at execution time.

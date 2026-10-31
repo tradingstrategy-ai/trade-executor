@@ -25,7 +25,7 @@ from tradingstrategy.pair import HumanReadableTradingPairDescription
 from tradingstrategy.exchange import ExchangeUniverse
 
 from tradeexecutor.ethereum.cctp.planner import _find_bridge_pair
-from tradeexecutor.cli.vault_test_trade import check_vault_test_capacity, check_vault_test_closed, get_test_position, is_synchronous_vault_test, is_atoma_vault_test
+from tradeexecutor.cli.vault_test_trade import check_vault_test_capacity, check_vault_test_closed, get_test_position, is_synchronous_vault_test, is_queued_redemption_vault_test
 from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
 from tradeexecutor.ethereum.vault.settlement_retry import check_and_resolve_vault_settlements
 from tradeexecutor.ethereum.vault.vault_routing import get_vault_for_pair
@@ -1310,15 +1310,15 @@ def make_test_trade(
         assert type(lending_reserve_description) in (tuple, list), f"lending_reserve_description must be a tuple, got {type(lending_reserve_description)}"
         credit_pair = pair = lending_reserve = universe.get_lending_reserve_by_human_description(lending_reserve_description)
 
-    atoma_test = pair is not None and pair.is_vault() and not is_cross_chain and is_atoma_vault_test(pricing_model, pair)
+    queued_redemption_test = pair is not None and pair.is_vault() and not is_cross_chain and is_queued_redemption_vault_test(pricing_model, pair)
     if test_trade_checks:
-        test_trade_checks = pair is not None and pair.is_vault() and not is_cross_chain and (is_synchronous_vault_test(pricing_model, pair) or atoma_test)
+        test_trade_checks = pair is not None and pair.is_vault() and not is_cross_chain and (is_synchronous_vault_test(pricing_model, pair) or queued_redemption_test)
         if close_only and not test_trade_checks:
-            raise ValueError("--close-only supports home-chain synchronous ERC-4626 and Atoma test positions")
+            raise ValueError("--close-only supports home-chain vault test positions with synchronous deposits")
     if test_trade_checks:
         # Refuse before treasury sync or dispatch to another execution route.
-        test_position = get_test_position(state, pair, allow_pending_redemption=atoma_test and close_only)
-        if atoma_test and close_only:
+        test_position = get_test_position(state, pair, allow_pending_redemption=queued_redemption_test and close_only)
+        if queued_redemption_test and close_only:
             if test_position is not None and test_position.has_pending_vault_settlement():
                 execution_model.resolve_pending_vault_settlements(state=state, ts=ts)
                 if sync_state_callback is not None:
@@ -1326,7 +1326,7 @@ def make_test_trade(
                 if test_position.is_closed():
                     check_vault_test_closed(pricing_model, pair, test_position)
                 else:
-                    logger.info("Atoma exit remains pending; rerun close-only after operator settlement. No new request was created.")
+                    logger.info("Vault exit remains pending; rerun close-only after operator settlement. No new request was created.")
                 # A resume never creates a replacement withdrawal request.
                 return
             if test_position is None:

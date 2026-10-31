@@ -405,7 +405,9 @@ def test_vault_settlement_retry_recovers_operator_direct_payout(
     manager = MagicMock()
     manager.reconstruct_redemption_ticket.return_value = ticket
     manager.get_redemption_request_status.return_value = AsyncVaultRequestStatus.none
-    manager.fetch_completed_redemption_tx_hash.return_value = payout_tx_hash
+    # Native recovery is an override on real managers, rather than a dynamic
+    # Mock child; model that protocol boundary without enabling generic lookup.
+    monkeypatch.setattr(type(manager), "fetch_completed_redemption_tx_hash", lambda self, request: payout_tx_hash, raising=False)
     manager.get_redemption_ticket_delay_over.return_value = None
     manager.analyse_redemption.return_value = DepositRedeemEventAnalysis(
         from_="0x0000000000000000000000000000000000000001",
