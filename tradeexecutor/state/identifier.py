@@ -988,12 +988,12 @@ class TradingPairIdentifier:
             # Existing window/operator protocols remain conservative even if
             # their request itself is synchronous when a window is open.
             return True
-        # Live pricing refreshes lifecycle metadata for configurable vaults,
-        # including zero-lag variants without an existing delayed feature.
-        flow = (self.other_data or {}).get("vault_redemption_flow")
-        if flow is not None:
-            return flow == "asynchronous"
         if features and ERC4626Feature.upshift_like in features:
+            # Upshift's lag is configurable; use its current manager flow.
+            # Other protocols retain their existing conservative rules.
+            flow = (self.other_data or {}).get("vault_redemption_flow")
+            if flow is not None:
+                return flow == "asynchronous"
             lockup = (self.other_data or {}).get("vault_lockup_days")
             # Missing delay is conservative; never spend unproved queue cash.
             return lockup is None or lockup > 0

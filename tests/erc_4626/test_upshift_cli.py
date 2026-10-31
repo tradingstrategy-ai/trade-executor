@@ -8,6 +8,7 @@ from functools import partial
 from pathlib import Path
 
 import pytest
+from eth_typing import HexAddress
 from eth_defi.erc_4626.classification import create_vault_instance_autodetect
 from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
 from eth_defi.hotwallet import HotWallet
@@ -89,7 +90,7 @@ def environment(runtime: tuple[dict[str, str], Web3], anvil_fork_pool: AnvilFork
 
 
 @pytest.mark.parametrize("address", [SENTORA, CORE])
-def test_upshift_perform_test_trade(environment: dict[str, str], runtime: tuple[dict[str, str], Web3], address: str) -> None:
+def test_upshift_perform_test_trade(environment: dict[str, str], runtime: tuple[dict[str, str], Web3], address: HexAddress) -> None:
     """Exercise both contract families through the guarded public command.
 
     1. Invoke perform-test-trade against a real deployed Lagoon Safe.
@@ -122,6 +123,7 @@ def test_upshift_pending_resume(environment: dict[str, str], runtime: tuple[dict
     cli = get_command(app)
     args = ["perform-test-trade", "--pair", f"(ethereum, {SENTORA})", "--no-test-short"]
     cli.main(args=args + ["--amount", "10", "--buy-only"], standalone_mode=False)
+    # Disable fork time advancement to exercise persisted pending-state resume.
     monkeypatch.setattr(perform_test_trade_command, "make_test_trade", partial(make_test_trade, force_async_settlement_on_anvil=False))
     cli.main(args=args + ["--close-only"], standalone_mode=False)
     path = Path(environment["STATE_FILE"])
@@ -152,19 +154,19 @@ def test_upshift_pending_resume(environment: dict[str, str], runtime: tuple[dict
 
 @pytest.mark.skipif(not all(DATA_KEYS.values()), reason="Vault metadata API credentials required")
 @pytest.mark.parametrize("vault_address", [SENTORA, NEMO])
-def test_upshift_vault_test_trade(environment: dict[str, str], tmp_path: Path, monkeypatch: MonkeyPatch, vault_address: str) -> None:
+def test_upshift_vault_test_trade(environment: dict[str, str], tmp_path: Path, monkeypatch: MonkeyPatch, vault_address: HexAddress) -> None:
     """Run the standalone command with real metadata and guarded fork execution.
 
-    1. Load the actual licensed vault catalogue and select Sentora.
+    1. Load the actual licensed vault catalogue and select Sentora or NEMO.
     2. Execute the public simulation command with real contract settlement.
     3. Check the machine-readable report proves a completed round trip.
     """
-    # 1. Load the actual licensed vault catalogue and select Sentora.
+    # 1. Load the actual licensed vault catalogue and select Sentora or NEMO.
     for name, value in DATA_KEYS.items():
         monkeypatch.setenv(name, value)
     report = tmp_path / "report.json"
     # 2. Execute the public simulation command with real contract settlement.
-    get_command(app).main(args=["vault-test-trade", "--state-file", str(tmp_path / "standalone-state.json"), "--auto-simulated", "--settle-async-on-anvil", "--vault-id", f"1-{vault_address}", "--amount", "10", "--simulation-fork-block", f"1:{ETHEREUM_MIDNIGHT_BLOCK}", "--simulation-fork-block-reference", "docs/superpowers/plans/2026-10-30-upshift-trade-executor-support.md", "--report-json", str(report)], standalone_mode=False)
+    get_command(app).main(args=["vault-test-trade", "--state-file", str(tmp_path / "standalone-state.json"), "--auto-simulated", "--settle-async-on-anvil", "--vault-id", f"1-{vault_address}", "--amount", "10", "--simulation-fork-block", f"1:{ETHEREUM_MIDNIGHT_BLOCK}", "--simulation-fork-block-reference", "deps/web3-ethereum-defi/eth_defi/testing/fork_blocks.py", "--report-json", str(report)], standalone_mode=False)
     # 3. Check the machine-readable report proves a completed round trip.
     result = json.loads(report.read_text())
     rows = result["results"] if isinstance(result, dict) else result

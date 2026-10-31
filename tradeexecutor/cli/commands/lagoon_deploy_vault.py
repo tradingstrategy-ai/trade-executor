@@ -88,7 +88,7 @@ from eth_defi.aave_v3.constants import AAVE_V3_DEPLOYMENTS
 from eth_defi.aave_v3.deployment import \
     fetch_deployment as fetch_aave_deployment
 from eth_defi.abi import ONE_ADDRESS_STR
-from eth_defi.erc_4626.classification import create_vault_instance, create_vault_instance_autodetect
+from eth_defi.erc_4626.classification import create_vault_instance, detect_vault_features
 from eth_defi.erc_4626.core import ERC4626Feature
 from eth_defi.erc_4626.vault import ERC4626Vault
 from eth_defi.erc_4626.vault_protocol.lagoon.config import \
@@ -106,6 +106,7 @@ from eth_defi.lighter.deployment import LighterDeployment
 from eth_defi.lighter.pubkey import MIN_API_KEY_INDEX
 from eth_defi.safe.deployment import fetch_safe_deployment
 from eth_defi.token import TokenDetails, TokenDiskCache, fetch_erc20_details
+from eth_typing import HexAddress
 from eth_defi.uniswap_v2.constants import UNISWAP_V2_DEPLOYMENTS
 from eth_defi.uniswap_v2.deployment import fetch_deployment
 from eth_defi.uniswap_v3.constants import UNISWAP_V3_DEPLOYMENTS
@@ -150,6 +151,23 @@ from tradeexecutor.strategy.strategy_module import read_strategy_module
 
 
 logger = logging.getLogger(__name__)
+
+
+def _fetch_erc_4626_guard_vault(web3: Web3, address: HexAddress, token_cache: TokenDiskCache | None = None) -> ERC4626Vault:
+    """Resolve explicit vault addresses without changing generic guard support.
+
+    Atoma and Upshift need specialised policies. Other protocols retain the
+    generic ERC-4626 descriptor used by this deployment option, matching the
+    strategy-universe deployment path.
+
+    :param web3: Connection for the deployment chain and feature probes.
+    :param address: Explicit vault address to whitelist.
+    :param token_cache: Existing deployment token cache.
+    :return: Generic or supported specialised ERC-4626 descriptor.
+    """
+    features = detect_vault_features(web3, address, verbose=False)
+    policy_features = features if features & {ERC4626Feature.atoma_like, ERC4626Feature.upshift_like} else None
+    return cast(ERC4626Vault, create_vault_instance(web3, address, features=policy_features, token_cache=token_cache))
 
 
 def _calculate_safe_threshold(multisig_owners: list[str]) -> int:
@@ -1653,7 +1671,7 @@ def lagoon_deploy_vault(
         erc_4626_vaults = []
         for addr in erc_4626_vault_addresses:
             logger.info("Resolving ERC-4626 vault at %s", addr)
-            vault = cast(ERC4626Vault, create_vault_instance_autodetect(web3, addr, token_cache=token_cache))
+            vault = _fetch_erc_4626_guard_vault(web3, addr, token_cache=token_cache)
             assert vault.is_valid(), f"Invalid ERC-4626 vault at {addr}"
             logger.info("Preparing vault %s for whitelisting", vault.name)
             erc_4626_vaults.append(vault)

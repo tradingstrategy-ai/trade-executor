@@ -6,8 +6,6 @@ the standalone vault diagnostic runner.
 
 from decimal import Decimal
 
-from eth_defi.erc_4626.vault_protocol.atoma.deposit_redeem import AtomaDepositManager
-
 from tradeexecutor.ethereum.vault.vault_live_pricing import VaultPricing
 from tradeexecutor.ethereum.vault.vault_routing import resolve_multi_asset_deposit_asset
 from tradeexecutor.state.identifier import TradingPairIdentifier
@@ -34,12 +32,6 @@ def is_queued_redemption_vault_test(pricing_model: PricingModel, pair: TradingPa
         return False
     manager = pricing.get_vault(pair).get_deposit_manager()
     return manager.has_synchronous_deposit() and not manager.has_synchronous_redemption()
-
-
-def is_atoma_vault_test(pricing_model: PricingModel, pair: TradingPairIdentifier) -> bool:
-    """Retain the existing public helper while callers move to capabilities."""
-    pricing = pricing_model.route(pair) if isinstance(pricing_model, GenericPricing) else pricing_model
-    return isinstance(pricing, VaultPricing) and isinstance(pricing.get_vault(pair).get_deposit_manager(), AtomaDepositManager)
 
 
 def get_test_position(state: State, pair: TradingPairIdentifier, *, allow_pending_redemption: bool = False) -> TradingPosition | None:

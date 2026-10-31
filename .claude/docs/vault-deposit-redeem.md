@@ -580,6 +580,10 @@ resolver. Multi-asset vaults mint a separate LP token and need its approval
 before a queued request. Lagoon deployment retains Upshift features and uses
 existing guard validators for the exact ABI family. The standalone simulated
 runner normalises downloaded feature strings before configuring that policy.
+The explicit `--erc-4626-vaults` deployment option specialises only Atoma and
+Upshift; other protocols keep its existing generic descriptor. Live flow
+metadata overrides allocation delay only for Upshift, whose lag is configurable.
+Other protocols retain their existing settlement rules.
 
 Legacy zero-lag requests pay immediately; multi-asset zero-lag exits use the
 instant selector. Delayed legacy entitlement is fixed at request time, while
@@ -600,3 +604,20 @@ that an outside dust request can force a halt remain intentional.
 real Lagoon-guarded execution on the shared Ethereum midnight fork, both public
 test-trade commands, and pending-state reload. The standalone command also uses
 the real licensed metadata catalogue when its credentials are supplied.
+
+Upshift's denomination is its native withdrawal payout token, returned by
+`asset()`. Additional deposit inputs do not change it: Axis pays USDx, Tori
+Ecosystem pays trUSD and earnAUSD pays AUSD even when a deposit uses USDC.
+Routing refuses a payout token different from the funded reserve until an
+explicit conversion route is supported. Keep accepted inputs separate from
+the denomination in metadata and valuation.
+
+Account admission also varies by deployment. USPC Custody Vault requires
+approved accounts and is excluded from permissionless strategy shortlists,
+even when one particular custody account is admitted. Reuse
+`mark_whitelisted_vaults_ignored()` with the published `deposit_permission`;
+do not use adapter capability, an accepted-token list or a public app listing
+as evidence of public admission. Eth-defi's numbered migrations 017 and 018
+must be applied and the normal scanner must publish corrected metadata before
+the downloaded universe reflects these fixes. A current adapter preflight
+remains necessary at execution time.

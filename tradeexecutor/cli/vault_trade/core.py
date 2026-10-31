@@ -109,8 +109,8 @@ def _create_simulated_lagoon_chain_config(
 ) -> LagoonConfig:
     """Build one chain's guard whitelist and optional CCTP permissions."""
 
-    # Use address-only wrappers so guard deployment does not probe incomplete
-    # adapters before their individual diagnostic attempt.
+    # Keep generic address-only descriptors for diagnostic attempts, while
+    # Upshift needs its specialised target and share-token guard policy.
     whitelist_vaults = []
     for spec in vault_specs:
         vault = vault_universe.get_by_vault_spec(

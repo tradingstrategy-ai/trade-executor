@@ -350,6 +350,7 @@ def check_and_resolve_vault_settlements(
             logger.warning(
                 "Failed to resolve vault settlement for trade #%d: %s",
                 trade.trade_id, e,
+                exc_info=True,
             )
 
     return resolved
