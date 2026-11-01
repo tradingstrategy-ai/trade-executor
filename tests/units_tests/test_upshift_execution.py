@@ -10,7 +10,6 @@ from eth_defi.token import USDC_NATIVE_TOKEN
 
 from tradeexecutor.ethereum.vault import vault_routing
 from tradeexecutor.ethereum.vault.vault_live_pricing import VaultPricing
-from tradeexecutor.ethereum.vault.settlement_retry import has_pending_vault_claims
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
@@ -104,23 +103,3 @@ def test_delayed_redemption_uses_existing_protocol_classification(features: set[
     delayed = pair.has_delayed_vault_redemption()
     # 3. Retain conservative unknown/window rules and existing protocol behaviour.
     assert delayed is expected
-
-
-@pytest.mark.parametrize("metadata,expected", [({"vault_requires_ticket_valuation": True}, True), ({"upshift_year": 2026}, False)])
-def test_pending_claim_recovery_uses_generic_trade_metadata(metadata: dict, expected: bool) -> None:
-    """Use the persisted generic recovery flag without interpreting ticket fields.
-
-    1. Supply an in-flight sell in the existing portfolio state interface.
-    2. Check whether valuation needs prior claim recovery.
-    3. Require the generic flag rather than protocol-specific date fields.
-
-    Lightweight state stand-ins isolate this predicate from RPC and execution.
-    """
-    # 1. Supply an in-flight sell in the existing portfolio state interface.
-    trade = SimpleNamespace(other_data=metadata, is_sell=lambda: True, is_vault_settlement_in_flight=lambda: True)
-    position = SimpleNamespace(pair=SimpleNamespace(is_vault=lambda: True, get_vault_features=lambda: {ERC4626Feature.upshift_like}), has_pending_vault_settlement=lambda: True, trades={1: trade})
-    state = SimpleNamespace(portfolio=SimpleNamespace(get_all_positions=lambda **kwargs: [position]))
-    # 2. Check whether valuation needs prior claim recovery.
-    recovery_needed = has_pending_vault_claims(state)
-    # 3. Require the generic flag rather than protocol-specific date fields.
-    assert recovery_needed is expected

@@ -11,7 +11,7 @@ from unittest.mock import Mock
 
 import pytest
 from eth_defi.erc_4626.vault_protocol.atoma.deposit_redeem import AtomaDepositManager, AtomaFlowAnalysis
-from eth_defi.vault.deposit_redeem import VaultDepositManager, AsyncVaultRequestStatus, VaultFlowUnavailable
+from eth_defi.vault.deposit_redeem import VaultDepositManager, AsyncVaultRequestStatus, VaultFlowUnavailable, VaultRequestInvariantViolation
 from hexbytes import HexBytes
 
 from tradeexecutor.ethereum.vault.vault_live_pricing import VaultPricing
@@ -51,7 +51,7 @@ def pending_atoma() -> tuple[State, TradingPosition, VaultValuator, Mock]:
     manager.get_redemption_request_status.return_value = AsyncVaultRequestStatus.claimable
     manager.fetch_claim_amounts.return_value = (20, 0, 20)
     type(manager).fetch_pending_redemption_value = AtomaDepositManager.fetch_pending_redemption_value
-    manager._unavailable.side_effect = lambda reason, *args: VaultFlowUnavailable(reason)
+    manager._unavailable.side_effect = lambda *args: AtomaDepositManager._unavailable(manager, *args)
     manager.vault.share_token.convert_to_decimals.return_value = Decimal(4)
     manager.vault.denomination_token.convert_to_decimals.return_value = Decimal(20)
     manager.estimate_redeem.side_effect = lambda *, owner, shares, block_identifier: shares * Decimal(10)
@@ -80,8 +80,8 @@ def test_atoma_pending_entitlement_valuation(pending_atoma: tuple[State, Trading
     manager.can_finish_redeem.assert_not_called()
     manager.fetch_claim_amounts.assert_called_once_with(manager.reconstruct_redemption_ticket.return_value, block_identifier=100)
     # 2. Refuse an aggregate mismatch without changing the last successful valuation.
-    manager.fetch_claim_amounts.side_effect = VaultFlowUnavailable("request_reconciliation_required")
-    with pytest.raises(VaultFlowUnavailable, match="reconciliation"):
+    manager.fetch_claim_amounts.side_effect = VaultRequestInvariantViolation("request_reconciliation_required")
+    with pytest.raises(VaultRequestInvariantViolation, match="reconciliation"):
         valuator(ts + datetime.timedelta(minutes=1), position)
     assert position.last_pricing_at == ts
     assert position.get_value() == pytest.approx(80)
@@ -122,6 +122,8 @@ def test_atoma_zero_redemption_accounting(pending_atoma: tuple[State, TradingPos
     )
     reserve, quantity, price = convert_vault_flow_analysis(analysis, direction="redeem")
     assert (reserve, quantity, price) == (Decimal(0), Decimal(-4), Decimal(0))
+    with pytest.raises(AssertionError):
+        convert_vault_flow_analysis(analysis, direction="deposit")
     # 2. Verify ordinary trade accounting still refuses zero proceeds.
     trade.vault_settlement_pending_at = None
     with pytest.raises(AssertionError, match="reserve must be positive"):

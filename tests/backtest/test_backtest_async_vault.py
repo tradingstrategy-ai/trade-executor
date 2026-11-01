@@ -838,6 +838,7 @@ def test_backtest_async_vault_settlement_due_defaults() -> None:
     6. A per-vault override beats both the global default and the Ostium schedule.
     7. Override-only vaults (no features) are detected as async; plain vaults are not.
     8. Upshift exits use the existing default or explicit zero/30-day override.
+    9. Atoma uses the shared estimate/default table and explicit zero overrides.
     """
     from tradeexecutor.backtest.backtest_execution import (
         BacktestExecution,
@@ -875,6 +876,7 @@ def test_backtest_async_vault_settlement_due_defaults() -> None:
     override_only_pair = _make_pair("VOVR", VAULT_C_ADDRESS, None, 702)
     plain_pair = _make_pair("VPLAIN", "0x" + "dd" * 20, None, 703)
     upshift_pair = _make_pair("VUP", "0x" + "cd" * 20, {ERC4626Feature.upshift_like}, 707)
+    atoma_pair = _make_pair("VAT", "0x" + "ce" * 20, {ERC4626Feature.atoma_like}, 708)
 
     execution = BacktestExecution(
         SimulatedWallet(),
@@ -926,6 +928,15 @@ def test_backtest_async_vault_settlement_due_defaults() -> None:
     queued = BacktestExecution(SimulatedWallet(), vault_settlement_delay_overrides={upshift_pair.pool_address: datetime.timedelta(days=30)})
     assert instant._get_settlement_due(upshift_pair, ts) == ts
     assert queued._get_settlement_due(upshift_pair, ts) == datetime.datetime(2024, 1, 31, 9, 30)
+
+    # 9. Atoma shares estimate/fallback selection; only an explicit override permits zero.
+    assert execution._get_settlement_due(atoma_pair, ts) == datetime.datetime(2024, 1, 8, 9, 30)
+    atoma_pair.other_data["vault_estimated_settlement"] = datetime.timedelta(days=3)
+    assert execution._get_settlement_due(atoma_pair, ts) == datetime.datetime(2024, 1, 4, 9, 30)
+    atoma_pair.other_data["vault_estimated_settlement"] = datetime.timedelta(0)
+    assert execution._get_settlement_due(atoma_pair, ts) == datetime.datetime(2024, 1, 8, 9, 30)
+    instant_atoma = BacktestExecution(SimulatedWallet(), vault_settlement_delay_overrides={atoma_pair.pool_address: datetime.timedelta(0)})
+    assert instant_atoma._get_settlement_due(atoma_pair, ts) == ts
 
 
 @pytest.mark.timeout(300)

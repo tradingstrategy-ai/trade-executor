@@ -1,5 +1,6 @@
 """Upshift through public CLI commands, real Lagoon custody and persisted state."""
 
+import datetime
 import json
 import os
 from collections.abc import Iterator
@@ -27,7 +28,9 @@ from tradeexecutor.cli.main import app
 from tradeexecutor.cli.commands import perform_test_trade as perform_test_trade_command
 from tradeexecutor.cli.testtrade import make_test_trade
 from tradeexecutor.state.state import State
-from tradeexecutor.state.trade import TradeStatus
+from tradeexecutor.state.trade import TradeExecution, TradeStatus
+from tradeexecutor.strategy.execution_model import ExecutionModel
+from tradeexecutor.strategy.pricing_model import PricingModel
 
 JSON_RPC_ETHEREUM = os.environ.get("JSON_RPC_ETHEREUM")
 DATA_KEYS = {name: os.environ.get(name) for name in ("TRADING_STRATEGY_API_KEY", "VAULT_PRO_API_KEY")}
@@ -117,7 +120,7 @@ def test_upshift_pending_resume(environment: dict[str, str], runtime: tuple[dict
 
     1. Deposit and request through the public CLI with time advancement disabled.
     2. Repeat close-only and verify the same request remains pending.
-    3. Advance real fork time and resume twice, applying the payout once.
+    3. Recover through start with one saved-state sweep per phase, then repeat safely.
     """
     # 1. Deposit and request through the public CLI with time advancement disabled.
     cli = get_command(app)
@@ -130,11 +133,12 @@ def test_upshift_pending_resume(environment: dict[str, str], runtime: tuple[dict
     pending = State.read_json_file(path)
     sell = next(t for t in pending.portfolio.get_all_trades() if t.is_sell())
     assert sell.get_status() is TradeStatus.vault_settlement_pending
+    assert "vault_requires_ticket_valuation" not in sell.other_data
     request = sell.other_data["vault_request_tx_hash"]
     # 2. Repeat close-only and verify the same request remains pending.
     cli.main(args=args + ["--close-only"], standalone_mode=False)
     assert len(list(State.read_json_file(path).portfolio.get_all_trades())) == 2
-    # 3. Advance real fork time and resume twice, applying the payout once.
+    # 3. Recover through start with one saved-state sweep per phase, then repeat safely.
     manager = create_vault_instance_autodetect(runtime[1], SENTORA).get_deposit_manager()
     ticket = manager.reconstruct_redemption_ticket(sell.other_data)
     manager.force_settle(ticket)
@@ -143,7 +147,19 @@ def test_upshift_pending_resume(environment: dict[str, str], runtime: tuple[dict
     # Remote Hypersync cannot index new fork transactions. Substitute only its
     # lookup result; real batch execution and native receipt validation remain.
     monkeypatch.setattr(type(manager), "fetch_completed_redemption_tx_hash", lambda self, queued: batch)
-    cli.main(args=args + ["--close-only"], standalone_mode=False)
+    sweeps: list[str] = []
+    original_resolver = ExecutionModel.resolve_pending_vault_settlements
+
+    def observe_sweep(model: ExecutionModel, state: State, ts: datetime.datetime, pricing_model: PricingModel | None = None) -> list[TradeExecution]:
+        """Observe startup/tick ordering while preserving real claim execution."""
+        assert callable(model._pre_broadcast_state_sync_callback)
+        sweeps.append("startup" if pricing_model is None else "tick")
+        return original_resolver(model, state=state, ts=ts, pricing_model=pricing_model)
+
+    with monkeypatch.context() as startup_patch:
+        startup_patch.setattr(ExecutionModel, "resolve_pending_vault_settlements", observe_sweep)
+        cli.main(args=["start"], standalone_mode=False)
+    assert sweeps == ["startup", "tick"]
     cli.main(args=args + ["--close-only"], standalone_mode=False)
     state = State.read_json_file(path)
     trades = list(state.portfolio.get_all_trades())

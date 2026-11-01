@@ -501,9 +501,11 @@ trade-executor perform-test-trade --pair '(arbitrum, 0xVAULT)' --amount 1 --buy-
 trade-executor perform-test-trade --pair '(arbitrum, 0xVAULT)' --close-only --no-test-short
 ```
 
-`--close-only` accepts one home-chain synchronous ERC-4626 or Atoma pair. It refuses ordinary strategy
-holdings, unresolved trades and custody balances that differ from the test
-position. It does not need reserve cash or a new deposit quote. Protocol capacity
+`--close-only` accepts one home-chain vault pair with synchronous deposits.
+Redemptions may be instant or queued; the manager's capabilities select the path.
+It refuses ordinary strategy holdings, other unresolved trades and custody
+balances that differ from the test position. It does not need reserve cash or a
+new deposit quote. Protocol capacity
 and rounding checks belong in eth-defi's shared deposit managers.
 
 Atoma requires at least 100 USDC per deposit at the reviewed deployment and
@@ -515,7 +517,7 @@ another request. Use the same state file. The canonical
 valuation and persistence mechanisms. Fork tests advance time and invoke the
 real operator; live commands never impersonate the operator.
 
-As with `close-position`, resuming an Atoma test exit runs the shared resolver's
+As with `close-position`, resuming a queued test exit runs the shared resolver's
 portfolio-wide sweep; other pending vault trades that are ready can also finish.
 
 The command uses the existing pre-broadcast callback and saves state after each

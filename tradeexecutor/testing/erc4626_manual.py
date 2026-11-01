@@ -11,7 +11,6 @@ from pathlib import Path
 import typer
 
 from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
-from eth_defi.erc_4626.core import ERC4626Feature
 from eth_defi.hotwallet import HotWallet
 from eth_defi.provider.multi_provider import create_multi_provider_web3
 from eth_defi.token import USDC_NATIVE_TOKEN, fetch_erc20_details
@@ -47,7 +46,7 @@ def position_phase(state: State, universe: TradingStrategyUniverse, address: str
     pair = next(p for p in universe.iterate_pairs() if p.pool_address == address.lower())
     position = get_test_position(
         state, pair,
-        allow_pending_redemption=ERC4626Feature.atoma_like in (pair.get_vault_features() or set()),
+        allow_pending_redemption=True,
     )
     if position is not None:
         return "close"

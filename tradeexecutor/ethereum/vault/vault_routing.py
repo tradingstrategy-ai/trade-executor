@@ -21,7 +21,6 @@ from eth_defi.token import USDC_NATIVE_TOKEN
 from eth_defi.erc_4626.analysis import analyse_4626_flow_transaction
 from eth_defi.erc_4626.classification import create_vault_instance, create_vault_instance_autodetect
 from eth_defi.erc_4626.deposit_redeem import ERC4626DepositManager
-from eth_defi.erc_4626.vault_protocol.atoma.deposit_redeem import AtomaFlowAnalysis, AtomaRedemptionTicket
 from eth_defi.erc_4626.vault import ERC4626Vault
 from eth_defi.provider.anvil import is_anvil
 from eth_defi.token import fetch_erc20_details, TokenDiskCache
@@ -31,12 +30,12 @@ from eth_defi.vault.deposit_redeem import (
     DepositRedeemEventFailure,
     UnsupportedVaultSimulation,
     VaultFlowUnavailable,
-    VaultDepositManager,
 )
 
 from tradeexecutor.ethereum.swap import get_swap_transactions, report_failure
 from tradeexecutor.ethereum.token_cache import get_default_token_cache
 from tradeexecutor.ethereum.vault.settlement_estimate import refresh_vault_settlement_estimate
+from tradeexecutor.ethereum.vault.settlement_policy import capture_redemption_preflight, restore_redemption_preflight, validate_single_redemption_ticket
 from tradeexecutor.ethereum.vault.vault_utils import is_explicit_generic_erc4626_pair
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.portfolio import Portfolio
@@ -155,7 +154,16 @@ def convert_vault_flow_analysis(
     *,
     direction: str,
 ) -> tuple[Decimal, Decimal, Decimal]:
-    """Convert a manager receipt analysis to executor trade quantities."""
+    """Convert manager-validated receipt amounts to executor trade quantities.
+
+    Managers own token-flow evidence. A validated redemption may realise a
+    total loss; deposits still require positive assets. Final state accounting
+    separately requires the explicit asynchronous-vault zero-proceeds opt-in.
+
+    :param analysis: Successful receipt analysis from the deposit manager.
+    :param direction: ``deposit`` or ``redeem``.
+    :return: Executed reserve, signed shares and denomination price per share.
+    """
 
     executed_reserve = analysis.denomination_amount
     if direction == "deposit":
@@ -164,8 +172,7 @@ def convert_vault_flow_analysis(
         executed_amount = -analysis.share_count
     assert analysis.share_count > 0
     price = executed_reserve / analysis.share_count
-    zero_redemption = direction == "redeem" and isinstance(analysis, AtomaFlowAnalysis)
-    assert executed_reserve > 0 or (zero_redemption and executed_reserve == 0)
+    assert executed_reserve > 0 or (direction == "redeem" and executed_reserve == 0)
     assert executed_amount != 0
     return executed_reserve, executed_amount, price
 
@@ -563,6 +570,9 @@ class VaultRouting(RoutingModel):
                 _mark_vault_transaction(approve_tx, role="vault_approval")
                 txs.append(approve_tx)
 
+        if direction == "redeem":
+            capture_redemption_preflight(request, trade.other_data["vault_redemption_preflight"])
+
         for ordinal, function in enumerate(request.funcs):
             request_tx = tx_builder.sign_transaction(
                 contract=_get_contract_for_vault_function(target_vault, function),
@@ -578,8 +588,6 @@ class VaultRouting(RoutingModel):
             )
             if direction == "redeem":
                 redemption_preflight = trade.other_data["vault_redemption_preflight"]
-                if hasattr(request, "implementation"):
-                    redemption_preflight["implementation"] = request.implementation
                 manager_calls = redemption_preflight.setdefault("manager_calls", [])
                 manager_calls.append(
                     _capture_wrapped_redemption_preflight(request_tx, tx_builder.web3)
@@ -592,7 +600,6 @@ class VaultRouting(RoutingModel):
         # Persist request identity and reconstruction inputs.  The transaction
         # indices and roles survive a re-sign; the hashes do not define identity.
         trade.other_data["vault_async_flow"] = True
-        trade.other_data["vault_requires_ticket_valuation"] = type(deposit_manager).fetch_pending_redemption_value is not VaultDepositManager.fetch_pending_redemption_value
         trade.other_data["vault_direction"] = direction
         trade.other_data["vault_owner_address"] = address
         trade.other_data["vault_request_tx_count"] = len(request.funcs)
@@ -693,9 +700,7 @@ class VaultRouting(RoutingModel):
                     trade,
                     request_function_count=len(redemption_request.funcs),
                 )
-                implementation = trade.other_data.get("vault_redemption_preflight", {}).get("implementation")
-                if implementation is not None and hasattr(redemption_request, "implementation"):
-                    redemption_request.implementation = implementation
+                restore_redemption_preflight(redemption_request, trade.other_data.get("vault_redemption_preflight", {}))
                 parse_request = redemption_request.parse_redeem_transaction
 
             request_receipts: list[dict] = []
@@ -731,11 +736,8 @@ class VaultRouting(RoutingModel):
 
             state.mark_vault_settlement_pending(ts, trade, ticket_data)
             # Retain mined evidence before halting on an unsupported request.
-            if isinstance(ticket, AtomaRedemptionTicket):
-                assert not ticket.reconciliation_required and len(ticket.parts) == 1, (
-                    f"Atoma trade #{trade.trade_id} requires reconciliation or contains an aggregate. "
-                    "Expected one request per trade; halt and inspect custody/state."
-                )
+            if direction == "redeem":
+                validate_single_redemption_ticket(ticket_data)
             logger.info(
                 "Vault trade #%d marked as settlement pending (direction=%s, ticket=%s)",
                 trade.trade_id, direction, ticket_data,

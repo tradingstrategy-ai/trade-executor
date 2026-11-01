@@ -22,6 +22,10 @@ it resumable does not by itself authorise an additional state system.
 - Reuse the execution model's
   [pre-broadcast callback](../tradeexecutor/strategy/execution_model.py)
   when a command needs to save prepared transactions before submission.
+- Bind that callback before startup settlement for every live vault. A
+  conditional protocol predicate leaves other startup claims without their
+  exact signed transaction saved before broadcast. Resolve pending vault
+  trades before valuation and treasury sync through the shared execution hook.
 - Reuse existing settlement, reconciliation and repair paths. If they lack a
   capability, address that gap within the existing mechanism. Do not introduce
   a separate recovery system for one command or protocol.

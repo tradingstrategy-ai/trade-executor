@@ -30,7 +30,6 @@ from tradingstrategy.timebucket import TimeBucket
 
 from tradeexecutor.analysis.pair import display_strategy_universe
 from tradeexecutor.ethereum.nonce import refresh_hot_wallet_nonces
-from tradeexecutor.ethereum.vault.settlement_retry import has_pending_vault_claims, check_and_resolve_vault_settlements
 from tradeexecutor.cli.watchdog import create_watchdog_registry, register_worker, mark_alive, start_background_watchdog, \
     WatchdogMode
 from tradeexecutor.state.metadata import Metadata
@@ -1388,6 +1387,9 @@ class ExecutionLoop:
 
         logger.info("run_live(): Strategy is executed in live trading mode")
 
+        # Every startup claim must save its exact signed transaction first.
+        self.execution_model.set_pre_broadcast_state_sync_callback(lambda: self.store.sync(state))
+
         # Safety checks
         assert not self.is_backtest()
         assert self.backtest_start is None
@@ -1553,12 +1555,14 @@ class ExecutionLoop:
                     f"Resolve manually with trade-executor bridge-retry or receiveMessage."
                 )
 
-        # Startup treasury sync precedes StrategyRunner.tick(). Recover paid
-        # claims here too, before pending-ticket valuation can run.
-        if has_pending_vault_claims(state):
-            self.execution_model.set_pre_broadcast_state_sync_callback(lambda: self.store.sync(state))
-            self.execution_model.resolve_pending_vault_settlements(state=state, ts=native_datetime_utc_now())
-            self.store.sync(state)
+        # Resolve every vault through the shared hook before treasury valuation
+        # and account checks. Ordinary settlement delays remain pending.
+        vault_resolved = self.execution_model.resolve_pending_vault_settlements(
+            state=state, ts=native_datetime_utc_now(),
+        )
+        if vault_resolved:
+            logger.trade("Resolved %d vault settlement pending trade(s) on startup", len(vault_resolved))
+        self.store.sync(state)
 
         if self.sync_treasury_on_startup:
 
@@ -1604,19 +1608,6 @@ class ExecutionLoop:
             )
         else:
             logger.info("Startup accounting check disabled (CHECK_ACCOUNTS=false)")
-
-        # Check for vault trades stuck in settlement pending from a previous run.
-        # Unlike CCTP, do NOT halt on unresolved — vault settlements can take
-        # hours/days and will resolve on a future tick.
-        vault_web3config = getattr(self.execution_model, 'web3config', None)
-        vault_resolved = check_and_resolve_vault_settlements(
-            state=state,
-            execution_model=self.execution_model,
-            web3config=vault_web3config,
-        )
-        if vault_resolved:
-            logger.trade("Resolved %d vault settlement pending trade(s) on startup", len(vault_resolved))
-            self.store.sync(state)
 
         # Store summary statistics in memory before doing anything else
         self.refresh_live_run_state(state, visualisation=self.visulisation, universe=universe, cycle_duration=self.cycle_duration)

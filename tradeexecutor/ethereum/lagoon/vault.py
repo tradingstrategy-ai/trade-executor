@@ -35,6 +35,7 @@ from tradingstrategy.chain import ChainId
 
 from tradeexecutor.ethereum.address_sync_model import AddressSyncModel
 from tradeexecutor.ethereum.lagoon.tx import LagoonTransactionBuilder
+from tradeexecutor.ethereum.vault.settlement_policy import get_vault_settlement_confirmations
 from tradeexecutor.state.balance_update import (BalanceUpdate,
                                                 BalanceUpdateCause,
                                                 BalanceUpdatePositionType)
@@ -497,7 +498,7 @@ class LagoonVaultSyncModel(AddressSyncModel):
             # Fast chains can advance several blocks between reads from different
             # RPC backends. Keep Lagoon settlement and Safe balance reads at least
             # 16 blocks behind the tip without reducing a larger provider buffer.
-            block_delay = max(16, get_block_tip_latency(self.web3))
+            block_delay = get_vault_settlement_confirmations(self.web3.eth.chain_id, get_block_tip_latency(self.web3))
             return max(1, self.web3.eth.block_number - block_delay)
 
         return get_almost_latest_block_number(self.web3)
@@ -718,10 +719,39 @@ class LagoonVaultSyncModel(AddressSyncModel):
         reserve_position,
         safe_sync_block: int,
     ) -> list:
-        """Analyse confirmed, unrecorded Lagoon settlements without state mutation."""
+        """Reject stale treasury snapshots and analyse unrecorded settlements.
+
+        Recorded external-vault claims must fit inside the same buffered block
+        as the Safe balance. Otherwise reconciliation would erase their newly
+        credited cash before NAV publication. Use existing transaction receipts
+        and the normal deferred-sync error, including after a process restart.
+
+        :param state: Existing portfolio, trades and treasury cursors.
+        :param reserve_position: Home-chain reserve whose Safe balance will be read.
+        :param safe_sync_block: Buffered block, including any caller's upper bound.
+        :return: Confirmed Lagoon settlement analyses not yet recorded in state.
+        :raises LagoonUnconfirmedSettlement: A known flow is newer than the snapshot.
+        """
         treasury = state.sync.treasury
         deployment_block = state.sync.deployment.block_number
         assert deployment_block is not None, "Lagoon deployment block missing; run trade-executor init"
+
+        # A claim can be mined ahead of our buffered snapshot. Keep its credited
+        # cash until that snapshot includes it, also across process restarts.
+        latest_vault_settlement = max((
+            tx.block_number
+            for position in state.portfolio.get_all_positions(pending=True)
+            for trade in position.trades.values()
+            if trade.is_vault() and trade.pair.chain_id == reserve_position.asset.chain_id
+            for tx in trade.blockchain_transactions
+            if tx.block_number is not None
+            and (tx.other or {}).get("vault_settlement_action") in {"claim", "reclaim", "direct payout"}
+        ), default=0)
+        if latest_vault_settlement > safe_sync_block:
+            raise LagoonUnconfirmedSettlement(
+                f"Vault settlement block {latest_vault_settlement:,} is ahead of "
+                f"Lagoon safe sync block {safe_sync_block:,}; defer treasury sync"
+            )
 
         recorded_hashes = self._get_recorded_lagoon_settlement_hashes(reserve_position)
         previous_cursor = treasury.last_lagoon_settlement_block_scanned

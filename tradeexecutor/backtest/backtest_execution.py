@@ -100,6 +100,15 @@ NO_HISTORICAL_SETTLEMENT_OBSERVATION_GRACE_PERIOD = datetime.timedelta(days=2)
 OSTIUM_BACKTEST_SETTLEMENT_HOUR = 18
 
 
+#: Conservative protocol delays when no positive settlement estimate exists.
+#: Per-vault ``vault_settlement_delay_overrides`` take precedence over these defaults.
+VAULT_SETTLEMENT_DELAY_FALLBACKS: dict[ERC4626Feature, datetime.timedelta] = {
+    ERC4626Feature.d2_like: datetime.timedelta(days=14),
+    ERC4626Feature.plutus_like: datetime.timedelta(days=14),
+    ERC4626Feature.atoma_like: datetime.timedelta(days=7),
+}
+
+
 class BacktestExecution(ExecutionModel):
     """Simulate trades against historical data."""
 
@@ -450,15 +459,14 @@ class BacktestExecution(ExecutionModel):
 
         1. Per-vault override (``vault_settlement_delay_overrides``) — a fixed
            delay from the request time.
-        2. The vault's reported ``estimated_settlement`` metadata for Lagoon,
-           D2 and Plutus.
-        3. D2 and Plutus' conservative 14-day fallback where the historical
-           data does not report that metadata.
-        4. Atoma vaults — the reported estimate or a seven-day epoch fallback.
-        5. Ostium-style vaults (``ostium_like`` feature) — the next day at
+        2. The vault's positive ``estimated_settlement`` metadata for Lagoon,
+           D2, Plutus and Atoma.
+        3. Conservative protocol defaults in
+           :py:data:`VAULT_SETTLEMENT_DELAY_FALLBACKS`.
+        4. Ostium-style vaults (``ostium_like`` feature) — the next day at
            :py:data:`OSTIUM_BACKTEST_SETTLEMENT_HOUR`, preserving the
            historical backtest approximation.
-        6. The global default delay (``vault_settlement_delay``).
+        5. The global default delay (``vault_settlement_delay``).
         """
         if pair.pool_address:
             override = self.vault_settlement_delay_overrides.get(pair.pool_address.lower())
@@ -466,25 +474,14 @@ class BacktestExecution(ExecutionModel):
                 return ts + override
 
         features = pair.get_vault_features() or set()
-        uses_protocol_settlement_estimate = bool(features & {
-            ERC4626Feature.lagoon_like,
-            ERC4626Feature.d2_like,
-            ERC4626Feature.plutus_like,
-        })
+        uses_protocol_settlement_estimate = bool(features & ({ERC4626Feature.lagoon_like} | VAULT_SETTLEMENT_DELAY_FALLBACKS.keys()))
         if uses_protocol_settlement_estimate:
             estimated_settlement = pair.get_vault_estimated_settlement()
             if estimated_settlement is not None:
                 return ts + estimated_settlement
-            if features & {ERC4626Feature.d2_like, ERC4626Feature.plutus_like}:
-                # TODO pending real data: 14 days average delay estimated from 30 days cycle.
-                return ts + datetime.timedelta(days=14)
-
-        if ERC4626Feature.atoma_like in features:
-            # Atoma deposits are synchronous, but withdrawals settle in an
-            # operator-processed epoch. Use the reported estimate when present;
-            # otherwise match eth-defi's conservative seven-day epoch fallback.
-            estimated_settlement = pair.get_vault_estimated_settlement()
-            return ts + (estimated_settlement or datetime.timedelta(days=7))
+            fallback = next((delay for feature, delay in VAULT_SETTLEMENT_DELAY_FALLBACKS.items() if feature in features), None)
+            if fallback is not None:
+                return ts + fallback
 
         if ERC4626Feature.ostium_like in features:
             # Preserve the original Ostium backtest approximation instead of
