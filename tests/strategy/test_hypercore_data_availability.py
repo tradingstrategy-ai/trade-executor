@@ -18,6 +18,7 @@ from tradeexecutor.strategy.hypercore_data_availability import (
     next_hypercore_poll,
 )
 from tradeexecutor.strategy.cycle import CycleDuration
+from tradeexecutor.strategy.dummy import DummyExecutionModel
 from tradeexecutor.strategy.strategy_cycle_trigger import StrategyCycleTrigger
 from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradeexecutor.state.state import State
@@ -114,6 +115,7 @@ def test_hypercore_startup_builds_universe_before_future_slot(tmp_path: Path, mo
         backtest_end=None,
         cycle_duration=CycleDuration.cycle_2d,
         execution_context=object(),
+        execution_model=DummyExecutionModel(SimpleNamespace()),
         run_state=object(),
         strategy_cycle_trigger=StrategyCycleTrigger.hypercore_data_available,
         trade_immediately=False,
