@@ -109,7 +109,6 @@ from tradeexecutor.ethereum.vault.vault_routing import (
     convert_vault_flow_analysis,
     get_async_vault_request_transactions,
     reconcile_vault_redemption_amount,
-    resolve_multi_asset_deposit_asset,
 )
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.ethereum.web3config import Web3Config
@@ -1690,7 +1689,6 @@ def test_simulated_vault_records_incorrect_json_whitelist_status() -> None:
     # 1. Prepare an automatic simulated deposit with disagreeing JSON and fork policies.
     runner = object.__new__(VaultTestBatchRunner)
     runner.auto_simulated = True
-    runner.deposit_asset = None
     runner.current_attempt = SimpleNamespace()
     runner.state = SimpleNamespace(
         portfolio=SimpleNamespace(get_all_trades=lambda: []),
@@ -2105,7 +2103,6 @@ def test_simulated_closed_deposit_is_persisted_as_terminal_success() -> None:
     # 1. Prepare an automatic deposit attempt with successful Guard evidence.
     runner = object.__new__(VaultTestBatchRunner)
     runner.auto_simulated = True
-    runner.deposit_asset = None
     runner.current_attempt = SimpleNamespace()
     runner.runtime = MagicMock()
     runner.amount = Decimal("1")
@@ -2171,7 +2168,6 @@ def test_simulated_closed_deposit_open_json_gets_directional_result() -> None:
     # 1. Prepare an automatic deposit attempt whose JSON reports deposits open.
     runner = object.__new__(VaultTestBatchRunner)
     runner.auto_simulated = True
-    runner.deposit_asset = None
     runner.current_attempt = SimpleNamespace()
     runner.runtime = MagicMock()
     runner.amount = Decimal("1")
@@ -2242,7 +2238,6 @@ def test_simulated_open_deposit_closed_json_is_executed_and_persisted() -> None:
     # 1. Prepare an automatic deposit whose JSON reports a closure.
     runner = object.__new__(VaultTestBatchRunner)
     runner.auto_simulated = True
-    runner.deposit_asset = None
     runner.current_attempt = SimpleNamespace(provenance={})
     runner.runtime = MagicMock()
     runner.amount = Decimal("1")
@@ -2532,178 +2527,72 @@ def test_unknown_deposit_hook_fails_closed() -> None:
     assert "custom EVK hook" in detail
 
 
-def test_incompatible_deposit_asset_lists_supported_and_selected() -> None:
-    """A multi-asset vault whitelist mismatch reports its own failure mode.
+def test_incompatible_denomination_reports_funded_asset() -> None:
+    """Retain the structured incompatibility result for reserve mismatches.
 
-    1. Resolve a deposit asset for a multi-asset vault that excludes our asset.
-    2. Verify the raised error names both the supported assets and our asset.
-    3. Verify the reporting helper maps it to the incompatible_deposit_asset result.
+    A USDC-funded strategy cannot trade a different payout token through the
+    direct vault route, even if the vault accepts USDC as an alternative input.
     """
-
-    # A minimal fake multi-asset manager whose whitelist excludes USDC.
-    class _Token:
-        def __init__(self, symbol: str, address: str):
-            self.symbol = symbol
-            self.address = address
-
-    class _MultiAssetManager:
-        def fetch_accepted_assets(self) -> list[_Token]:
-            return [
-                _Token("USDT", "0xdAC17F958D2ee523a2206206994597C13D831ec7"),
-                _Token("PYUSD", "0x6c3ea9036406852006290770BEdFcAbA0e23A0e8"),
-            ]
-
-    # 1. Resolve a deposit asset for a multi-asset vault that excludes our asset.
-    try:
-        resolve_multi_asset_deposit_asset(_MultiAssetManager(), 1)
-    except IncompatibleDepositAsset as error:
-        raised = error
-    else:
-        raised = None
-
-    # 2. Verify the raised error names both the supported assets and our asset.
-    assert raised is not None
-    message = str(raised)
-    assert "USDT" in message and "PYUSD" in message
-    assert raised.selected_asset is not None
-    assert raised.selected_asset in message  # our attempted asset is shown
-
-    # 3. Verify the reporting helper maps it to the incompatible_deposit_asset result.
-    result, _detail, outcome_data = normalise_vault_flow_failure(raised)
+    error = IncompatibleDepositAsset(
+        "Vault withdrawal asset differs from the funded reserve",
+        selected_asset="0xA0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+    )
+    result, detail, outcome_data = normalise_vault_flow_failure(error)
     assert result == "incompatible_deposit_asset"
-    assert outcome_data["selected_asset"] == raised.selected_asset
-    assert {
-        "symbol": "USDT",
-        "address": "0xdAC17F958D2ee523a2206206994597C13D831ec7",
-    } in (outcome_data["accepted_assets"])
+    assert "withdrawal asset differs" in detail
+    assert outcome_data["selected_asset"] == error.selected_asset
 
 
-def test_closed_deposit_probe_resolves_multi_asset_before_manager_preflight() -> None:
-    """The early closure probe must preserve an unsupported deposit-asset result.
+def test_closed_deposit_probe_uses_denomination_decimals() -> None:
+    """Use denomination units and ordinary manager admission in diagnostics.
 
-    1. Prepare a multi-asset manager which accepts USDT but not default USDC.
-    2. Run the simulated closed-deposit probe for an Ethereum vault.
-    3. Confirm asset incompatibility is raised before request construction.
+    Alternative stablecoin inputs must not change the probe's raw amount or
+    bypass the protocol manager's normal preflight.
     """
-    # 1. Prepare a multi-asset manager which accepts USDT but not default USDC.
-    accepted_token = SimpleNamespace(
-        symbol="USDT",
-        address="0xdAC17F958D2ee523a2206206994597C13D831ec7",
-    )
-
-    class _MultiAssetManager:
-        def __init__(self) -> None:
-            self.create_deposit_request = MagicMock()
-
-        def fetch_accepted_assets(self) -> tuple[SimpleNamespace, ...]:
-            return (accepted_token,)
-
-    manager = _MultiAssetManager()
-    executable_vault = MagicMock(
-        denomination_token=MagicMock(convert_to_raw=MagicMock(return_value=1_001_000_000)),
-    )
-    executable_vault.get_deposit_manager.return_value = manager
-    route = MagicMock()
-    route.get_owner_address.return_value = (
-        "0x0000000000000000000000000000000000000001"
-    )
-    attempt = SimpleNamespace(
-        pricing_model=MagicMock(route=MagicMock(return_value=route)),
-        pair=MagicMock(),
-        spec=SimpleNamespace(chain_id=ChainId.ethereum.value),
-        executable_vault=executable_vault,
-    )
-
-    # 2. Run the simulated closed-deposit probe for an Ethereum vault.
-    with pytest.raises(IncompatibleDepositAsset) as exc_info:
-        validate_simulated_closed_deposit(
-            attempt,
-            MagicMock(),
-            Decimal("1001"),
-        )
-
-    # 3. Confirm asset incompatibility is raised before request construction.
-    assert exc_info.value.selected_asset.lower() == (
-        "0xA0b86991c6218b36c1d19d4a2e9eb0ce3606eb48".lower()
-    )
-    assert exc_info.value.accepted_assets == [("USDT", accepted_token.address)]
-    manager.create_deposit_request.assert_not_called()
-
-
-def test_closed_deposit_probe_uses_selected_asset_decimals() -> None:
-    """Convert a multi-asset probe amount with the selected token's decimals.
-
-    1. Prepare an 18-decimal accepted token beside a 6-decimal denomination token.
-    2. Run the probe with an explicit accepted-asset override.
-    3. Confirm request construction receives the selected token's raw amount.
-    """
-    # 1. Prepare an 18-decimal accepted token beside a 6-decimal denomination token.
-    accepted_token = SimpleNamespace(
-        symbol="RLUSD",
-        address="0x8292Bb45bf1Ee4d140127049757C2E0fF06317eD",
-        convert_to_raw=MagicMock(return_value=1_001 * 10**18),
-    )
     manager = SimpleNamespace(
-        fetch_accepted_assets=MagicMock(return_value=(accepted_token,)),
+        fetch_accepted_assets=MagicMock(side_effect=AssertionError("Must not select an input")),
         create_deposit_request=MagicMock(),
     )
-    denomination_token = MagicMock(
-        convert_to_raw=MagicMock(return_value=1_001 * 10**6),
-    )
-    executable_vault = MagicMock(denomination_token=denomination_token)
-    executable_vault.get_deposit_manager.return_value = manager
-    route = MagicMock()
-    route.get_owner_address.return_value = "0x0000000000000000000000000000000000000001"
+    denomination_token = SimpleNamespace(convert_to_raw=MagicMock(return_value=1_001 * 10**6))
+    executable_vault = SimpleNamespace(denomination_token=denomination_token, get_deposit_manager=lambda: manager)
+    route = SimpleNamespace(get_owner_address=lambda pair: "0x0000000000000000000000000000000000000001")
     attempt = SimpleNamespace(
-        pricing_model=MagicMock(route=MagicMock(return_value=route)),
+        pricing_model=SimpleNamespace(route=lambda pair: route),
         pair=MagicMock(),
         spec=SimpleNamespace(chain_id=ChainId.ethereum.value),
         executable_vault=executable_vault,
-        interventions=[],
     )
     runtime = MagicMock()
     runtime.deployment.primary_chain_id.value = ChainId.ethereum.value
-
-    # 2. Run the probe with an explicit accepted-asset override.
-    result = validate_simulated_closed_deposit(
-        attempt,
-        runtime,
-        Decimal("1001"),
-        deposit_asset=accepted_token.address,
-    )
-
-    # 3. Confirm request construction receives the selected token's raw amount.
+    result = validate_simulated_closed_deposit(attempt, runtime, Decimal("1001"))
     assert result is None
     manager.create_deposit_request.assert_called_once_with(
-        owner=route.get_owner_address.return_value,
-        raw_amount=1_001 * 10**18,
+        owner=route.get_owner_address(attempt.pair),
+        raw_amount=1_001 * 10**6,
         check_enough_token=True,
-        accepted_asset=accepted_token.address,
     )
-    accepted_token.convert_to_raw.assert_called_once_with(Decimal("1001"))
-    denomination_token.convert_to_raw.assert_not_called()
+    denomination_token.convert_to_raw.assert_called_once_with(Decimal("1001"))
+    manager.fetch_accepted_assets.assert_not_called()
 
 
 def test_vault_simulation_options_reach_lazy_configurator() -> None:
     """Vault-test options are retained before the vault route is materialised.
 
     1. Create a generic routing shell whose configurator cache is empty.
-    2. Apply an accepted-asset override and Anvil intervention mode.
-    3. Verify the lazy configurator retains both defaults for route creation.
+    2. Apply Anvil intervention mode without a deposit-token override.
+    3. Verify the lazy configurator retains the mode for route creation.
     """
     # 1. Create a generic routing shell whose configurator cache is empty.
     configurator = SimpleNamespace(configs={})
     routing_model = SimpleNamespace(pair_configurator=configurator)
 
-    # 2. Apply an accepted-asset override and Anvil intervention mode.
+    # 2. Apply Anvil intervention mode without a deposit-token override.
     apply_vault_simulation_options(
         routing_model,
-        deposit_asset="0xdAC17F958D2ee523a2206206994597C13D831ec7",
         simulate_redemption_with_liquidity=True,
     )
 
-    # 3. Verify the lazy configurator retains both defaults for route creation.
-    assert configurator.vault_deposit_asset_override == "0xdAC17F958D2ee523a2206206994597C13D831ec7"
+    # 3. Verify the lazy configurator retains the mode for route creation.
     assert configurator.vault_simulate_redemption_with_liquidity is True
 
 

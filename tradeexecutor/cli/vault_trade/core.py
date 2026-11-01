@@ -56,6 +56,10 @@ class _SimulatedWhitelistVault(ERC4626Vault):
     Do not probe the adapter here. Incomplete or unsupported vault adapters are
     a diagnostic result of the later per-vault test, not a reason to abort the
     shared simulated Lagoon deployment.
+
+    Carry known features to shared ``setup_guard()`` instead of adding a
+    protocol constructor branch in this controller. This object is only a
+    deployment descriptor; execution resolves the actual protocol adapter.
     """
 
     def __init__(self, web3: Web3, spec: VaultSpec, name: str, features: set[ERC4626Feature] | None = None) -> None:
@@ -115,7 +119,22 @@ def _create_simulated_lagoon_chain_config(
     account_address: str,
     safe_salt_nonce: int,
 ) -> LagoonConfig:
-    """Build one chain's guard whitelist and optional CCTP permissions."""
+    """Build descriptors and CCTP permissions for shared guard configuration.
+
+    Preserve downloaded names and feature hints without choosing protocol
+    policies here. Existing eth-defi guard setup resolves supported policies;
+    the later diagnostic resolves the actual execution adapter separately.
+
+    :param chain_id: Chain whose deployment is being described.
+    :param primary_chain_id: Treasury chain for this simulated deployment.
+    :param selected_chain_ids: Chains included in the simulated batch.
+    :param web3: Connection for this deployment chain.
+    :param vault_specs: External vault identities on this chain.
+    :param vault_universe: Catalogue providing names and feature hints.
+    :param account_address: Governance and asset-manager test account.
+    :param safe_salt_nonce: Existing deterministic Safe deployment nonce.
+    :return: Existing Lagoon configuration with ordinary vault descriptors.
+    """
 
     # Pass metadata to the existing guard setup; protocol policy belongs there.
     whitelist_vaults = []

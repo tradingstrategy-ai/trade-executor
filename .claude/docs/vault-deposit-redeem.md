@@ -48,6 +48,85 @@ The protocol differences are hidden behind one interface: every vault exposes a
 `has_synchronous_deposit()` / `has_synchronous_redemption()` to choose between
 the instant path and the queued path.
 
+## Agent workflow for a vault integration
+
+Follow the existing route:
+
+`vault factory → protocol manager → generic routing → persisted trade/ticket → settlement resolver`
+
+Guard deployment is configured through eth-defi's existing `setup_guard()`.
+Lagoon is the reference for using shared queued execution; a different ABI or
+separate share token belongs in the adapter and guard configuration. It does
+not establish a need for another execution path. Before changing either
+package, read eth-defi's
+[protocol support contract](../../deps/web3-ethereum-defi/eth_defi/erc_4626/README-vault-protocol-support.md)
+and [integration workflow](../../deps/web3-ethereum-defi/.claude/docs/vault-integration.md).
+
+1. **Locate the actual gap.** Trace the existing manager, request parser,
+   settlement resolver and valuation path. Prefer implementing missing ABI
+   calls or receipt analysis in the protocol manager. A one-caller factory
+   wrapper added mainly for a mocked test is not a framework requirement.
+2. **Keep deployment callers descriptive.** CLI commands, universe translation
+   and simulated diagnostics pass ordinary `ERC4626Vault` descriptors with
+   identities, token caches and known features. Shared `setup_guard()` resolves
+   supported specialised policies before any policy broadcast. Preserve generic
+   handling for other descriptors; arbitrary factory feature sets can select
+   classes outside the ERC-4626 hierarchy. Do not repeat protocol allow-lists
+   or adapter construction branches in all three callers.
+3. **Use execution adapters for trades.** Deployment descriptors are not proof
+   of executable support. Resolve the actual adapter through the existing
+   factory, then ask its manager for calls, approvals, status and analysis.
+   Keep selectors, epoch/date fields and separate LP tokens in eth-defi.
+   Extend shared hooks only for a demonstrated gap; do not add a parallel router
+   or settlement controller for another queued vault.
+4. **Persist through existing state.** Reuse `TradeExecution`, its request
+   ticket, `BlockchainTransaction`, the state store and pre-broadcast callback.
+   Reuse the mined-request parser, pending-value and completed-payout hooks.
+   Recover paid claims before valuation where required. Do not infer generic
+   executor behaviour from protocol ticket keys, add compatibility fallbacks
+   for an unpublished intermediate implementation, or write another lifecycle
+   copy during pricing. Additional persistence systems require the permission
+   described in [state persistence](../../docs/state-persistence.md).
+5. **Separate timing decisions.** Manager capabilities choose actual instant
+   or queued execution. Existing pair classification controls expected cash
+   available for allocation and satellite bridging; the same classification
+   also selects asynchronous backtest execution and affects pending-settlement
+   charts. Check every consumer before changing a flag. Use existing backtest
+   estimates and `vault_settlement_delay_overrides` to model timing, and
+   document defaults.
+   Upshift's conservative classification does not reproduce its configured lag:
+   simulated sells use `vault_settlement_delay` (two days by default), even
+   at zero lag, unless a per-vault override applies. A zero override still
+   settles on a later resolver cycle.
+6. **Keep admission and token identity separate.** Supported calls and accepted
+   USDC inputs do not establish permissionless admission or a USDC payout.
+   Preserve the actual withdrawal denomination and existing permission filter.
+   Persisted admission repairs need numbered migrations in eth-defi and normal
+   publication before downloaded strategy metadata changes.
+
+For Upshift, use the ordinary denomination-token manager methods for both
+pricing and requests. Deposits, payouts and the funded reserve must use the
+same token. The eth-defi library retains explicit multi-token deposits, but
+alternative stablecoin inputs are a convenience handled by vault-side
+conversion into reference-asset accounting. That feature is not needed by
+trade-executor. Do not restore accepted-token selection, a deposit-asset override
+or a separate pricing path for it. The `vault-test-trade --deposit-asset`
+option has been removed; diagnostics use denomination-token units too.
+
+Use focused tests at these boundaries: actual guarded requests and payouts,
+descriptor resolution and failure before broadcast, pending-state reload,
+valuation and reserve accounting, and the existing backtest timing overrides.
+Keep public and restricted deployment controls. A new mocked test of a thin
+factory wrapper does not replace those checks.
+
+Check which public CLI branch the test reaches. With `STRATEGY_FILE` supplied,
+`lagoon-deploy-vault` uses its multichain branch and does not exercise the
+single-chain `--erc-4626-vaults` path. An explicit-address deployment test must
+omit that strategy input and supply the single-chain denomination settings.
+Verify the installed selectors, receiver checks and LP-token permissions,
+then run the actual trade. Report unit, fork and live-provider coverage
+accurately; do not claim a branch ran because an ignored flag was present.
+
 ## The asynchronous lifecycle
 
 An asynchronous deposit takes three steps, usually spread over several strategy
@@ -86,10 +165,10 @@ resolves its pending trades before revaluation and treasury sync, using the same
 resolver and pre-broadcast state callback. No separate claim ledger is used.
 
 Hand-built universes must carry a `VaultMetadata` object through pair translation
-so protocol features survive the dataset boundary. For Atoma, Lagoon deployment
-uses those features to select `whitelistAtoma()`; other deployment bindings keep
-their existing generic policy. A generic Atoma binding installs the wrong
-withdrawal selectors.
+so protocol features survive the dataset boundary. Deployment callers preserve
+these hints on ordinary descriptors. Shared guard setup resolves Atoma and
+Upshift policy; other protocol descriptors retain generic handling. A generic
+Atoma policy installs the wrong withdrawal selectors.
 
 Inside the trade executor each step maps onto the trade lifecycle. A trade that
 has broadcast its request but not yet claimed sits in the dedicated status
@@ -624,6 +703,13 @@ Ecosystem pays trUSD and earnAUSD pays AUSD even when a deposit uses USDC.
 Routing refuses a payout token different from the funded reserve until an
 explicit conversion route is supported. Keep accepted inputs separate from
 the denomination in metadata and valuation.
+
+Ordinary manager deposits and estimates now default to that denomination,
+including multi-asset vaults. Explicit alternative inputs remain available in
+eth-defi's library API; they are vault-side conversion convenience rather than
+another executor capability. Guard setup registers the denomination and LP
+token rather than every accepted input. The guard's token permissions remain
+shared across integrations; this does not create a per-vault token restriction.
 
 Account admission also varies by deployment. USPC Custody Vault requires
 approved accounts and is excluded from permissionless strategy shortlists,

@@ -36,7 +36,6 @@ from tradingstrategy.chain import ChainId
 from tradingstrategy.exchange import ExchangeUniverse, ExchangeType
 
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
-from tradeexecutor.state.types import JSONHexAddress
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.generic.pair_configurator import PairConfigurator, ProtocolRoutingId, ProtocolRoutingConfig
 from tradeexecutor.strategy.generic.default_protocols import default_match_router, default_supported_routers
@@ -432,7 +431,6 @@ def create_vault_adapter(
     routing_id: ProtocolRoutingId,
     web3config=None,
     execution_model=None,
-    deposit_asset_override: JSONHexAddress | None = None,
     simulate_redemption_with_liquidity: bool = False,
 ) -> ProtocolRoutingConfig:
 
@@ -453,14 +451,12 @@ def create_vault_adapter(
 
     routing_model = VaultRouting(
         reserve.address,
-        deposit_asset_override=deposit_asset_override,
         simulate_redemption_with_liquidity=simulate_redemption_with_liquidity,
     )
     pricing_model = VaultPricing(
         web3,
         web3config=web3config,
         owner_address_resolver=owner_address_resolver,
-        deposit_asset_override=deposit_asset_override,
     )
     valuation_model = VaultValuator(pricing_model)
 
@@ -939,7 +935,6 @@ class EthereumPairConfigurator(PairConfigurator):
         self.lighter_routing_config = lighter_routing_config or getattr(execution_model, "lighter_routing_config", None)
         self.lighter_session: LighterSession | None = None
         self.vault_valuation_func = None
-        self.vault_deposit_asset_override = None
         self.vault_simulate_redemption_with_liquidity = False
 
         # Validate external exchange-account topology before any protocol
@@ -1153,7 +1148,6 @@ class EthereumPairConfigurator(PairConfigurator):
                 routing_id,
                 web3config=self.web3config,
                 execution_model=self.execution_model,
-                deposit_asset_override=self.vault_deposit_asset_override,
                 simulate_redemption_with_liquidity=self.vault_simulate_redemption_with_liquidity,
             )
         elif routing_id.router_name == "freqtrade":

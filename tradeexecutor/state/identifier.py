@@ -983,6 +983,11 @@ class TradingPairIdentifier:
         synchronous deposits but delayed or window-gated redemptions. It is
         used for allocation cash accounting, not to choose the live protocol
         adapter.
+
+        This also selects delayed backtest execution and affects satellite
+        bridging. It is not a live claimability check or a per-vault timing
+        model. Reuse existing delay estimates/overrides in backtests; do not
+        override this category with another lifecycle cache written by pricing.
         """
         if not self.is_vault():
             return False

@@ -4,6 +4,10 @@ Bridges the strategy-level :class:`TradingStrategyUniverse` definition with the
 Lagoon vault deployment infrastructure, producing per-chain :class:`LagoonConfig`
 objects ready for :func:`deploy_multichain_lagoon_vault`.
 
+External vault entries are ordinary descriptors carrying known feature hints.
+The existing eth-defi ``setup_guard()`` resolves supported protocol policies;
+keep that selection out of CLI commands and this universe translator.
+
 Example::
 
     from tradeexecutor.ethereum.lagoon.universe_config import translate_trading_universe_to_lagoon_config
@@ -238,6 +242,11 @@ def translate_trading_universe_to_lagoon_config(
     Inspects the universe's pairs and exchanges to determine which chains
     need CCTP bridging, Uniswap v3 whitelisting, etc., and builds the
     appropriate :class:`LagoonConfig` for each chain.
+
+    External vault entries carry identity and known features. Shared guard
+    setup owns adapter/policy resolution before any policy broadcast. Do not
+    specialise protocol instances here or introduce another filtered factory
+    wrapper; actual trade execution separately resolves its protocol adapter.
 
     By default the source chain (where ``reserve_assets[0]`` lives) gets a
     full Lagoon vault deployment. All other chains become satellite

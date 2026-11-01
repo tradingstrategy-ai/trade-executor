@@ -7,7 +7,6 @@ the standalone vault diagnostic runner.
 from decimal import Decimal
 
 from tradeexecutor.ethereum.vault.vault_live_pricing import VaultPricing
-from tradeexecutor.ethereum.vault.vault_routing import resolve_multi_asset_deposit_asset
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
@@ -88,9 +87,7 @@ def check_vault_test_capacity(
             raise RuntimeError("Test redemption must match its exact custody share balance")
         manager.create_redemption_request(owner=owner, raw_shares=raw_amount)
     else:
-        asset = resolve_multi_asset_deposit_asset(manager, pair.chain_id)
-        kwargs = {"accepted_asset": asset} if asset is not None else {}
-        manager.create_deposit_request(owner=owner, raw_amount=raw_amount, **kwargs)
+        manager.create_deposit_request(owner=owner, raw_amount=raw_amount)
 
 
 def check_vault_test_closed(pricing_model: PricingModel, pair: TradingPairIdentifier, position: TradingPosition) -> None:

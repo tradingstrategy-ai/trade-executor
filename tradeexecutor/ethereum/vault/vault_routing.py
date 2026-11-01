@@ -5,6 +5,11 @@ same trade. See .claude/docs/vault-deposit-redeem.md before adding a vault flow.
 One redemption request belongs to one trade. Strategies must wait for its
 completion before another exit from the same custody account/vault; external
 requests and aggregate payout allocation are outside the supported model.
+
+Protocol ABI differences belong in the selected eth-defi deposit manager.
+Reuse its calls, tickets and analysis hooks here; do not add another router,
+protocol-selection wrapper or quote-time lifecycle cache. Guard-policy
+resolution belongs to shared deployment setup, not this execution layer.
 """
 
 import logging
@@ -22,7 +27,7 @@ from eth_defi.erc_4626.deposit_redeem import ERC4626DepositManager
 from eth_defi.erc_4626.vault_protocol.atoma.deposit_redeem import AtomaFlowAnalysis, AtomaRedemptionTicket
 from eth_defi.erc_4626.vault import ERC4626Vault
 from eth_defi.provider.anvil import is_anvil
-from eth_defi.token import fetch_erc20_details, TokenDetails, TokenDiskCache
+from eth_defi.token import fetch_erc20_details, TokenDiskCache
 from eth_defi.trade import TradeSuccess
 from eth_defi.vault.deposit_redeem import (
     DepositRedeemEventAnalysis,
@@ -61,13 +66,11 @@ class VaultReceiptAnalysisError(RuntimeError):
 
 
 class IncompatibleDepositAsset(Exception):
-    """The selected deposit asset is not accepted by a multi-asset vault.
+    """The vault denomination does not match the funded reserve.
 
-    Multi-asset vaults (e.g. Upshift) accept a specific set of input assets
-    that can differ from the ERC-4626 accounting asset.  This is raised when the
-    selected asset (the ``--deposit-asset`` override, or the native USDC default)
-    is not in that set, so the operator sees both the vault's accepted
-    assets and the asset that was attempted.
+    Direct vault execution deposits and receives the same denomination token.
+    Optional alternative inputs are a vault-side conversion convenience and
+    are not selected by this router.
     """
 
     def __init__(
@@ -82,78 +85,6 @@ class IncompatibleDepositAsset(Exception):
         self.selected_asset = selected_asset
         #: ``(symbol, address)`` tuples the vault accepts.
         self.accepted_assets = accepted_assets or []
-
-
-def resolve_multi_asset_deposit_asset(
-    deposit_manager,
-    chain_id: int,
-    override: str | None = None,
-) -> str | None:
-    """Resolve and validate the accepted input asset for a multi-asset vault.
-
-    Single-asset vaults need no explicit selection and return ``None``.  For a
-    multi-asset vault the asset is the ``--deposit-asset`` override, or native
-    USDC on the vault's own chain by default.
-
-    :raise IncompatibleDepositAsset:
-        When the vault is multi-asset and the selected asset is not on its
-        accepted-asset whitelist.  The exception carries both the vault's
-        accepted assets and the asset that was attempted.
-    """
-
-    token = resolve_multi_asset_deposit_token(deposit_manager, chain_id, override)
-    return token.address if token is not None else None
-
-
-def resolve_multi_asset_deposit_token(
-    deposit_manager,
-    chain_id: int,
-    override: str | None = None,
-) -> TokenDetails | None:
-    """Resolve the token details needed for amount conversion and routing.
-
-    :return:
-        Selected accepted token, or ``None`` for a single-asset vault.
-    :raise IncompatibleDepositAsset:
-        When the selected token is not accepted by the vault.
-    """
-    if getattr(type(deposit_manager), "supports_multi_asset_deposit", True) is False:
-        return None
-    fetch_accepted = getattr(type(deposit_manager), "fetch_accepted_assets", None)
-    if fetch_accepted is None:
-        # A manager may deliberately bind an adapter method on the instance.
-        # Read only an explicit instance attribute, not MagicMock auto-children.
-        fetch_accepted = vars(deposit_manager).get("fetch_accepted_assets")
-    else:
-        fetch_accepted = deposit_manager.fetch_accepted_assets
-    if fetch_accepted is None:
-        # Single-asset ERC-4626 vault: the reserve asset is deposited directly.
-        return None
-
-    selected = override or USDC_NATIVE_TOKEN.get(chain_id)
-    accepted_tokens = fetch_accepted()
-    accepted_pairs = [(token.symbol, token.address) for token in accepted_tokens]
-    selected_token = next(
-        (
-            token
-            for token in accepted_tokens
-            if selected is not None and token.address.lower() == selected.lower()
-        ),
-        None,
-    )
-    if selected_token is None:
-        supported = ", ".join(
-            f"{symbol} ({address})" for symbol, address in accepted_pairs
-        )
-        source = "--deposit-asset override" if override else "native USDC default"
-        raise IncompatibleDepositAsset(
-            f"Selected deposit asset {selected or '<none>'} ({source}) is not "
-            f"accepted by this vault. Vault accepts: {supported or '<none>'}. "
-            f"Set --deposit-asset to one of the accepted assets.",
-            selected_asset=selected,
-            accepted_assets=accepted_pairs,
-        )
-    return selected_token
 
 
 def reconcile_vault_redemption_amount(
@@ -350,9 +281,13 @@ class VaultRoutingState(RoutingState):
 
 
 class VaultRouting(RoutingModel):
-    """ERC-4626 routing.
+    """Execute vault trades through existing managers and trade state.
 
-    - Do trades for ERC-4626 and other vaults
+    Managers supply protocol calls and truthful synchronous/queued capabilities.
+    This router signs those calls and records them on the existing trade; the
+    settlement resolver later completes queued flows. Keep ABI, ticket fields
+    and payout evidence in the adapter, rather than introducing protocol-name
+    branches here. See ``.claude/docs/vault-deposit-redeem.md``.
     """
 
     def __init__(
@@ -360,7 +295,6 @@ class VaultRouting(RoutingModel):
         reserve_token_address: JSONHexAddress,
         epsilon=Decimal(1e-6),
         redeem_epsilon=0.025,
-        deposit_asset_override: JSONHexAddress | None = None,
         simulate_redemption_with_liquidity: bool = False,
     ):
         super().__init__(
@@ -368,13 +302,6 @@ class VaultRouting(RoutingModel):
             reserve_token_address=reserve_token_address,
         )
         self.epsilon = epsilon
-
-        # Accepted input asset for multi-asset vaults (e.g. Upshift), where the
-        # ERC-4626 accounting asset differs from the deposit assets and the
-        # manager requires an explicit selection. ``None`` means "use the
-        # default", which :meth:`deposit_or_redeem` resolves to native USDC on
-        # the vault's own chain. Set this to override the default per run.
-        self.deposit_asset_override = deposit_asset_override
 
         # Research-only Anvil mode may ask a protocol adapter to provision a
         # proven redemption-liquidity shortfall. The adapter must disclose the
@@ -425,7 +352,19 @@ class VaultRouting(RoutingModel):
         routing_state: VaultRoutingState,
         trade: TradeExecution,
     ) -> list[BlockchainTransaction]:
-        """Prepare vault flow transactions."""
+        """Prepare a manager-owned deposit or redemption on the existing trade.
+
+        Resolve the execution adapter and use its request, approval and analysis
+        interfaces. A separate LP token or non-standard claim signature does
+        not require another routing path. The funded input and native payout
+        must match the reserve unless a verified conversion is implemented.
+
+        :param state: Authoritative executor portfolio state.
+        :param routing_state: Chain-aware transaction builder and universe.
+        :param trade: Existing trade receiving signed calls and ticket metadata.
+        :return: Prepared transactions for this manager request.
+        :raises IncompatibleDepositAsset: If input or payout needs conversion.
+        """
 
         assert isinstance(state, State)
         assert isinstance(routing_state, VaultRoutingState)
@@ -551,26 +490,11 @@ class VaultRouting(RoutingModel):
         # both synchronous and asynchronous flows.  In particular, this keeps
         # cSigma's owner-specific immediate-redemption capacity check intact.
         if trade.is_buy():
-            deposit_kwargs = dict(
+            request = deposit_manager.create_deposit_request(
                 owner=address,
                 amount=swap_amount,
                 check_enough_token=False,
             )
-            # Multi-asset vaults (e.g. Upshift) accept several deposit assets and
-            # require an explicit selection; their manager exposes an
-            # ``accepted_asset`` parameter.  Default to native USDC on the vault's
-            # own chain, overridable per run via ``deposit_asset_override``.  An
-            # asset not on the accepted asset set raises IncompatibleDepositAsset.
-            accepted_asset = resolve_multi_asset_deposit_asset(
-                deposit_manager,
-                target_vault.chain_id,
-                self.deposit_asset_override,
-            )
-            if accepted_asset is not None:
-                if accepted_asset.lower() != funding_asset.lower():
-                    raise IncompatibleDepositAsset("Selected deposit asset differs from the trade input; use the existing spot route to convert first", selected_asset=accepted_asset)
-                deposit_kwargs["accepted_asset"] = HexAddress(accepted_asset)
-            request = deposit_manager.create_deposit_request(**deposit_kwargs)
             is_async = not deposit_manager.has_synchronous_deposit()
             direction = "deposit"
         else:
@@ -622,7 +546,7 @@ class VaultRouting(RoutingModel):
         # generating a duplicate prerequisite for the same token and spender.
         if trade.is_buy():
             approval_target = deposit_manager.get_deposit_approval_target()
-            deposit_token = resolve_multi_asset_deposit_token(deposit_manager, target_vault.chain_id, self.deposit_asset_override) or target_vault.denomination_token
+            deposit_token = target_vault.denomination_token
             has_input_approval = any(
                 function.fn_name == "approve"
                 and function.address.lower() == deposit_token.address_lower

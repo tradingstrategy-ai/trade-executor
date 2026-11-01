@@ -9,6 +9,7 @@ from eth_defi.erc_4626.core import ERC4626Feature
 from eth_defi.token import USDC_NATIVE_TOKEN
 
 from tradeexecutor.ethereum.vault import vault_routing
+from tradeexecutor.ethereum.vault.vault_live_pricing import VaultPricing
 from tradeexecutor.ethereum.vault.settlement_retry import has_pending_vault_claims
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
 from tradeexecutor.state.state import State
@@ -46,33 +47,31 @@ def test_routing_rejects_payout_different_from_funded_reserve(monkeypatch: pytes
     builder.sign_transaction.assert_not_called()
 
 
-def test_routing_rejects_accepted_input_without_funding_conversion(monkeypatch: pytest.MonkeyPatch) -> None:
-    """An accepted input override cannot spend a different reserve token.
+def test_pricing_uses_denomination_manager_estimate(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Price a deposit through the ordinary manager API without input selection.
 
-    1. Supply USDC payout and a different accepted input behind mocked RPC reads.
-    2. Select that input for a USDC-funded deposit through actual routing.
-    3. Refuse before constructing or signing a deposit transaction.
+    The vault may accept other stablecoins, but their internal conversion is
+    outside the executor's denomination-token trading path.
+
+    :param monkeypatch: Replace RPC discovery while retaining actual pricing.
     """
-    # 1. Supply USDC payout and a different accepted input behind mocked RPC reads.
+    manager = SimpleNamespace(
+        estimate_deposit=MagicMock(return_value=Decimal(9)),
+        fetch_accepted_assets=MagicMock(side_effect=AssertionError("Must not select another input")),
+        estimate_deposit_for_asset=MagicMock(side_effect=AssertionError("Must use the ordinary estimate")),
+    )
+    vault = SimpleNamespace(get_deposit_manager=lambda: manager)
+    pricing = VaultPricing(SimpleNamespace(eth=SimpleNamespace(block_number=123)))
+    monkeypatch.setattr(pricing, "get_vault", lambda pair: vault)
     reserve = AssetIdentifier(1, USDC_NATIVE_TOKEN[1], "USDC", 6)
-    accepted = SimpleNamespace(symbol="other", address="0x1111111111111111111111111111111111111111")
-    manager = SimpleNamespace(fetch_accepted_assets=lambda: (accepted,), create_deposit_request=MagicMock())
-    vault = SimpleNamespace(chain_id=1, denomination_token=SimpleNamespace(address_lower=reserve.address), get_deposit_manager=lambda: manager)
-    monkeypatch.setattr(vault_routing, "get_vault_for_pair", lambda *args, **kwargs: vault)
-    builder = MagicMock()
-    routing_state = vault_routing.VaultRoutingState(builder, SimpleNamespace(get_reserve_asset=lambda: reserve))
-    trade = MagicMock(spec=TradeExecution)
-    trade.is_vault.return_value = trade.is_buy.return_value = True
-    trade.slippage_tolerance = 0.01
-    trade.get_planned_reserve.return_value = Decimal(10)
-    trade.pair = SimpleNamespace(quote=reserve, base=reserve)
-    routing = vault_routing.VaultRouting(reserve.address, deposit_asset_override=accepted.address)
-    # 2. Select that input for a USDC-funded deposit through actual routing.
-    with pytest.raises(vault_routing.IncompatibleDepositAsset, match="differs from the trade input"):
-        routing.deposit_or_redeem(State(), routing_state, trade)
-    # 3. Refuse before constructing or signing a deposit transaction.
-    manager.create_deposit_request.assert_not_called()
-    builder.sign_transaction.assert_not_called()
+    share = AssetIdentifier(1, "0x1111111111111111111111111111111111111111", "shares", 6)
+    pair = TradingPairIdentifier(share, reserve, share.address, share.address, fee=0, kind=TradingPairKind.vault)
+    quote = pricing.get_buy_price(None, pair, Decimal(10))
+    assert quote.token_in == Decimal(10)
+    assert quote.token_out == Decimal(9)
+    manager.estimate_deposit.assert_called_once_with(owner=None, amount=Decimal(10), block_identifier=123)
+    manager.fetch_accepted_assets.assert_not_called()
+    manager.estimate_deposit_for_asset.assert_not_called()
 
 
 @pytest.mark.parametrize(

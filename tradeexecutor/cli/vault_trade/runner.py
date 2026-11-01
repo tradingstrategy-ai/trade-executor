@@ -65,7 +65,6 @@ from tradeexecutor.ethereum.routing_state import OutOfBalance
 from tradeexecutor.ethereum.vault.vault_routing import (
     IncompatibleDepositAsset,
     VaultReceiptAnalysisError,
-    resolve_multi_asset_deposit_token,
 )
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.position import TradingPosition
@@ -611,7 +610,6 @@ def validate_simulated_closed_deposit(
     attempt: "VaultAttempt",
     runtime: VaultTestRuntime,
     amount: Decimal,
-    deposit_asset: str | None = None,
 ) -> tuple[str, dict] | None:
     """Validate a typed closed deposit through the active simulated Guard.
 
@@ -630,15 +628,7 @@ def validate_simulated_closed_deposit(
 
     manager = attempt.executable_vault.get_deposit_manager()
     denomination_token = attempt.executable_vault.denomination_token
-    accepted_token = resolve_multi_asset_deposit_token(
-        manager,
-        attempt.spec.chain_id,
-        deposit_asset,
-    )
-    deposit_kwargs = {}
-    if accepted_token is not None:
-        deposit_kwargs["accepted_asset"] = HexAddress(accepted_token.address)
-    raw_amount = (accepted_token or denomination_token).convert_to_raw(amount)
+    raw_amount = denomination_token.convert_to_raw(amount)
     is_primary_chain = (
         attempt.spec.chain_id == runtime.deployment.primary_chain_id.value
     )
@@ -650,7 +640,6 @@ def validate_simulated_closed_deposit(
             # A satellite Safe receives its assets from CCTP later in the normal
             # trade lifecycle. Keep every other production preflight enabled.
             check_enough_token=is_primary_chain,
-            **deposit_kwargs,
         )
     except VaultFlowUnavailable as error:
         intervention = fund_simulated_public_eligibility(
@@ -667,7 +656,6 @@ def validate_simulated_closed_deposit(
                     owner=owner,
                     raw_amount=raw_amount,
                     check_enough_token=is_primary_chain,
-                    **deposit_kwargs,
                 )
             except VaultFlowUnavailable as funded_error:
                 error = funded_error
@@ -797,9 +785,8 @@ def normalise_vault_flow_failure(
     seen: set[int] = set()
     while current is not None and id(current) not in seen:
         seen.add(id(current))
-        # A multi-asset vault whose whitelist excludes our selected deposit
-        # asset is its own failure mode: report both the accepted assets and
-        # the asset we attempted so the operator can pick a valid one.
+        # Keep reserve/denomination mismatches distinct from protocol closure.
+        # The direct route needs the same token in both directions.
         if isinstance(current, IncompatibleDepositAsset):
             return (
                 "incompatible_deposit_asset",
@@ -966,21 +953,18 @@ def get_latest_attempt_vault_operation(
 def apply_vault_simulation_options(
     routing_model: Any,
     *,
-    deposit_asset: str | None,
     simulate_redemption_with_liquidity: bool,
 ) -> None:
-    """Configure materialised vault routing and pricing models for this run.
+    """Configure existing vault routes for Anvil-only interventions.
 
-    The vault-test-trade ``--deposit-asset`` value overrides the default accepted
-    input asset (native USDC on the vault's own chain) for multi-asset vaults.
     The Anvil-only liquidity flag allows only manager-owned, disclosed
-    redemption interventions. Both the transaction builder and pricing route
-    receive the asset override so preflight and execution select the same token.
+    redemption interventions. Deposits always use the vault denomination;
+    alternative stablecoin inputs are handled inside the vault and are not
+    part of the executor's trading path.
     """
 
     configurator = getattr(routing_model, "pair_configurator", None)
     if configurator is not None:
-        configurator.vault_deposit_asset_override = deposit_asset
         configurator.vault_simulate_redemption_with_liquidity = (
             simulate_redemption_with_liquidity
         )
@@ -989,15 +973,10 @@ def apply_vault_simulation_options(
         return
     for config in configs.values():
         vault_router = getattr(config, "routing_model", None)
-        if hasattr(vault_router, "deposit_asset_override"):
-            vault_router.deposit_asset_override = deposit_asset
         if hasattr(vault_router, "simulate_redemption_with_liquidity"):
             vault_router.simulate_redemption_with_liquidity = (
                 simulate_redemption_with_liquidity
             )
-        vault_pricing = getattr(config, "pricing_model", None)
-        if hasattr(vault_pricing, "deposit_asset_override"):
-            vault_pricing.deposit_asset_override = deposit_asset
 
 
 def get_bridge_conflict(
@@ -1055,9 +1034,6 @@ class VaultTestBatchRunner:
     rerun: bool
     settle_async_on_anvil: bool = False
     manual_action: VaultTestAction | None = None
-    #: Override the accepted input asset for multi-asset vaults (e.g. Upshift).
-    #: ``None`` uses the default, native USDC on the vault's own chain.
-    deposit_asset: str | None = None
 
     rows: list[dict] = field(default_factory=list, init=False)
     pending_specs: deque = field(init=False)
@@ -1291,7 +1267,6 @@ class VaultTestBatchRunner:
         )
         apply_vault_simulation_options(
             routing_model,
-            deposit_asset=self.deposit_asset,
             simulate_redemption_with_liquidity=self.auto_simulated,
         )
         pricing_model = GenericPricing(routing_model.pair_configurator)
@@ -1430,7 +1405,6 @@ class VaultTestBatchRunner:
                     attempt,
                     self.runtime,
                     self.amount,
-                    self.deposit_asset,
                 )
                 if closed_validation is not None:
                     detail, outcome_data = closed_validation
