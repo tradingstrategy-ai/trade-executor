@@ -87,7 +87,7 @@ def perform_test_trade(
     all_vaults: bool = shared_options.all_vaults,
 
     buy_only: bool = Option(False, "--buy-only/--no-buy-only", help="Only perform the buy side of the test trade - leave position open."),
-    close_only: bool = Option(False, "--close-only", help="Close or resume one home-chain synchronous ERC-4626 or Atoma test position selected with --pair; do not deposit again."),
+    close_only: bool = Option(False, "--close-only", help="Close or resume one home-chain vault test position with synchronous deposits selected with --pair; do not deposit again."),
     single_pair: bool = Option(False, help="Test single pair in the trading universe."),
     test_short: bool = Option(True, "--test-short/--no-test-short", help="Perform test short trades as well."),
     test_credit_supply: bool = Option(False,"--test-credit-supply/--no-test-credit-supply", help="Deprecated argument. Do not use anymore. Inistead, specify --pair (...lending pair description...)"),
@@ -143,9 +143,10 @@ def perform_test_trade(
     Live EVM trades save their signed identity before broadcast and save
     completed legs. Run with one state writer. ``--close-only`` never adds
     capital and refuses positions containing ordinary strategy trades.
-    For the selected synchronous ERC-4626 pair, unresolved trades require
-    reconciliation before another test trade is made. An interrupted Lighter
-    withdrawal must still be claimed into the Safe as described in README-Lighter.md.
+    A saved queued vault exit resumes through the existing settlement resolver;
+    other unresolved trades require reconciliation before another test.
+    An interrupted Lighter withdrawal must still be claimed into the Safe
+    as described in README-Lighter.md.
     """
 
     if close_only:

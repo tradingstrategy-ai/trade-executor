@@ -16,8 +16,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from eth_defi.vault.deposit_redeem import AsyncVaultRequestStatus, DepositRedeemEventAnalysis, VaultFlowUnavailable
+from eth_defi.vault.deposit_redeem import AsyncVaultRequestStatus, DepositRedeemEventAnalysis, VaultFlowUnavailable, VaultRequestInvariantViolation
 from hexbytes import HexBytes
+from tradeexecutor.ethereum.lagoon import vault as lagoon_vault
 from tradeexecutor.ethereum.vault.settlement_retry import check_and_resolve_vault_settlements
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.identifier import (
@@ -405,7 +406,9 @@ def test_vault_settlement_retry_recovers_operator_direct_payout(
     manager = MagicMock()
     manager.reconstruct_redemption_ticket.return_value = ticket
     manager.get_redemption_request_status.return_value = AsyncVaultRequestStatus.none
-    manager.fetch_completed_redemption_tx_hash.return_value = payout_tx_hash
+    # Native recovery is an override on real managers, rather than a dynamic
+    # Mock child; model that protocol boundary without enabling generic lookup.
+    monkeypatch.setattr(type(manager), "fetch_completed_redemption_tx_hash", lambda self, request: payout_tx_hash, raising=False)
     manager.get_redemption_ticket_delay_over.return_value = None
     manager.analyse_redemption.return_value = DepositRedeemEventAnalysis(
         from_="0x0000000000000000000000000000000000000001",
@@ -421,6 +424,8 @@ def test_vault_settlement_retry_recovers_operator_direct_payout(
     vault.get_deposit_manager.return_value = manager
 
     mock_web3 = MagicMock()
+    mock_web3.block_tip_latency = 0
+    mock_web3.eth.chain_id = 42161
     mock_web3.eth.get_transaction.return_value = {
         "from": "0x0000000000000000000000000000000000000002",
         "to": OLP_ARBITRUM_ADDRESS,
@@ -460,6 +465,9 @@ def test_vault_settlement_retry_recovers_operator_direct_payout(
     assert position.is_closed()
     manager.finish_redemption.assert_not_called()
     assert trade.blockchain_transactions[-1].other["vault_settlement_action"] == "direct payout"
+    assert trade.blockchain_transactions[-1].block_number == 123
+    assert trade.blockchain_transactions[-1].realised_gas_units_consumed == 2
+    assert trade.blockchain_transactions[-1].realised_gas_price == 1
 
 
 def test_vault_settlement_pending_metadata_stored(
@@ -553,13 +561,12 @@ def test_vault_settlement_halts_on_aggregate(
     # verifies that the shared retry wrapper cannot swallow invariant failures.
     with patch("tradeexecutor.ethereum.vault.settlement_retry._resolve_single_vault_trade") as resolve:
         if violation == "onchain":
-            resolve.side_effect = VaultFlowUnavailable(
-                "request_reconciliation_required", protocol="Atoma",
-                preflight_result="request_reconciliation_required",
+            resolve.side_effect = VaultRequestInvariantViolation(
+                "Ambiguous claim", protocol="other_protocol",
             )
         elif violation == "assertion":
             resolve.side_effect = AssertionError("aggregate invariant")
-        with pytest.raises(AssertionError):
+        with pytest.raises((AssertionError, VaultRequestInvariantViolation)):
             check_and_resolve_vault_settlements(state, MagicMock())
 
         # 3. No unsafe resolution occurs and pending evidence/cash are preserved.
@@ -568,6 +575,113 @@ def test_vault_settlement_halts_on_aggregate(
         else:
             resolve.assert_called_once()
     assert trade.get_status() is TradeStatus.vault_settlement_pending
+    assert state.portfolio.get_cash() == pytest.approx(1000)
+
+
+def test_lagoon_snapshot_cannot_erase_recent_vault_payout(
+    monkeypatch: pytest.MonkeyPatch,
+    vault_pair: TradingPairIdentifier,
+    usdc_arbitrum: AssetIdentifier,
+) -> None:
+    """Defer a buffered treasury snapshot until it includes a recovered claim.
+
+    1. Realise a vault payout and reload its existing transaction/state records.
+    2. Attempt treasury sync with snapshots older than the claim, including a caller cap.
+    3. Retain cash and refuse NAV calculation until the safe block includes the claim.
+    """
+    # 1. Realise a vault payout and reload its existing transaction/state records.
+    state = State()
+    ts = datetime.datetime(2026, 11, 1)
+    state.sync.deployment.block_number = 1
+    reserve = state.portfolio.initialise_reserves(usdc_arbitrum)
+    reserve.quantity = Decimal(1000)
+    reserve.reserve_token_price = 1.0
+    buy = _create_vault_buy_trade(state, vault_pair, usdc_arbitrum, Decimal(100), ts)
+    state.start_execution(ts, buy)
+    buy.mark_broadcasted(ts)
+    state.mark_trade_success(ts, buy, 1.0, Decimal(100), Decimal(100), 0, 0)
+    sell = _create_vault_sell_trade(state, vault_pair, usdc_arbitrum, Decimal(100), ts)
+    state.start_execution(ts, sell)
+    sell.mark_broadcasted(ts)
+    state.mark_trade_success(ts, sell, 1.0, Decimal(-100), Decimal(100), 0, 0)
+    tx = BlockchainTransaction(chain_id=42161, tx_hash="0x" + "33" * 32, block_number=100, status=True)
+    tx.other["vault_settlement_action"] = "claim"
+    sell.blockchain_transactions = [tx]
+    state = State.from_json(state.to_json())
+    reserve = state.portfolio.get_default_reserve_position()
+
+    # 2. Stub only chain reads; treasury reconciliation and NAV use real state.
+    model = object.__new__(lagoon_vault.LagoonVaultSyncModel)
+    model.vault = MagicMock()
+    model.vault.fetch_total_supply.return_value = Decimal(1)
+    model.get_safe_latest_block = MagicMock(return_value=99)
+    model._probe_unconfirmed_lagoon_settlements = MagicMock()
+    model._fetch_lagoon_settlements = MagicMock(return_value=[])
+    model._fetch_lagoon_queue_amounts = MagicMock(return_value=(Decimal(0), Decimal(0)))
+    model.defer_redemption_without_reserve_liquidity = False
+    model.abort_lagoon_settlement_on_frozen_positions = False
+    model.valuation_data_freshness = datetime.timedelta(hours=4)
+    model.calculate_valuation_func = None
+    model.disable_broadcast = True
+    model.calculate_valuation = MagicMock(wraps=model.calculate_valuation)
+    token = MagicMock()
+    token.fetch_balance_of.return_value = Decimal(900)
+    monkeypatch.setattr(lagoon_vault, "fetch_erc20_details", lambda *args, **kwargs: token)
+    with pytest.raises(lagoon_vault.LagoonUnconfirmedSettlement, match="Vault settlement block 100"):
+        model.sync_treasury(ts, state, post_valuation=True)
+    model.get_safe_latest_block.return_value = 100
+    with pytest.raises(lagoon_vault.LagoonUnconfirmedSettlement):
+        model.sync_treasury(ts, state, end_block=99, post_valuation=True)
+
+    # 3. No stale balance or NAV was used; a confirmed snapshot retains the payout.
+    token.fetch_balance_of.assert_not_called()
+    model.calculate_valuation.assert_not_called()
+    model.vault.post_new_valuation.assert_not_called()
+    assert reserve.quantity == Decimal(1000)
+    token.fetch_balance_of.return_value = Decimal(1000)
+    model.sync_treasury(ts, state, post_valuation=True)
+    assert reserve.quantity == Decimal(1000)
+    assert model.calculate_valuation(state) == pytest.approx(1000)
+
+    # Fork-only diagnostics must not block live snapshots, even at a future block.
+    position = state.portfolio.find_position_for_trade(next(t for t in state.portfolio.get_all_trades() if t.is_sell()))
+    position.simulated = True
+    position.trades[sell.trade_id].blockchain_transactions[-1].block_number = 1_000_000
+    model.sync_treasury(ts, state, post_valuation=True)
+    assert reserve.quantity == Decimal(1000)
+
+
+def test_vault_settlement_validates_entire_batch_before_claiming(
+    vault_pair: TradingPairIdentifier,
+    usdc_arbitrum: AssetIdentifier,
+) -> None:
+    """An invalid later ticket must stop a valid earlier claim from moving cash.
+
+    1. Persist two redemptions for separate custody accounts, the second ambiguous.
+    2. Attempt the shared settlement sweep with the claim boundary instrumented.
+    3. Verify neither claim runs and both tickets and reserves remain unchanged.
+    """
+    # 1. Persist two independent custody requests, with the later one ambiguous.
+    state = State()
+    ts = datetime.datetime(2026, 11, 1)
+    reserve = state.portfolio.initialise_reserves(usdc_arbitrum)
+    reserve.quantity = Decimal(1000)
+    reserve.reserve_token_price = 1.0
+    for owner in ("0xFirstOwner", "0xSecondOwner"):
+        trade = _create_vault_sell_trade(state, vault_pair, usdc_arbitrum, Decimal(10), ts)
+        state.start_execution(ts, trade)
+        trade.mark_broadcasted(ts)
+        state.mark_vault_settlement_pending(ts, trade, {"vault_address": OLP_ARBITRUM_ADDRESS, "vault_owner": owner})
+    trade.other_data.update(atoma_schema=1, atoma_parts=[{}], atoma_reconciliation_required=True)
+
+    # 2. Attempt the batch; no manager call may precede its full validation.
+    with patch("tradeexecutor.ethereum.vault.settlement_retry._resolve_single_vault_trade") as resolve:
+        with pytest.raises(AssertionError, match="reconciliation"):
+            check_and_resolve_vault_settlements(state, MagicMock())
+        resolve.assert_not_called()
+
+    # 3. Preserve all pending evidence and cash for operator inspection.
+    assert all(t.get_status() is TradeStatus.vault_settlement_pending for t in state.portfolio.get_all_trades())
     assert state.portfolio.get_cash() == pytest.approx(1000)
 
 
@@ -638,8 +752,10 @@ def test_vault_settlement_retry_claimable(
     mock_vault.vault_contract = MagicMock()
 
     mock_web3 = MagicMock()
+    mock_web3.block_tip_latency = 0
+    mock_web3.eth.chain_id = 42161
     mock_web3.eth.get_transaction_receipt.side_effect = RuntimeError("Claim not broadcast")
-    mock_receipt = {"status": 1, "transactionHash": b"\x00" * 32, "blockNumber": 100}
+    mock_receipt = {"status": 1, "transactionHash": b"\x00" * 32, "blockNumber": 100, "blockHash": HexBytes("0x" + "33" * 32), "gasUsed": 21_000}
     mock_web3.eth.send_raw_transaction.return_value = b"\x00" * 32
 
     mock_execution_model = MagicMock()
@@ -655,7 +771,7 @@ def test_vault_settlement_retry_claimable(
     # 4. Refuse broadcasts while saving fails, then resolve the same signed claim.
     with (
         patch("tradeexecutor.ethereum.vault.settlement_retry.get_vault_for_pair", return_value=mock_vault),
-        patch("tradeexecutor.ethereum.vault.settlement_retry.wait_for_transaction_receipt_robust", return_value=mock_receipt),
+        patch("tradeexecutor.ethereum.vault.settlement_retry.wait_for_transaction_receipt_robust", return_value=mock_receipt) as wait_receipt,
     ):
         if checkpoint_fails:
             mock_execution_model.sync_state_before_broadcast.side_effect = OSError("Checkpoint unavailable")
@@ -665,6 +781,17 @@ def test_vault_settlement_retry_claimable(
                 assert trade.get_status() == TradeStatus.vault_settlement_pending
                 assert trade.blockchain_transactions == [approve_tx, request_tx, mock_tx]
             mock_execution_model.sync_state_before_broadcast.side_effect = None
+
+        # A receipt timeout does not prove that the broadcast claim moved no cash.
+        wait_receipt.side_effect = TimeoutError("Claim receipt not yet available")
+        assert check_and_resolve_vault_settlements(state, mock_execution_model) == []
+        assert mock_tx.block_number is None
+        assert trade.get_status() is TradeStatus.vault_settlement_pending
+        state.sync.deployment.block_number = 1
+        treasury = object.__new__(lagoon_vault.LagoonVaultSyncModel)
+        with pytest.raises(lagoon_vault.LagoonUnconfirmedSettlement, match="unreconciled payout"):
+            treasury._discover_lagoon_settlements(state=state, reserve_position=reserve, safe_sync_block=100)
+        wait_receipt.side_effect = None
         resolved = check_and_resolve_vault_settlements(
             state=state,
             execution_model=mock_execution_model,
@@ -676,10 +803,12 @@ def test_vault_settlement_retry_claimable(
     assert trade.vault_settlement_pending_at is None
     assert trade.executed_reserve == pytest.approx(Decimal(100))
     assert trade.executed_quantity == pytest.approx(Decimal("96.15"))
+    assert mock_tx.block_number == 100
+    assert mock_tx.status is True
     mock_execution_model.tx_builder.sign_transaction.assert_called_once()
     mock_execution_model.sync_state_before_broadcast.assert_called()
-    assert mock_execution_model.sync_state_before_broadcast.call_count == (3 if checkpoint_fails else 1)
-    mock_web3.eth.send_raw_transaction.assert_called_once_with(HexBytes(mock_tx.signed_bytes))
+    assert mock_execution_model.sync_state_before_broadcast.call_count == (4 if checkpoint_fails else 2)
+    assert [call.args for call in mock_web3.eth.send_raw_transaction.call_args_list] == [(HexBytes(mock_tx.signed_bytes),)] * 2
 
 
 def test_vault_settlement_retry_repairs_legacy_missing_reserve_debit(
@@ -750,7 +879,9 @@ def test_vault_settlement_retry_repairs_legacy_missing_reserve_debit(
     mock_vault.vault_contract = MagicMock()
 
     mock_web3 = MagicMock()
-    mock_receipt = {"status": 1, "transactionHash": b"\x00" * 32, "blockNumber": 100}
+    mock_web3.block_tip_latency = 0
+    mock_web3.eth.chain_id = 42161
+    mock_receipt = {"status": 1, "transactionHash": b"\x00" * 32, "blockNumber": 100, "blockHash": HexBytes("0x" + "33" * 32), "gasUsed": 21_000}
     mock_web3.eth.send_raw_transaction.return_value = b"\x00" * 32
 
     mock_execution_model = MagicMock()
@@ -896,7 +1027,9 @@ def test_vault_settlement_retry_repairs_legacy_missing_bridge_allocation(
     mock_vault.get_deposit_manager.return_value = mock_deposit_manager
     mock_vault.vault_contract = MagicMock()
     mock_web3 = MagicMock()
-    mock_receipt = {"status": 1, "transactionHash": b"\x00" * 32, "blockNumber": 100}
+    mock_web3.block_tip_latency = 0
+    mock_web3.eth.chain_id = 42161
+    mock_receipt = {"status": 1, "transactionHash": b"\x00" * 32, "blockNumber": 100, "blockHash": HexBytes("0x" + "33" * 32), "gasUsed": 21_000}
     mock_web3.eth.send_raw_transaction.return_value = b"\x00" * 32
     mock_execution_model = MagicMock()
     mock_execution_model.web3 = mock_web3
@@ -984,8 +1117,10 @@ def test_vault_settlement_retry_rebroadcast_uses_robust_receipt_wait(
     mock_vault.get_deposit_manager.return_value = mock_deposit_manager
 
     mock_web3 = MagicMock()
+    mock_web3.block_tip_latency = 0
+    mock_web3.eth.chain_id = 42161
     mock_web3.eth.get_transaction_receipt.side_effect = RuntimeError("missing receipt")
-    mock_receipt = {"status": 1, "transactionHash": b"\x00" * 32, "blockNumber": 100}
+    mock_receipt = {"status": 1, "transactionHash": b"\x00" * 32, "blockNumber": 100, "blockHash": HexBytes("0x" + "33" * 32), "gasUsed": 21_000}
 
     mock_execution_model = MagicMock()
     mock_execution_model.web3 = mock_web3
@@ -1009,16 +1144,16 @@ def test_vault_settlement_retry_rebroadcast_uses_robust_receipt_wait(
     wait_receipt.assert_called_once()
 
 
-@pytest.mark.parametrize("claim_consumed", [False, True])
+@pytest.mark.parametrize("claim_state", ["available", "consumed", "invariant"])
 def test_vault_settlement_retry_recovers_claim_using_robust_receipt_wait(
     vault_pair: TradingPairIdentifier,
     usdc_arbitrum: AssetIdentifier,
-    claim_consumed: bool,
-):
+    claim_state: str,
+) -> None:
     """Verify an already-completed vault claim is recovered using the robust receipt wait.
 
     1. Create a vault buy trade whose request status is already consumed
-    2. Mock completed claim discovery, including a builder refusing consumed requests
+    2. Mock completed claim discovery, including consumed requests and fatal attribution failures
     3. Mock the robust receipt wait and recovered transaction creation
     4. Call check_and_resolve_vault_settlements
     5. Verify the recovered transaction is stored and the trade succeeds
@@ -1057,7 +1192,9 @@ def test_vault_settlement_retry_recovers_claim_using_robust_receipt_wait(
     mock_deposit_manager.get_deposit_request_status.return_value = AsyncVaultRequestStatus.none
     mock_deposit_manager.reconstruct_deposit_ticket.return_value = MagicMock()
     mock_deposit_manager.finish_deposit.return_value = MagicMock()
-    if claim_consumed:
+    if claim_state == "invariant":
+        mock_deposit_manager.finish_deposit.side_effect = VaultRequestInvariantViolation("Ambiguous claim")
+    elif claim_state == "consumed":
         mock_deposit_manager.finish_deposit.side_effect = VaultFlowUnavailable("claim_already_completed")
 
     mock_analysis = MagicMock(spec=DepositRedeemEventAnalysis)
@@ -1069,6 +1206,8 @@ def test_vault_settlement_retry_recovers_claim_using_robust_receipt_wait(
     mock_vault.get_deposit_manager.return_value = mock_deposit_manager
 
     mock_web3 = MagicMock()
+    mock_web3.block_tip_latency = 0
+    mock_web3.eth.chain_id = 42161
     mock_execution_model = MagicMock()
     mock_execution_model.web3 = mock_web3
 
@@ -1076,7 +1215,7 @@ def test_vault_settlement_retry_recovers_claim_using_robust_receipt_wait(
     recovered_tx = BlockchainTransaction()
     recovered_tx.tx_hash = recovered_tx_hash.hex()
     recovered_tx.other["vault_settlement_action"] = "claim"
-    mock_receipt = {"status": 1, "transactionHash": recovered_tx_hash, "blockNumber": 100}
+    mock_receipt = {"status": 1, "transactionHash": recovered_tx_hash, "blockNumber": 100, "blockHash": HexBytes("0x" + "33" * 32), "gasUsed": 21_000}
 
     # 2. Mock completed claim discovery for the consumed request
     # 3. Mock the robust receipt wait and recovered transaction creation
@@ -1087,6 +1226,13 @@ def test_vault_settlement_retry_recovers_claim_using_robust_receipt_wait(
         patch("tradeexecutor.ethereum.vault.settlement_retry.wait_for_transaction_receipt_robust", return_value=mock_receipt) as wait_receipt,
     ):
         # 4. Call check_and_resolve_vault_settlements
+        if claim_state == "invariant":
+            with pytest.raises(VaultRequestInvariantViolation):
+                check_and_resolve_vault_settlements(state=state, execution_model=mock_execution_model)
+            mock_deposit_manager.analyse_deposit.assert_not_called()
+            assert trade.get_status() is TradeStatus.vault_settlement_pending
+            assert state.portfolio.get_cash() == pytest.approx(9900)
+            return
         resolved = check_and_resolve_vault_settlements(
             state=state,
             execution_model=mock_execution_model,
@@ -1231,7 +1377,9 @@ def test_vault_settlement_retry_reclaimable(
     mock_vault.vault_contract = MagicMock()
 
     mock_web3 = MagicMock()
-    mock_receipt = {"status": 1, "transactionHash": b"\x00" * 32, "blockNumber": 100}
+    mock_web3.block_tip_latency = 0
+    mock_web3.eth.chain_id = 42161
+    mock_receipt = {"status": 1, "transactionHash": b"\x00" * 32, "blockNumber": 100, "blockHash": HexBytes("0x" + "33" * 32), "gasUsed": 21_000}
     mock_web3.eth.send_raw_transaction.return_value = b"\x00" * 32
 
     mock_execution_model = MagicMock()
@@ -1370,7 +1518,9 @@ def test_vault_settlement_retry_reclaimable_bridge_returns_allocated_capital(
     mock_vault.get_deposit_manager.return_value = mock_deposit_manager
     mock_vault.vault_contract = MagicMock()
     mock_web3 = MagicMock()
-    mock_receipt = {"status": 1, "transactionHash": b"\x00" * 32, "blockNumber": 100}
+    mock_web3.block_tip_latency = 0
+    mock_web3.eth.chain_id = 42161
+    mock_receipt = {"status": 1, "transactionHash": b"\x00" * 32, "blockNumber": 100, "blockHash": HexBytes("0x" + "33" * 32), "gasUsed": 21_000}
     mock_web3.eth.send_raw_transaction.return_value = b"\x00" * 32
     mock_execution_model = MagicMock()
     mock_execution_model.web3 = mock_web3

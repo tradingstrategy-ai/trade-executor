@@ -17,6 +17,28 @@ transaction before it is sent.
 The empty-queue check also reads the latest Silo balances so a request newer
 than the reorganisation-buffered accounting block is not skipped.
 
+External vault claims resolve before this sync, including scheduled statistics
+refreshes. The scheduler runs these tasks and trading ticks on one worker.
+Claim receipt blocks live in the existing `BlockchainTransaction` records. The treasury snapshot
+must include every recorded home-chain claim, reclaim or direct payout before
+reconciling the Safe balance. Otherwise an older snapshot could erase freshly
+credited proceeds. `_discover_lagoon_settlements()` raises the existing
+`LagoonUnconfirmedSettlement` before any balance or NAV change when the block
+is too old. Claim receipts use the same minimum buffer through
+`get_vault_settlement_confirmations()` and the existing robust receipt waiter,
+retaining its time-based minimum. Normal confirmation therefore covers the
+treasury snapshot without losing a strategy cycle. If a provider falls behind
+afterwards, the guard remains a backstop: the live tick defers; startup and
+manual settlement refuse the snapshot and can be retried once the buffer
+advances. This also checks saved
+claims from earlier runs; checking only trades resolved in the current call
+would leave a restart gap. A saved payout transaction on a still-pending trade
+also defers reconciliation, including when receipt waiting timed out or receipt
+analysis failed. A timeout is not evidence that no cash moved. Simulated fork
+positions are excluded. Background refreshes retry deferred snapshots without
+posting NAV or writing statistics. No extra journal, waiting loop or state flag
+is used.
+
 Before a final investor withdrawal, `lagoon-settle --force-valuation` posts the
 calculated NAV even when rounding losses or fees are below the normal tolerance.
 It passes `force_valuation=True` to the treasury sync. Guard budgets, cooldowns,

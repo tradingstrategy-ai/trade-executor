@@ -167,15 +167,6 @@ def vault_test_trade(
         "--settle-async-on-anvil",
         help="Force supported async vault settlements on simulated Anvil forks.",
     ),
-    deposit_asset: str | None = Option(
-        None,
-        "--deposit-asset",
-        envvar="DEPOSIT_ASSET",
-        help=(
-            "Accepted input asset for multi-asset vaults (e.g. Upshift). "
-            "Defaults to native USDC on the vault's own chain."
-        ),
-    ),
     report_json: Path | None = Option(
         None,
         "--report-json",
@@ -293,7 +284,6 @@ def vault_test_trade(
             rerun=rerun,
             settle_async_on_anvil=settle_async_on_anvil,
             manual_action=manual_action,
-            deposit_asset=deposit_asset,
         )
         rows = _complete_vault_test_report_rows(
             vault_specs,

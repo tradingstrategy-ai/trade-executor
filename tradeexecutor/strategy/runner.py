@@ -22,7 +22,6 @@ from tradeexecutor.cli.double_position import check_double_position
 from tradeexecutor.ethereum.ethereum_protocol_adapters import EthereumPairConfigurator
 from tradeexecutor.ethereum.lagoon.vault import LagoonVaultSyncModel
 from tradeexecutor.ethereum.tx import TransactionBuilder
-from tradeexecutor.ethereum.vault.settlement_retry import has_pending_atoma_settlement
 from tradeexecutor.state.store import StateStore
 from tradeexecutor.state.types import BlockNumber, Percent
 from tradeexecutor.statistics.core import update_statistics
@@ -825,14 +824,15 @@ class StrategyRunner(abc.ABC):
             if self.execution_context.mode.is_live_trading() and store is not None:
                 self.execution_model.set_pre_broadcast_state_sync_callback(lambda: store.sync(state))
 
-            # Atoma burns shares before its claim pays. Recover a saved claim
-            # before valuation/NAV can mistake its consumed ticket for a loss.
-            # When Atoma requires this sweep, it also resolves any other vaults
-            # that are ready; all use the same generic resolver.
-            if self.execution_context.live_trading and has_pending_atoma_settlement(state):
-                self.execution_model.resolve_pending_vault_settlements(
-                    state=state, ts=strategy_cycle_timestamp, pricing_model=pricing_model,
-                )
+            # Live claims must be recovered before consumed tickets are valued
+            # or treasury NAV is posted. All vaults use the same ordering.
+            if self.execution_context.live_trading:
+                with self.timed_task_context_manager("settle_pending_vault_trades"):
+                    vault_resolved = self.execution_model.resolve_pending_vault_settlements(
+                        state=state, ts=strategy_cycle_timestamp, pricing_model=pricing_model,
+                    )
+                    if vault_resolved:
+                        logger.info("Resolved %d pending vault settlement(s)", len(vault_resolved))
                 end_block = self.execution_model.get_safe_latest_block()
 
             # Needed for Lagoon.
@@ -863,17 +863,17 @@ class StrategyRunner(abc.ABC):
                 debug_details["treasury_sync_deferred"] = str(e)
                 return debug_details
 
-            # Resolve any pending async vault settlements (Ostium V1.5, ERC-7540 Lagoon).
-            # Polymorphic: live execution models poll the on-chain deposit manager,
-            # the backtest execution model runs a fully simulated resolver.
-            with self.timed_task_context_manager("settle_pending_vault_trades"):
-                vault_resolved = self.execution_model.resolve_pending_vault_settlements(
-                    state=state,
-                    ts=strategy_cycle_timestamp,
-                    pricing_model=pricing_model,
-                )
-                if vault_resolved:
-                    logger.info("Resolved %d pending vault settlement(s)", len(vault_resolved))
+            # Preserve simulated settlement after treasury sync in backtests.
+            # The live sweep already ran before valuation above.
+            if not self.execution_context.live_trading:
+                with self.timed_task_context_manager("settle_pending_vault_trades"):
+                    vault_resolved = self.execution_model.resolve_pending_vault_settlements(
+                        state=state,
+                        ts=strategy_cycle_timestamp,
+                        pricing_model=pricing_model,
+                    )
+                    if vault_resolved:
+                        logger.info("Resolved %d pending vault settlement(s)", len(vault_resolved))
 
             closed_dust_trades = close_hypercore_dust_positions(state.portfolio)
             if closed_dust_trades:

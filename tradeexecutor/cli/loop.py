@@ -30,7 +30,6 @@ from tradingstrategy.timebucket import TimeBucket
 
 from tradeexecutor.analysis.pair import display_strategy_universe
 from tradeexecutor.ethereum.nonce import refresh_hot_wallet_nonces
-from tradeexecutor.ethereum.vault.settlement_retry import has_pending_atoma_settlement, check_and_resolve_vault_settlements
 from tradeexecutor.cli.watchdog import create_watchdog_registry, register_worker, mark_alive, start_background_watchdog, \
     WatchdogMode
 from tradeexecutor.state.metadata import Metadata
@@ -62,7 +61,7 @@ from tradeexecutor.strategy.valuation_update import update_position_valuations
 from tradeexecutor.backtest.backtest_pricing import BacktestPricing
 from tradeexecutor.state.state import State, BacktestData
 from tradeexecutor.state.store import StateStore
-from tradeexecutor.strategy.sync_model import SyncModel
+from tradeexecutor.strategy.sync_model import SyncModel, UnconfirmedTreasurySync
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.validator import validate_state_serialisation
 from tradeexecutor.statistics.core import update_statistics
@@ -1388,6 +1387,9 @@ class ExecutionLoop:
 
         logger.info("run_live(): Strategy is executed in live trading mode")
 
+        # Every startup claim must save its exact signed transaction first.
+        self.execution_model.set_pre_broadcast_state_sync_callback(lambda: self.store.sync(state))
+
         # Safety checks
         assert not self.is_backtest()
         assert self.backtest_start is None
@@ -1553,12 +1555,14 @@ class ExecutionLoop:
                     f"Resolve manually with trade-executor bridge-retry or receiveMessage."
                 )
 
-        # Startup treasury sync precedes StrategyRunner.tick(). Recover paid
-        # Atoma claims here too, before its pending-ticket valuation can run.
-        if has_pending_atoma_settlement(state):
-            self.execution_model.set_pre_broadcast_state_sync_callback(lambda: self.store.sync(state))
-            self.execution_model.resolve_pending_vault_settlements(state=state, ts=native_datetime_utc_now())
-            self.store.sync(state)
+        # Resolve every vault through the shared hook before treasury valuation
+        # and account checks. Ordinary settlement delays remain pending.
+        vault_resolved = self.execution_model.resolve_pending_vault_settlements(
+            state=state, ts=native_datetime_utc_now(),
+        )
+        if vault_resolved:
+            logger.trade("Resolved %d vault settlement pending trade(s) on startup", len(vault_resolved))
+        self.store.sync(state)
 
         if self.sync_treasury_on_startup:
 
@@ -1604,19 +1608,6 @@ class ExecutionLoop:
             )
         else:
             logger.info("Startup accounting check disabled (CHECK_ACCOUNTS=false)")
-
-        # Check for vault trades stuck in settlement pending from a previous run.
-        # Unlike CCTP, do NOT halt on unresolved — vault settlements can take
-        # hours/days and will resolve on a future tick.
-        vault_web3config = getattr(self.execution_model, 'web3config', None)
-        vault_resolved = check_and_resolve_vault_settlements(
-            state=state,
-            execution_model=self.execution_model,
-            web3config=vault_web3config,
-        )
-        if vault_resolved:
-            logger.trade("Resolved %d vault settlement pending trade(s) on startup", len(vault_resolved))
-            self.store.sync(state)
 
         # Store summary statistics in memory before doing anything else
         self.refresh_live_run_state(state, visualisation=self.visulisation, universe=universe, cycle_duration=self.cycle_duration)
@@ -1903,6 +1894,12 @@ class ExecutionLoop:
                     post_settlement,
                 )
 
+                # Recover consumed withdrawal tickets before valuation, using the
+                # same persisted trades and pre-broadcast callback as live ticks.
+                # The scheduler serialises all state writers on its single worker.
+                self.execution_model.resolve_pending_vault_settlements(state=state, ts=ts)
+                self.store.sync(state)
+
                 # Revalue positions first so sync_treasury()'s position freshness check
                 # and on-chain NAV posting see fresh valuations, but hold the statistics
                 # write until treasury settlement has reconciled reserve cash to on-chain.
@@ -1930,6 +1927,10 @@ class ExecutionLoop:
                 self.store.sync(state)
 
                 self.refresh_live_run_state(state, cycle_duration=self.cycle_duration)
+            except UnconfirmedTreasurySync as e:
+                logger.warning("Live position treasury sync deferred: %s", e)
+                self.store.sync(state)
+                return
             except Exception as e:
                 logger.exception("Live position valuation refresh failed")
                 die(e)

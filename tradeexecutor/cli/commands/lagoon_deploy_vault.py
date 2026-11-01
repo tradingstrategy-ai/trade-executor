@@ -1655,7 +1655,7 @@ def lagoon_deploy_vault(
             logger.info("Resolving ERC-4626 vault at %s", addr)
             vault = cast(ERC4626Vault, create_vault_instance(web3, addr, token_cache=token_cache))
             assert vault.is_valid(), f"Invalid ERC-4626 vault at {addr}"
-            logger.info("Preparing vault %s for whitelisting", vault.name)
+            logger.info("Preparing vault %s for whitelisting", addr)
             erc_4626_vaults.append(vault)
 
     # Capture block before deployment so the report can find guard config events

@@ -9,12 +9,8 @@ from eth_defi.erc_4626.vault import ERC4626Vault
 from eth_defi.vault.deposit_redeem import VaultFlowUnavailable
 from web3 import Web3
 
-from tradeexecutor.ethereum.vault.vault_routing import (
-    get_vault_for_pair,
-    resolve_multi_asset_deposit_asset,
-)
+from tradeexecutor.ethereum.vault.vault_routing import get_vault_for_pair
 from tradeexecutor.state.identifier import TradingPairIdentifier
-from tradeexecutor.state.types import JSONHexAddress
 from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.vault_closure import check_live_deposit, get_live_max_deposit
 from tradeexecutor.strategy.pricing_model import PricingModel
@@ -49,12 +45,10 @@ class VaultPricing(PricingModel):
         web3: Web3,
         web3config=None,
         owner_address_resolver: Callable[[TradingPairIdentifier], str | None] | None = None,
-        deposit_asset_override: JSONHexAddress | None = None,
     ):
         self.web3 = web3
         self.web3config = web3config
         self.owner_address_resolver = owner_address_resolver
-        self.deposit_asset_override = deposit_asset_override
 
     def get_web3_for_pair(self, pair: TradingPairIdentifier) -> Web3:
         """Resolve the correct web3 connection for a pair.
@@ -136,30 +130,11 @@ class VaultPricing(PricingModel):
         vault = self.get_vault(pair)
 
         deposit_manager = vault.get_deposit_manager()
-        # Multi-asset vaults (e.g. Upshift) cannot estimate a deposit without an
-        # explicitly selected accepted asset; they expose an asset-aware
-        # estimator. Resolve the accepted asset (native USDC default on the
-        # vault's own chain) and raise IncompatibleDepositAsset — listing the
-        # vault's accepted assets and our asset — when it is not on the whitelist.
-        accepted_asset = resolve_multi_asset_deposit_asset(
-            deposit_manager,
-            vault.chain_id,
-            self.deposit_asset_override,
+        estimated_shares = deposit_manager.estimate_deposit(
+            owner=self.get_owner_address(pair),
+            amount=reserve,
+            block_identifier=block_number,
         )
-        estimate_for_asset = getattr(deposit_manager, "estimate_deposit_for_asset", None)
-        if accepted_asset is not None and estimate_for_asset is not None:
-            estimated_shares = estimate_for_asset(
-                owner=self.get_owner_address(pair),
-                amount=reserve,
-                accepted_asset=accepted_asset,
-                block_identifier=block_number,
-            )
-        else:
-            estimated_shares = deposit_manager.estimate_deposit(
-                owner=self.get_owner_address(pair),
-                amount=reserve,
-                block_identifier=block_number,
-            )
 
         if estimated_shares <= 0:
             raise VaultFlowUnavailable(

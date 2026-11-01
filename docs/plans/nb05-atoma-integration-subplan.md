@@ -106,8 +106,8 @@ for new requests and receipt owner/share/version checks mandatory when parsing.
 Solve this upstream at the existing manager boundary; do not catch admission
 exceptions in routing or introduce another request-construction abstraction.
 
-Reuse `vault_raw_amount`, `vault_redeem_shares`, owner/direction metadata and
-`vault_transaction_role` / request indices already recorded by routing. Reuse
+Reuse `vault_raw_amount` (raw share units for redemptions), owner/direction
+metadata and `vault_transaction_role` / request indices recorded by routing. Reuse
 `vault_redemption_preflight` for any required preflight evidence, rather than
 adding parallel metadata. The upstream parser already reads the implementation
 at the receipt block; retain its upgrade/reconciliation checks, including any

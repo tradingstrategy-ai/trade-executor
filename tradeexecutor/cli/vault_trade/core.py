@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from eth_account import Account
+from eth_defi.erc_4626.core import ERC4626Feature
 from eth_defi.cctp.constants import CHAIN_ID_TO_CCTP_DOMAIN
 from eth_defi.cctp.whitelist import CCTPDeployment
 from eth_defi.erc_4626.vault import ERC4626Vault
@@ -28,7 +29,9 @@ from eth_defi.vault.base import VaultSpec
 from tradingstrategy.chain import ChainId
 from tradingstrategy.candle import Candle
 from tradingstrategy.timebucket import TimeBucket
+from web3 import Web3
 
+from tradeexecutor.state.identifier import _normalise_erc_4626_features
 from tradeexecutor.ethereum.web3config import get_chain_slug, get_rpc_env_var_name
 from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.trading_strategy_universe import (
@@ -53,12 +56,23 @@ class _SimulatedWhitelistVault(ERC4626Vault):
     Do not probe the adapter here. Incomplete or unsupported vault adapters are
     a diagnostic result of the later per-vault test, not a reason to abort the
     shared simulated Lagoon deployment.
+
+    Shared ``setup_guard()`` consumes the known features; trading separately
+    resolves its execution adapter. See ``.claude/docs/vault-deposit-redeem.md``.
     """
 
-    def __init__(self, web3, spec: VaultSpec, name: str):
-        """Initialise an address-only vault descriptor with a display name."""
+    def __init__(self, web3: Web3, spec: VaultSpec, name: str, features: set[ERC4626Feature] | None = None) -> None:
+        """Carry catalogue metadata to guard setup without probing adapters.
 
-        super().__init__(web3, spec)
+        The shared setup resolves supported policies using the supplied hints.
+
+        :param web3: Deployment chain connection.
+        :param spec: Vault identity.
+        :param name: Downloaded display name.
+        :param features: Known catalogue features, or ``None`` when unavailable.
+        """
+
+        super().__init__(web3, spec, features=features)
         self._simulated_name = name
 
     @property
@@ -104,17 +118,31 @@ def _create_simulated_lagoon_chain_config(
     account_address: str,
     safe_salt_nonce: int,
 ) -> LagoonConfig:
-    """Build one chain's guard whitelist and optional CCTP permissions."""
+    """Build descriptors and CCTP permissions for shared guard configuration.
 
-    # Use address-only wrappers so guard deployment does not probe incomplete
-    # adapters before their individual diagnostic attempt.
+    Preserve downloaded names and feature hints for eth-defi's guard setup.
+    The later diagnostic separately resolves its execution adapter.
+
+    :param chain_id: Chain whose deployment is being described.
+    :param primary_chain_id: Treasury chain for this simulated deployment.
+    :param selected_chain_ids: Chains included in the simulated batch.
+    :param web3: Connection for this deployment chain.
+    :param vault_specs: External vault identities on this chain.
+    :param vault_universe: Catalogue providing names and feature hints.
+    :param account_address: Governance and asset-manager test account.
+    :param safe_salt_nonce: Existing deterministic Safe deployment nonce.
+    :return: Existing Lagoon configuration with ordinary vault descriptors.
+    """
+
+    # Pass metadata to the existing guard setup; protocol policy belongs there.
     whitelist_vaults = []
     for spec in vault_specs:
         vault = vault_universe.get_by_vault_spec(
             (spec.chain_id, spec.vault_address)
         )
         display_name = getattr(vault, "name", None) or spec.vault_address
-        whitelist_vaults.append(_SimulatedWhitelistVault(web3, spec, display_name))
+        features = _normalise_erc_4626_features(getattr(vault, "features", ()) or getattr(getattr(vault, "metadata", None), "features", ()))
+        whitelist_vaults.append(_SimulatedWhitelistVault(web3, spec, display_name, features=features or None))
 
     # The hub may send to all supported satellites; a satellite needs only its
     # return route to the hub.  Unsupported chains still get a local Lagoon Safe

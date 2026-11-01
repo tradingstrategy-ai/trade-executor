@@ -4,6 +4,9 @@ Bridges the strategy-level :class:`TradingStrategyUniverse` definition with the
 Lagoon vault deployment infrastructure, producing per-chain :class:`LagoonConfig`
 objects ready for :func:`deploy_multichain_lagoon_vault`.
 
+External vault descriptors carry identity and feature hints to eth-defi's
+``setup_guard()``. See ``.claude/docs/vault-deposit-redeem.md``.
+
 Example::
 
     from tradeexecutor.ethereum.lagoon.universe_config import translate_trading_universe_to_lagoon_config
@@ -24,14 +27,14 @@ from decimal import Decimal
 
 from eth_defi.cctp.constants import TESTNET_CHAIN_IDS
 from eth_defi.cctp.whitelist import CCTPDeployment
-from eth_defi.erc_4626.classification import create_vault_instance
-from eth_defi.erc_4626.core import ERC4626Feature
+from eth_defi.erc_4626.vault import ERC4626Vault
 from eth_defi.erc_4626.vault_protocol.lagoon.deployment import (
     DEFAULT_LAGOON_SETTLEMENT_WINDOW, LagoonConfig, LagoonDeploymentParameters)
 from eth_defi.gmx.whitelist import GMXDeployment, fetch_all_gmx_markets
 from eth_defi.uniswap_v3.constants import UNISWAP_V3_DEPLOYMENTS
 from eth_defi.uniswap_v3.deployment import \
     fetch_deployment as fetch_deployment_uni_v3
+from eth_defi.vault.base import VaultSpec
 from eth_typing import HexAddress
 from tradingstrategy.chain import ChainId
 from tradingstrategy.exchange import ExchangeType
@@ -239,6 +242,10 @@ def translate_trading_universe_to_lagoon_config(
     need CCTP bridging, Uniswap v3 whitelisting, etc., and builds the
     appropriate :class:`LagoonConfig` for each chain.
 
+    External vault entries carry identity and known features. Shared guard
+    setup resolves policies before broadcasting; trading separately resolves
+    its execution adapter.
+
     By default the source chain (where ``reserve_assets[0]`` lives) gets a
     full Lagoon vault deployment. All other chains become satellite
     deployments (Safe + guard only, no vault contract).
@@ -439,16 +446,13 @@ def translate_trading_universe_to_lagoon_config(
         if vault_addresses:
             erc4626_vaults = []
             for addr in vault_addresses:
-                # Atoma needs its specialised policy. Other protocol flags can
-                # select non-ERC4626Vault classes unsupported by this helper.
+                # Guard setup resolves protocol policies from these features.
                 features = next(
                     (pair.get_vault_features() for pair in universe.iterate_pairs()
                      if pair.is_vault() and pair.base.chain_id == chain_id and pair.pool_address.lower() == addr.lower()),
                     None,
                 )
-                atoma_features = features if features and ERC4626Feature.atoma_like in features else None
-                vault_instance = create_vault_instance(chain_web3[slug], addr, features=atoma_features)
-                assert vault_instance is not None, f"Failed to create vault instance for {addr}"
+                vault_instance = ERC4626Vault(chain_web3[slug], VaultSpec(chain_id, addr), features=features or None)
                 erc4626_vaults.append(vault_instance)
             config.erc_4626_vaults = erc4626_vaults
             logger.info("ERC-4626 vaults configured for %s: %d vault(s) %s", slug, len(erc4626_vaults), vault_addresses)

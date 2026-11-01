@@ -225,9 +225,11 @@ class ExecutionModel(abc.ABC):
     ) -> List[TradeExecution]:
         """Resolve async vault deposit/redeem settlements that have become claimable.
 
-        Called once per strategy cycle (see :py:meth:`StrategyRunner.tick`) to
-        advance trades sitting in ``vault_settlement_pending`` state. The default
-        (live) implementation polls each vault's on-chain deposit manager and
+        Called once per live startup and once per strategy cycle (see
+        :py:meth:`StrategyRunner.tick`) to advance trades sitting in
+        ``vault_settlement_pending`` state. Live resolution precedes valuation
+        and treasury sync; backtests retain their post-sync simulation order.
+        The default (live) implementation polls each vault's onchain deposit manager and
         broadcasts the claim/reclaim transaction. The backtest execution model
         overrides this with a fully simulated resolver.
 

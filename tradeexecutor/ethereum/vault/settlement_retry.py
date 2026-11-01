@@ -24,21 +24,25 @@ from itertools import chain as ichain
 
 from eth_defi.abi import get_topic_signature_from_event
 from eth_defi.compat import native_datetime_utc_now
-from eth_defi.erc_4626.core import ERC4626Feature
 from eth_defi.event_reader.conversion import convert_bytes32_to_address, convert_bytes32_to_uint
 from eth_defi.hotwallet import HotWallet
 from eth_defi.provider.receipt import wait_for_transaction_receipt_robust
+from eth_defi.provider.broken_provider import get_block_tip_latency
 from eth_defi.vault.deposit_redeem import (
+    VaultDepositManager,
     AsyncVaultRequestStatus,
     DepositRedeemEventAnalysis,
     VaultFlowUnavailable,
+    VaultRequestInvariantViolation,
 )
 from hexbytes import HexBytes
 from web3 import Web3
 from web3.contract.contract import ContractFunction
+from web3.types import TxReceipt
 
 from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder, TransactionBuilder
 from tradeexecutor.ethereum.vault.settlement_estimate import refresh_vault_settlement_estimate
+from tradeexecutor.ethereum.vault.settlement_policy import get_vault_settlement_confirmations, validate_single_redemption_ticket
 from tradeexecutor.ethereum.vault.vault_routing import (
     convert_vault_flow_analysis,
     get_vault_for_pair,
@@ -50,21 +54,6 @@ from tradeexecutor.state.trade import TradeExecution, TradeStatus
 logger = logging.getLogger(__name__)
 
 VAULT_SETTLEMENT_RECEIPT_TIMEOUT = 120
-
-
-def has_pending_atoma_settlement(state: State) -> bool:
-    """Does valuation need claim recovery before reading an Atoma entitlement?
-
-    Startup, normal ticks and manual NAV posting share this predicate so a paid
-    ticket cannot block the resolver behind a failed valuation. Resolution itself
-    still uses the generic execution-model hook and existing state records.
-    """
-    return any(
-        p.pair.is_vault()
-        and ERC4626Feature.atoma_like in (p.pair.get_vault_features() or set())
-        and p.has_pending_vault_settlement()
-        for p in state.portfolio.get_all_positions(pending=True)
-    )
 
 
 def _get_chain_aware_tx_builder(
@@ -113,12 +102,25 @@ def _broadcast_and_wait_for_settlement_tx(
 def _wait_for_settlement_tx_receipt(
     web3: Web3,
     tx_hash: HexBytes | str,
-):
-    """Wait until a vault settlement transaction receipt is visible."""
+) -> TxReceipt:
+    """Use the existing receipt wait with the treasury's confirmation buffer.
+
+    This keeps newly credited cash inside the following Lagoon Safe snapshot
+    without another waiting loop. The snapshot guard still defers an unsafe
+    read if a provider falls behind afterwards.
+
+    :param web3: Vault chain connection with its configured provider delay.
+    :param tx_hash: Settlement transaction being confirmed or recovered.
+    :return: Provider-visible confirmed receipt.
+    """
+    confirmations = get_vault_settlement_confirmations(web3.eth.chain_id, get_block_tip_latency(web3))
     return wait_for_transaction_receipt_robust(
         web3,
         HexBytes(tx_hash),
         timeout=VAULT_SETTLEMENT_RECEIPT_TIMEOUT,
+        # None preserves the waiter's time-based default when no extra buffer
+        # is needed; explicit zero would disable that protection.
+        confirmation_block_count=confirmations or None,
     )
 
 
@@ -221,7 +223,6 @@ def _create_recovered_claim_transaction(
 ) -> BlockchainTransaction:
     """Create a minimal state transaction for an already-confirmed claim."""
     tx = web3.eth.get_transaction(tx_hash)
-    receipt = web3.eth.get_transaction_receipt(tx_hash)
     recovered_tx = BlockchainTransaction(
         chain_id=vault_chain_id,
         from_address=tx["from"],
@@ -235,14 +236,6 @@ def _create_recovered_claim_transaction(
         notes=f"Recovered vault {action_label} for trade #{trade.trade_id}",
     )
     recovered_tx.other["vault_settlement_action"] = action_label
-    recovered_tx.set_confirmation_information(
-        native_datetime_utc_now(),
-        receipt["blockNumber"],
-        receipt["blockHash"].hex(),
-        receipt.get("effectiveGasPrice", 0),
-        receipt["gasUsed"],
-        receipt["status"] == 1,
-    )
     return recovered_tx
 
 
@@ -325,28 +318,18 @@ def check_and_resolve_vault_settlements(
                 "Aggregate claims are unsupported; halt and inspect custody/state."
             )
             redemption_owners.add(identity)
-            if "atoma_schema" in data:
-                assert not data["atoma_reconciliation_required"] and len(data["atoma_parts"]) == 1, (
-                    f"Atoma trade #{trade.trade_id} requires reconciliation or contains an aggregate. "
-                    "Expected one request per trade; halt and inspect custody/state."
-                )
+            validate_single_redemption_ticket(data)
 
     for trade in pending_trades:
         try:
             _resolve_single_vault_trade(state, trade, execution_model, web3config, resolved)
-        except AssertionError:
+        except (AssertionError, VaultRequestInvariantViolation):
             # An accounting invariant is not temporary settlement unavailability.
             raise
         except Exception as e:
-            assert not (
-                isinstance(e, VaultFlowUnavailable)
-                and e.protocol == "Atoma"
-                and e.preflight_result == "request_reconciliation_required"
-            ), f"Atoma trade #{trade.trade_id} has an unexpected aggregate claim; halt and inspect custody/state: {e}"
             logger.warning(
                 "Failed to resolve vault settlement for trade #%d: %s",
                 trade.trade_id, e,
-                exc_info=True,
             )
 
     return resolved
@@ -553,21 +536,17 @@ def _resolve_single_vault_trade(
             )
             return
         elif status == AsyncVaultRequestStatus.none:
-            recovered_tx_hash = _find_already_completed_claim_tx_hash(
-                web3,
-                vault,
-                ticket,
-                direction,
-            )
-            direct_payout = False
-            if recovered_tx_hash is None and direction == "redeem":
-                # Operator-finalised protocols do not emit a user claim. Their
-                # manager validates the protocol-specific direct payout event
-                # before exposing it as a terminal transaction.
-                recovered_tx_hash = deposit_manager.fetch_completed_redemption_tx_hash(
-                    ticket
-                )
+            recovery = getattr(type(deposit_manager), "fetch_completed_redemption_tx_hash", None)
+            native_recovery = direction == "redeem" and recovery is not None and recovery is not VaultDepositManager.fetch_completed_redemption_tx_hash
+            if native_recovery:
+                # The manager's indexed lookup validates protocol-specific
+                # identity. An indexer miss remains pending; do not fall back
+                # to generic event discovery for a different ABI.
+                recovered_tx_hash = deposit_manager.fetch_completed_redemption_tx_hash(ticket)
                 direct_payout = recovered_tx_hash is not None
+            else:
+                recovered_tx_hash = _find_already_completed_claim_tx_hash(web3, vault, ticket, direction)
+                direct_payout = False
             if recovered_tx_hash is None:
                 logger.warning(
                     "Unexpected NONE status for vault trade #%d (direction=%s)",
@@ -582,6 +561,8 @@ def _resolve_single_vault_trade(
                     func = deposit_manager.finish_redemption(ticket)
                 else:
                     func = None
+            except VaultRequestInvariantViolation:
+                raise
             except VaultFlowUnavailable:
                 # The request is already consumed. Rebuilding optional calldata
                 # metadata must not block analysis of the actual mined receipt.
@@ -685,6 +666,16 @@ def _resolve_single_vault_trade(
     # STEP D: Analyse confirmed tx and update trade state
     ts = native_datetime_utc_now()
     tx_hash = HexBytes(confirmed_receipt["transactionHash"])
+    # New, retried and recovered claims share one receipt-recording boundary.
+    # Treasury sync must not overwrite these flows with an older Safe snapshot.
+    trade.blockchain_transactions[-1].set_confirmation_information(
+        ts=ts,
+        block_number=int(confirmed_receipt["blockNumber"]),
+        block_hash=HexBytes(confirmed_receipt["blockHash"]).hex(),
+        realised_gas_units_consumed=int(confirmed_receipt["gasUsed"]),
+        realised_gas_price=int(confirmed_receipt.get("effectiveGasPrice", 0)),
+        status=True,
+    )
 
     if is_reclaim_tx:
         # Reclaim — mark trade as failed, restore reserves

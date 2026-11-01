@@ -10,8 +10,7 @@ import datetime
 import logging
 from decimal import Decimal
 
-from eth_defi.erc_4626.vault_protocol.atoma.deposit_redeem import AtomaDepositManager
-from eth_defi.vault.deposit_redeem import AsyncVaultRequestStatus, VaultFlowUnavailable
+from eth_defi.vault.deposit_redeem import VaultDepositManager, VaultFlowUnavailable
 
 from tradeexecutor.ethereum.vault.vault_live_pricing import VaultPricing
 from tradeexecutor.state.position import TradingPosition
@@ -59,7 +58,9 @@ class VaultValuator(ValuationModel):
         old_price = position.last_token_price
         old_value = position.get_value()
         manager = self.pricing_model.get_vault(position.pair).get_deposit_manager()
-        if isinstance(manager, AtomaDepositManager) and position.has_pending_vault_settlement():
+        quote_hook = getattr(type(manager), "fetch_pending_redemption_value", None)
+        ticket_valuation = quote_hook is not None and quote_hook is not VaultDepositManager.fetch_pending_redemption_value
+        if ticket_valuation and position.has_pending_vault_settlement():
             block = manager.web3.eth.block_number
             remaining_shares = shares_amount
             claim_value = Decimal(0)
@@ -67,20 +68,13 @@ class VaultValuator(ValuationModel):
                 if not trade.is_vault_settlement_in_flight() or not trade.is_sell():
                     continue
                 if trade.get_status() != TradeStatus.vault_settlement_pending:
-                    raise VaultFlowUnavailable("Atoma request must be parsed before valuation")
+                    raise VaultFlowUnavailable("Vault request must be parsed before valuation")
                 ticket = manager.reconstruct_redemption_ticket(trade.other_data)
-                assert not ticket.reconciliation_required and len(ticket.parts) == 1, (
-                    "Atoma ticket requires reconciliation or contains an aggregate; "
-                    "expected one request per trade. Halt before valuation/NAV."
-                )
-                status = manager.get_redemption_request_status(ticket, block_identifier=block)
-                if status is AsyncVaultRequestStatus.none:
-                    raise VaultFlowUnavailable("Recover the completed Atoma claim before valuation")
-                if status is AsyncVaultRequestStatus.claimable:
-                    _, _, net = manager.fetch_claim_amounts(ticket, block_identifier=block)
+                net = manager.fetch_pending_redemption_value(ticket, block_identifier=block)
+                if net is not None:
                     remaining_shares -= manager.vault.share_token.convert_to_decimals(ticket.raw_shares)
-                    claim_value += manager.vault.denomination_token.convert_to_decimals(net)
-            assert remaining_shares >= 0, "Atoma tickets exceed the position quantity"
+                    claim_value += net
+            assert remaining_shares >= 0, "Vault tickets exceed the position quantity"
             remaining_value = manager.estimate_redeem(
                 owner=self.pricing_model.get_owner_address(position.pair),
                 shares=remaining_shares,

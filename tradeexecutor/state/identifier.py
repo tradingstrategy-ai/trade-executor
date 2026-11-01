@@ -88,10 +88,13 @@ ASYNC_VAULT_FEATURES = {
 #: D2 and Atoma redemptions are bounded by epoch windows and Plutus Hedge
 #: redemptions may require operator fulfilment. Their deposits remain synchronous, so they
 #: intentionally do not belong to :py:data:`ASYNC_VAULT_FEATURES`.
+#: Upshift uses this same conservative funding rule even when its current lag
+#: is zero; the deposit manager independently selects instant or queued execution.
 DELAYED_VAULT_REDEMPTION_FEATURES = ASYNC_VAULT_FEATURES | {
     ERC4626Feature.d2_like,
     ERC4626Feature.plutus_like,
     ERC4626Feature.atoma_like,
+    ERC4626Feature.upshift_like,
 }
 
 
@@ -980,6 +983,10 @@ class TradingPairIdentifier:
         synchronous deposits but delayed or window-gated redemptions. It is
         used for allocation cash accounting, not to choose the live protocol
         adapter.
+
+        This also selects delayed backtest execution and affects satellite
+        bridging. It is not a live claimability check or a per-vault timing
+        model. Backtests use existing delay estimates and overrides.
         """
         if not self.is_vault():
             return False

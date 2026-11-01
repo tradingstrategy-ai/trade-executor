@@ -755,7 +755,7 @@ class PositionManager:
         when releasing yield-venue cash).
 
         See .claude/docs/vault-deposit-redeem.md for the shared funding gates.
-        Feature flags catch real async vaults (ERC-7540 / Lagoon / Ostium / Atoma); the position's own
+        Feature flags catch queued vaults (ERC-7540 / Lagoon / Ostium / Atoma / Upshift); the position's own
         settlement history catches vaults simulated as async via a backtest settlement-delay
         override with no async metadata.
 
