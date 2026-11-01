@@ -28,7 +28,8 @@ def test_routing_rejects_payout_different_from_funded_reserve(monkeypatch: pytes
     # 1. Supply an observed USDx payout vault behind mocked RPC discovery.
     reserve = SimpleNamespace(chain_id=1, address=USDC_NATIVE_TOKEN[1].lower())
     manager = MagicMock()
-    vault = SimpleNamespace(chain_id=target_chain, denomination_token=SimpleNamespace(address_lower="0x1111111111111111111111111111111111111111"), get_deposit_manager=manager)
+    payout = SimpleNamespace(symbol="USDx", address="0x1111111111111111111111111111111111111111", address_lower="0x1111111111111111111111111111111111111111")
+    vault = SimpleNamespace(chain_id=target_chain, denomination_token=payout, get_deposit_manager=manager)
     monkeypatch.setattr(vault_routing, "get_vault_for_pair", lambda *args, **kwargs: vault)
     builder = MagicMock()
     routing_state = vault_routing.VaultRoutingState(builder, SimpleNamespace(get_reserve_asset=lambda: reserve))
@@ -43,6 +44,9 @@ def test_routing_rejects_payout_different_from_funded_reserve(monkeypatch: pytes
         routing.deposit_or_redeem(State(), routing_state, trade)
     # 3. Refuse before constructing or signing any manager transaction.
     assert raised.value.selected_asset.lower() == USDC_NATIVE_TOKEN[target_chain].lower()
+    assert raised.value.accepted_assets == [(payout.symbol, payout.address)]
+    assert payout.symbol in str(raised.value) and payout.address in str(raised.value)
+    assert USDC_NATIVE_TOKEN[target_chain].lower() in str(raised.value).lower()
     manager.assert_not_called()
     builder.sign_transaction.assert_not_called()
 

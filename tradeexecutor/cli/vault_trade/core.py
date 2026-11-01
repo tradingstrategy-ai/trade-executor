@@ -57,9 +57,8 @@ class _SimulatedWhitelistVault(ERC4626Vault):
     a diagnostic result of the later per-vault test, not a reason to abort the
     shared simulated Lagoon deployment.
 
-    Carry known features to shared ``setup_guard()`` instead of adding a
-    protocol constructor branch in this controller. This object is only a
-    deployment descriptor; execution resolves the actual protocol adapter.
+    Shared ``setup_guard()`` consumes the known features; trading separately
+    resolves its execution adapter. See ``.claude/docs/vault-deposit-redeem.md``.
     """
 
     def __init__(self, web3: Web3, spec: VaultSpec, name: str, features: set[ERC4626Feature] | None = None) -> None:
@@ -121,9 +120,8 @@ def _create_simulated_lagoon_chain_config(
 ) -> LagoonConfig:
     """Build descriptors and CCTP permissions for shared guard configuration.
 
-    Preserve downloaded names and feature hints without choosing protocol
-    policies here. Existing eth-defi guard setup resolves supported policies;
-    the later diagnostic resolves the actual execution adapter separately.
+    Preserve downloaded names and feature hints for eth-defi's guard setup.
+    The later diagnostic separately resolves its execution adapter.
 
     :param chain_id: Chain whose deployment is being described.
     :param primary_chain_id: Treasury chain for this simulated deployment.
@@ -143,7 +141,7 @@ def _create_simulated_lagoon_chain_config(
             (spec.chain_id, spec.vault_address)
         )
         display_name = getattr(vault, "name", None) or spec.vault_address
-        features = _normalise_erc_4626_features(getattr(vault, "features", ()) or getattr(getattr(vault, "metadata", None), "features", ())) or set()
+        features = _normalise_erc_4626_features(getattr(vault, "features", ()) or getattr(getattr(vault, "metadata", None), "features", ()))
         whitelist_vaults.append(_SimulatedWhitelistVault(web3, spec, display_name, features=features or None))
 
     # The hub may send to all supported satellites; a satellite needs only its

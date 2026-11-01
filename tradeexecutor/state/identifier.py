@@ -986,8 +986,7 @@ class TradingPairIdentifier:
 
         This also selects delayed backtest execution and affects satellite
         bridging. It is not a live claimability check or a per-vault timing
-        model. Reuse existing delay estimates/overrides in backtests; do not
-        override this category with another lifecycle cache written by pricing.
+        model. Backtests use existing delay estimates and overrides.
         """
         if not self.is_vault():
             return False

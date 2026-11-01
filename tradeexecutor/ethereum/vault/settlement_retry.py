@@ -67,6 +67,7 @@ def has_pending_vault_claims(state: State) -> bool:
         p.pair.is_vault()
         and p.has_pending_vault_settlement()
         and (
+            # Atoma trades saved before the generic flag need this fallback.
             ERC4626Feature.atoma_like in (p.pair.get_vault_features() or set())
             or any(t.other_data.get("vault_requires_ticket_valuation", False) for t in p.trades.values() if t.is_sell() and t.is_vault_settlement_in_flight())
         )

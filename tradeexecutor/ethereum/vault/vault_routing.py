@@ -6,10 +6,7 @@ One redemption request belongs to one trade. Strategies must wait for its
 completion before another exit from the same custody account/vault; external
 requests and aggregate payout allocation are outside the supported model.
 
-Protocol ABI differences belong in the selected eth-defi deposit manager.
-Reuse its calls, tickets and analysis hooks here; do not add another router,
-protocol-selection wrapper or quote-time lifecycle cache. Guard-policy
-resolution belongs to shared deployment setup, not this execution layer.
+The selected eth-defi deposit manager supplies protocol calls and analysis.
 """
 
 import logging
@@ -81,9 +78,9 @@ class IncompatibleDepositAsset(Exception):
         accepted_assets: list[tuple[str, str]] | None = None,
     ):
         super().__init__(reason)
-        #: Address of the asset we tried to deposit, when known.
+        #: Funded reserve token, when known.
         self.selected_asset = selected_asset
-        #: ``(symbol, address)`` tuples the vault accepts.
+        #: Required denomination as ``(symbol, address)``; retained report field name.
         self.accepted_assets = accepted_assets or []
 
 
@@ -283,11 +280,9 @@ class VaultRoutingState(RoutingState):
 class VaultRouting(RoutingModel):
     """Execute vault trades through existing managers and trade state.
 
-    Managers supply protocol calls and truthful synchronous/queued capabilities.
+    Managers supply protocol calls and synchronous/queued capabilities.
     This router signs those calls and records them on the existing trade; the
-    settlement resolver later completes queued flows. Keep ABI, ticket fields
-    and payout evidence in the adapter, rather than introducing protocol-name
-    branches here. See ``.claude/docs/vault-deposit-redeem.md``.
+    settlement resolver later completes queued flows.
     """
 
     def __init__(
@@ -355,9 +350,8 @@ class VaultRouting(RoutingModel):
         """Prepare a manager-owned deposit or redemption on the existing trade.
 
         Resolve the execution adapter and use its request, approval and analysis
-        interfaces. A separate LP token or non-standard claim signature does
-        not require another routing path. The funded input and native payout
-        must match the reserve unless a verified conversion is implemented.
+        interfaces. The funded input and native payout must match the reserve
+        unless a verified conversion is implemented.
 
         :param state: Authoritative executor portfolio state.
         :param routing_state: Chain-aware transaction builder and universe.
@@ -393,8 +387,11 @@ class VaultRouting(RoutingModel):
         funding_asset = reserve_asset.address if target_vault.chain_id == reserve_asset.chain_id else USDC_NATIVE_TOKEN.get(target_vault.chain_id)
         if funding_asset is None or target_vault.denomination_token.address_lower != funding_asset.lower():
             raise IncompatibleDepositAsset(
-                "Vault withdrawal asset differs from the funded reserve; verify an existing spot conversion route before trading this vault",
+                f"Vault withdrawal asset differs from the funded reserve: payout {target_vault.denomination_token.symbol} "
+                f"({target_vault.denomination_token.address}), funded token {funding_asset or '<missing>'}; "
+                "verify an existing spot conversion route before trading this vault",
                 selected_asset=funding_asset,
+                accepted_assets=[(target_vault.denomination_token.symbol, target_vault.denomination_token.address)],
             )
 
         if trade.is_buy():
@@ -620,7 +617,6 @@ class VaultRouting(RoutingModel):
             )
         else:
             trade.other_data["vault_raw_amount"] = str(request.raw_shares)
-            trade.other_data["vault_redeem_shares"] = str(swap_amount)
 
         return txs
 
