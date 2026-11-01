@@ -82,7 +82,8 @@ and [integration workflow](../../deps/web3-ethereum-defi/.claude/docs/vault-inte
 4. **Persist through existing state.** Reuse `TradeExecution`, its request
    ticket, `BlockchainTransaction`, the state store and pre-broadcast callback.
    Reuse the mined-request parser, pending-value and completed-payout hooks.
-   Run the shared live sweep once before valuation and treasury sync. Do not
+   Run the shared live sweep before valuation and treasury sync in startup,
+   ticks, scheduled statistics refresh and manual settlement. Do not
    infer generic executor behaviour from protocol ticket keys, add compatibility fallbacks
    for an unpublished intermediate implementation, or write another lifecycle
    copy during pricing. Additional persistence systems require the permission
@@ -705,8 +706,7 @@ insufficient; Atoma uses the same hook for burned claims. Mined request parsing
 uses `create_redemption_request_for_analysis()` so it never repeats Upshift's
 live admission checks against shares already moved to escrow.
 Pre-valuation recovery uses the same live sweep for every vault. It does not
-need a saved capability flag or infer behaviour from an Upshift ticket's dates;
-older states carrying the retired flag remain readable.
+need a saved capability flag or infer behaviour from an Upshift ticket's dates.
 
 The ordinary public test command resumes delayed, synchronous-deposit vaults
 by manager capability and saved test position, including Upshift and Atoma.

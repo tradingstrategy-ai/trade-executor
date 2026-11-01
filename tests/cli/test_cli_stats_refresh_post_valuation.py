@@ -19,6 +19,7 @@ from tradeexecutor.cli.main import app
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.dummy import DummyExecutionModel
 from tradeexecutor.strategy.sync_model import DummySyncModel
+from tradeexecutor.strategy.sync_model import UnconfirmedTreasurySync
 
 
 class FakeWeb3Config:
@@ -146,9 +147,11 @@ def patch_cli_startup(
     monkeypatch.setattr(loop_module, "display_strategy_universe", lambda universe: pd.DataFrame())
 
 
+@pytest.mark.parametrize("defer_once", [False, True])
 def test_cli_stats_refresh_post_valuation_runs_once_for_lagoon(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    defer_once: bool,
 ) -> None:
     """Stats refresh writes statistics once, after Lagoon post-valuation settlement.
 
@@ -161,7 +164,7 @@ def test_cli_stats_refresh_post_valuation_runs_once_for_lagoon(
 
     1. Patch CLI start-up so it runs offline with a fake Lagoon sync model, recording the call order.
     2. Run `start` with a tiny stats refresh interval and the unit-testing shutdown hook enabled.
-    3. Verify the call order is: revalue without statistics, treasury settlement, revalue with statistics.
+    3. Recover pending vaults before valuation; retry deferred sync without publishing statistics.
     4. Verify one stats refresh and one post-valuation settlement were persisted in state.
     """
     strategy_path = Path(os.path.join(os.path.dirname(__file__), "..", "..", "strategies", "test_only", "quickswap_dummy.py"))
@@ -171,6 +174,26 @@ def test_cli_stats_refresh_post_valuation_runs_once_for_lagoon(
     # Shared event log capturing the order of valuation and settlement calls
     calls: list[tuple] = []
     fake_sync_model = FakeLagoonVaultSyncModel(calls)
+
+    # Mock only external settlement work; exercise the real scheduler and state store.
+    def resolve_pending(self: DummyExecutionModel, **kwargs: object) -> list:
+        """Record recovery ordering without making external protocol calls."""
+        calls.append(("resolve_pending_vault_settlements",))
+        return []
+
+    monkeypatch.setattr(DummyExecutionModel, "resolve_pending_vault_settlements", resolve_pending)
+    if defer_once:
+        sync_treasury = fake_sync_model.sync_treasury
+
+        def deferred_sync(*args: object, **kwargs: object) -> list:
+            """Model one provider deferral before the next scheduled attempt."""
+            if not fake_sync_model.sync_treasury_calls:
+                fake_sync_model.sync_treasury_calls.append(True)
+                calls.append(("sync_treasury_deferred",))
+                raise UnconfirmedTreasurySync("Payout receipt is not yet accounted")
+            return sync_treasury(*args, **kwargs)
+
+        monkeypatch.setattr(fake_sync_model, "sync_treasury", deferred_sync)
 
     # 1. Patch CLI start-up so it runs offline with a fake Lagoon sync model.
     patch_cli_startup(monkeypatch, fake_sync_model, calls)
@@ -183,14 +206,18 @@ def test_cli_stats_refresh_post_valuation_runs_once_for_lagoon(
     state = State.from_json(state_file.read_text())
 
     # 3. Verify the call order is: revalue without statistics, treasury settlement, revalue with statistics.
-    assert calls == [
+    expected = [("resolve_pending_vault_settlements",)]  # Startup sweep
+    if defer_once:
+        expected += [("resolve_pending_vault_settlements",), ("update_position_valuations", True), ("sync_treasury_deferred",)]
+    assert calls == expected + [
+        ("resolve_pending_vault_settlements",),
         ("update_position_valuations", True),
         ("sync_treasury", True),
         ("update_position_valuations", False),
     ]
 
     # 4. Verify one stats refresh and one post-valuation settlement were persisted in state.
-    assert fake_sync_model.sync_treasury_calls == [True]
+    assert fake_sync_model.sync_treasury_calls == [True] * (2 if defer_once else 1)
     assert state.uptime.stats_refresh_completed == 1
     assert state.uptime.post_valuation_settlements_completed == 1
 

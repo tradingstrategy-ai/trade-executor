@@ -12,6 +12,7 @@ import pytest
 from eth_typing import HexAddress
 from eth_defi.erc_4626.classification import create_vault_instance_autodetect
 from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
+from eth_defi.erc_4626.vault_protocol.upshift.deposit_redeem import UpshiftMultiAssetDepositManager
 from eth_defi.hotwallet import HotWallet
 from eth_defi.provider.anvil import fund_erc20_on_anvil
 from eth_defi.provider.receipt import wait_for_transaction_receipt_robust
@@ -133,10 +134,11 @@ def test_upshift_pending_resume(environment: dict[str, str], runtime: tuple[dict
     pending = State.read_json_file(path)
     sell = next(t for t in pending.portfolio.get_all_trades() if t.is_sell())
     assert sell.get_status() is TradeStatus.vault_settlement_pending
-    assert "vault_requires_ticket_valuation" not in sell.other_data
     request = sell.other_data["vault_request_tx_hash"]
-    # 2. Repeat close-only and verify the same request remains pending.
-    cli.main(args=args + ["--close-only"], standalone_mode=False)
+    # 2. A changed live queue setting cannot invalidate the saved request.
+    with monkeypatch.context() as changed_queue:
+        changed_queue.setattr(UpshiftMultiAssetDepositManager, "has_synchronous_redemption", lambda self: True)
+        cli.main(args=args + ["--close-only"], standalone_mode=False)
     assert len(list(State.read_json_file(path).portfolio.get_all_trades())) == 2
     # 3. Recover through start with one saved-state sweep per phase, then repeat safely.
     manager = create_vault_instance_autodetect(runtime[1], SENTORA).get_deposit_manager()

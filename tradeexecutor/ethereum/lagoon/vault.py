@@ -738,15 +738,23 @@ class LagoonVaultSyncModel(AddressSyncModel):
 
         # A claim can be mined ahead of our buffered snapshot. Keep its credited
         # cash until that snapshot includes it, also across process restarts.
-        latest_vault_settlement = max((
-            tx.block_number
-            for position in state.portfolio.get_all_positions(pending=True)
-            for trade in position.trades.values()
-            if trade.is_vault() and trade.pair.chain_id == reserve_position.asset.chain_id
-            for tx in trade.blockchain_transactions
-            if tx.block_number is not None
-            and (tx.other or {}).get("vault_settlement_action") in {"claim", "reclaim", "direct payout"}
-        ), default=0)
+        latest_vault_settlement = 0
+        for position in state.portfolio.get_all_positions(pending=True):
+            if position.simulated:
+                continue
+            for trade in position.trades.values():
+                if not trade.is_vault() or trade.pair.chain_id != reserve_position.asset.chain_id:
+                    continue
+                for tx in trade.blockchain_transactions:
+                    if (tx.other or {}).get("vault_settlement_action") not in {"claim", "reclaim", "direct payout"}:
+                        continue
+                    if trade.is_vault_settlement_in_flight():
+                        raise LagoonUnconfirmedSettlement(
+                            f"Vault trade #{trade.trade_id} has an unreconciled payout transaction {tx.tx_hash}; "
+                            "defer treasury sync and inspect the saved transaction if recovery keeps failing"
+                        )
+                    if tx.block_number is not None:
+                        latest_vault_settlement = max(latest_vault_settlement, tx.block_number)
         if latest_vault_settlement > safe_sync_block:
             raise LagoonUnconfirmedSettlement(
                 f"Vault settlement block {latest_vault_settlement:,} is ahead of "

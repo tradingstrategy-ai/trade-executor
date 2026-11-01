@@ -61,7 +61,7 @@ from tradeexecutor.strategy.valuation_update import update_position_valuations
 from tradeexecutor.backtest.backtest_pricing import BacktestPricing
 from tradeexecutor.state.state import State, BacktestData
 from tradeexecutor.state.store import StateStore
-from tradeexecutor.strategy.sync_model import SyncModel
+from tradeexecutor.strategy.sync_model import SyncModel, UnconfirmedTreasurySync
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.validator import validate_state_serialisation
 from tradeexecutor.statistics.core import update_statistics
@@ -1894,6 +1894,12 @@ class ExecutionLoop:
                     post_settlement,
                 )
 
+                # Recover consumed withdrawal tickets before valuation, using the
+                # same persisted trades and pre-broadcast callback as live ticks.
+                # The scheduler serialises all state writers on its single worker.
+                self.execution_model.resolve_pending_vault_settlements(state=state, ts=ts)
+                self.store.sync(state)
+
                 # Revalue positions first so sync_treasury()'s position freshness check
                 # and on-chain NAV posting see fresh valuations, but hold the statistics
                 # write until treasury settlement has reconciled reserve cash to on-chain.
@@ -1921,6 +1927,10 @@ class ExecutionLoop:
                 self.store.sync(state)
 
                 self.refresh_live_run_state(state, cycle_duration=self.cycle_duration)
+            except UnconfirmedTreasurySync as e:
+                logger.warning("Live position treasury sync deferred: %s", e)
+                self.store.sync(state)
+                return
             except Exception as e:
                 logger.exception("Live position valuation refresh failed")
                 die(e)

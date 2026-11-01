@@ -643,6 +643,13 @@ def test_lagoon_snapshot_cannot_erase_recent_vault_payout(
     assert reserve.quantity == Decimal(1000)
     assert model.calculate_valuation(state) == pytest.approx(1000)
 
+    # Fork-only diagnostics must not block live snapshots, even at a future block.
+    position = state.portfolio.find_position_for_trade(next(t for t in state.portfolio.get_all_trades() if t.is_sell()))
+    position.simulated = True
+    position.trades[sell.trade_id].blockchain_transactions[-1].block_number = 1_000_000
+    model.sync_treasury(ts, state, post_valuation=True)
+    assert reserve.quantity == Decimal(1000)
+
 
 def test_vault_settlement_validates_entire_batch_before_claiming(
     vault_pair: TradingPairIdentifier,
@@ -764,7 +771,7 @@ def test_vault_settlement_retry_claimable(
     # 4. Refuse broadcasts while saving fails, then resolve the same signed claim.
     with (
         patch("tradeexecutor.ethereum.vault.settlement_retry.get_vault_for_pair", return_value=mock_vault),
-        patch("tradeexecutor.ethereum.vault.settlement_retry.wait_for_transaction_receipt_robust", return_value=mock_receipt),
+        patch("tradeexecutor.ethereum.vault.settlement_retry.wait_for_transaction_receipt_robust", return_value=mock_receipt) as wait_receipt,
     ):
         if checkpoint_fails:
             mock_execution_model.sync_state_before_broadcast.side_effect = OSError("Checkpoint unavailable")
@@ -774,6 +781,17 @@ def test_vault_settlement_retry_claimable(
                 assert trade.get_status() == TradeStatus.vault_settlement_pending
                 assert trade.blockchain_transactions == [approve_tx, request_tx, mock_tx]
             mock_execution_model.sync_state_before_broadcast.side_effect = None
+
+        # A receipt timeout does not prove that the broadcast claim moved no cash.
+        wait_receipt.side_effect = TimeoutError("Claim receipt not yet available")
+        assert check_and_resolve_vault_settlements(state, mock_execution_model) == []
+        assert mock_tx.block_number is None
+        assert trade.get_status() is TradeStatus.vault_settlement_pending
+        state.sync.deployment.block_number = 1
+        treasury = object.__new__(lagoon_vault.LagoonVaultSyncModel)
+        with pytest.raises(lagoon_vault.LagoonUnconfirmedSettlement, match="unreconciled payout"):
+            treasury._discover_lagoon_settlements(state=state, reserve_position=reserve, safe_sync_block=100)
+        wait_receipt.side_effect = None
         resolved = check_and_resolve_vault_settlements(
             state=state,
             execution_model=mock_execution_model,
@@ -789,8 +807,8 @@ def test_vault_settlement_retry_claimable(
     assert mock_tx.status is True
     mock_execution_model.tx_builder.sign_transaction.assert_called_once()
     mock_execution_model.sync_state_before_broadcast.assert_called()
-    assert mock_execution_model.sync_state_before_broadcast.call_count == (3 if checkpoint_fails else 1)
-    mock_web3.eth.send_raw_transaction.assert_called_once_with(HexBytes(mock_tx.signed_bytes))
+    assert mock_execution_model.sync_state_before_broadcast.call_count == (4 if checkpoint_fails else 2)
+    assert [call.args for call in mock_web3.eth.send_raw_transaction.call_args_list] == [(HexBytes(mock_tx.signed_bytes),)] * 2
 
 
 def test_vault_settlement_retry_repairs_legacy_missing_reserve_debit(

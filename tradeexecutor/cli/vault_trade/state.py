@@ -2,8 +2,9 @@
 
 The command stores real and fork-only diagnostics in a normal executor
 ``State``.  Interpretation of the special ``TradingPosition.simulated`` field
-belongs here and in the vault-test TUI only; general accounting and analytics
-must remain unaware of it.
+belongs here and in the vault-test TUI. Live settlement and treasury safety
+scans exclude simulated positions so fork receipts cannot affect real funds.
+Other accounting and analytics must remain unaware of the diagnostic flag.
 """
 
 import hashlib

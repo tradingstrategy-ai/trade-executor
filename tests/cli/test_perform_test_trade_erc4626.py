@@ -59,7 +59,7 @@ def test_erc4626_pair_selection_and_cli_refusals(monkeypatch: MonkeyPatch) -> No
     sync_model = MagicMock(spec=SyncModel)
     execution_model = MagicMock()
     for unsupported in (dataclasses.replace(original, kind=TradingPairKind.exchange_account), base):
-        with pytest.raises(ValueError, match="home-chain synchronous ERC-4626"):
+        with pytest.raises(ValueError, match="home-chain vault test positions with synchronous deposits"):
             make_test_trade(
                 web3=MagicMock(), execution_model=execution_model, pricing_model=MagicMock(),
                 sync_model=sync_model, state=State(), universe=load_universe(),

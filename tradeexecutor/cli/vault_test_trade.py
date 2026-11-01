@@ -15,22 +15,21 @@ from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
 from tradeexecutor.strategy.pricing_model import PricingModel
 
 
-def is_synchronous_vault_test(pricing_model: PricingModel, pair: TradingPairIdentifier) -> bool:
-    """Keep native and queued vaults on their existing command lifecycle."""
+def is_synchronous_deposit_vault_test(pricing_model: PricingModel, pair: TradingPairIdentifier) -> bool:
+    """Use the public test lifecycle for vaults with immediate deposits.
+
+    Withdrawal recovery follows the saved trade, independently of the vault's
+    current queue configuration.
+
+    :param pricing_model: Existing pricing route for the selected pair.
+    :param pair: Vault being tested.
+    :return: Whether its manager supports synchronous deposits.
+    """
     pricing = pricing_model.route(pair) if isinstance(pricing_model, GenericPricing) else pricing_model
     if not isinstance(pricing, VaultPricing):
         return False
     manager = pricing.get_vault(pair).get_deposit_manager()
-    return manager.has_synchronous_deposit() and manager.has_synchronous_redemption()
-
-
-def is_queued_redemption_vault_test(pricing_model: PricingModel, pair: TradingPairIdentifier) -> bool:
-    """Use existing pending state for synchronous deposits with queued exits."""
-    pricing = pricing_model.route(pair) if isinstance(pricing_model, GenericPricing) else pricing_model
-    if not isinstance(pricing, VaultPricing):
-        return False
-    manager = pricing.get_vault(pair).get_deposit_manager()
-    return manager.has_synchronous_deposit() and not manager.has_synchronous_redemption()
+    return manager.has_synchronous_deposit()
 
 
 def get_test_position(state: State, pair: TradingPairIdentifier, *, allow_pending_redemption: bool = False) -> TradingPosition | None:
