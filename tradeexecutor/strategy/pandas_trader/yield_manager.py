@@ -23,6 +23,7 @@ from tradeexecutor.state.types import USDollarAmount, Percent
 from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.tvl_size_risk import BaseTVLSizeRiskModel
+from tradeexecutor.strategy.vault_closure import can_interact_with_vault
 from eth_defi.compat import native_datetime_utc_now
 
 logger = logging.getLogger(__name__)
@@ -385,6 +386,16 @@ class YieldManager:
                     case TradingPairKind.cash:
                         raise AssertionError("Cash should not be in desired positions")
                     case TradingPairKind.vault:
+                        if dollar_delta > 0 and (
+                            pair.get_ignore_reason() is not None
+                            or not can_interact_with_vault(
+                                pair, timestamp=timestamp,
+                                pricing_model=self.position_manager.pricing_model,
+                                operation="deposit",
+                            )
+                        ):
+                            logger.info("Skipping yield deposit into unavailable venue %s", pair)
+                            continue
                         trades += self.position_manager.adjust_position(
                             pair=pair,
                             dollar_delta=dollar_delta,

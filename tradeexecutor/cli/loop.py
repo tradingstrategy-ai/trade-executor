@@ -1112,6 +1112,7 @@ class ExecutionLoop:
             stop_loss_pricing_model = BacktestPricing(
                 universe.backtest_stop_loss_candles,
                 routing_model,
+                portfolio=state.portfolio,
                 time_bucket=universe.backtest_stop_loss_time_bucket,
                 allow_missing_fees=pricing_model.allow_missing_fees,
                 pairs=universe.data_universe.pairs,
@@ -1122,6 +1123,7 @@ class ExecutionLoop:
             stop_loss_pricing_model = BacktestPricing(
                 universe.backtest_stop_loss_candles,
                 routing_model,
+                portfolio=state.portfolio,
                 time_bucket=universe.backtest_stop_loss_time_bucket,
                 allow_missing_fees=False,
                 pairs=universe.data_universe.pairs,

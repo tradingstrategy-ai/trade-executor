@@ -820,6 +820,8 @@ class StrategyRunner(abc.ABC):
             routing_state = routing_setup.routing_state
             pricing_model = routing_setup.pricing_model
             valuation_model = routing_setup.valuation_model
+            if hasattr(self.execution_model, "bind_vault_fee_pricing"):
+                self.execution_model.bind_vault_fee_pricing(pricing_model, state.portfolio)
 
             if self.execution_context.mode.is_live_trading() and store is not None:
                 self.execution_model.set_pre_broadcast_state_sync_callback(lambda: store.sync(state))
@@ -917,6 +919,8 @@ class StrategyRunner(abc.ABC):
                         routing_state=routing_state,
                         routing_model=self.routing_model,
                     )
+                    if hasattr(self.execution_model, "bind_vault_fee_pricing"):
+                        self.execution_model.bind_vault_fee_pricing(pricing_model, state.portfolio)
                     assert type(rebalance_trades) == list
                     debug_details["rebalance_trades"] = rebalance_trades
 

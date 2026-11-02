@@ -35,7 +35,6 @@ def _has_backtest_settlement_logic(pair) -> bool:
     return pair.is_async_vault() or pair.has_delayed_vault_redemption() or bool(features & {
         ERC4626Feature.lagoon_like,
         ERC4626Feature.d2_like,
-        ERC4626Feature.plutus_like,
     })
 
 
@@ -84,7 +83,6 @@ def _get_no_data_settlement_delay(pair, trades) -> datetime.timedelta:
     if features & {
         ERC4626Feature.lagoon_like,
         ERC4626Feature.d2_like,
-        ERC4626Feature.plutus_like,
     }:
         return delay + NO_HISTORICAL_SETTLEMENT_OBSERVATION_GRACE_PERIOD
     return delay

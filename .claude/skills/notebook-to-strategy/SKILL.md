@@ -39,6 +39,11 @@ The skill maps notebook sections to strategy module sections as defined in `stra
 
 ## Check for inconsistencies
 
+- Read [backtest universe preservation](../../../docs/backtest-universe-preservation.md)
+  and perform its scope, exclusion and directional-timing checks. Compare the
+  converted universe and inherited assumptions with the source; report any
+  authorised change explicitly rather than importing live launch restrictions.
+
 - There cannot be supporting pairs that are in wrong chain: for example Hyperliquid vault strategy running on HyperEVM cannot cross-reference to pairs on Arbitrum for supporting pairs. Use Ask user tool to resolve these.
 
 ## Verification

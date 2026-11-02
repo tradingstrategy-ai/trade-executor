@@ -180,8 +180,8 @@ def queue_vault_pair_ids(yield_rules) -> set:
     pair_ids = set()
     for rule in yield_rules.weights:
         pair = rule.pair
-        assert not pair.is_async_vault(), (
-            f"Queue venue {pair} is an async vault: the queue venue must be synchronous "
+        assert not pair.is_async_vault() and not pair.has_delayed_vault_redemption(), (
+            f"Queue venue {pair} has delayed settlement: the queue venue must be synchronous "
             f"(instantly redeemable) so YieldManager can release its cash same-cycle to "
             f"fund promotions (invariant 4). Pick a sync ERC-4626 venue instead."
         )

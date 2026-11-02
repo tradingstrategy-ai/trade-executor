@@ -900,7 +900,7 @@ def test_backtest_async_vault_settlement_due_defaults() -> None:
     assert execution._get_settlement_due(plutus_pair, ts) == datetime.datetime(2024, 1, 15, 9, 30)
     assert execution._is_async_vault(d2_pair, is_buy=True)
     assert execution._is_async_vault(d2_pair, is_buy=False)
-    assert execution._is_async_vault(plutus_pair, is_buy=True)
+    assert not execution._is_async_vault(plutus_pair, is_buy=True)
     assert execution._is_async_vault(plutus_pair, is_buy=False)
 
     # 5. Ostium vault: next day at the epoch settlement hour.
@@ -943,10 +943,9 @@ def test_backtest_async_vault_settlement_due_defaults() -> None:
 @pytest.mark.parametrize("feature", [
     ERC4626Feature.lagoon_like,
     ERC4626Feature.d2_like,
-    ERC4626Feature.plutus_like,
 ])
 def test_backtest_protocol_deposit_requires_historical_settlement_event(feature):
-    """D2, Plutus and Lagoon deposits need both delay and event evidence.
+    """D2 and Lagoon deposits need both delay and event evidence.
 
     The request on 1 January has passed its two-day delay before the historical
     event on 4 January. It must remain in the queue until that event is visible;
@@ -993,7 +992,6 @@ def test_backtest_protocol_deposit_requires_historical_settlement_event(feature)
 @pytest.mark.parametrize("feature", [
     ERC4626Feature.lagoon_like,
     ERC4626Feature.d2_like,
-    ERC4626Feature.plutus_like,
 ])
 def test_backtest_protocol_deposit_without_observations_uses_grace_period(feature):
     """No observed settlement history falls back to estimate plus two days.
@@ -1517,18 +1515,25 @@ def test_position_has_pending_vault_settlement_shapes():
 
 
 @pytest.mark.timeout(300)
-def test_backtest_async_vault_sell_proceeds_cannot_fund_buys():
-    """Buys cannot be funded by same-cycle redemption proceeds of an override-only async vault.
+@pytest.mark.parametrize("features", [
+    None,
+    {ERC4626Feature.gains_like},
+    {ERC4626Feature.nova_markets_like},
+    {ERC4626Feature.ember_like},
+    {ERC4626Feature.accountable_like, ERC4626Feature.erc_7540_like},
+    {ERC4626Feature.plutus_like, ERC4626Feature.erc_7540_like},
+])
+def test_backtest_async_vault_sell_proceeds_cannot_fund_buys(features: set[ERC4626Feature] | None):
+    """Delayed vault withdrawals cannot fund purchases before settlement.
 
     A redemption requested from an async vault pays out only after settlement,
     so a rotation that sells the async vault and buys another vault in the same
-    cycle must fit its buys in the actually-free cash. The vault here carries NO
-    async feature flags - it is asynchronous only via the backtest delay
-    override - so the cap must classify it from the position's own settlement
-    history (vault_async_flow on its deposit), not from metadata.
+    cycle must fit its buys in the actually-free cash. Protocol cases deposit
+    synchronously and must be classified before their first withdrawal. The
+    no-feature case uses the existing override and position-history fallback.
 
-    1. Deposit 90% of capital into the override-only async vault VO, leaving
-       ~10% free cash, and let the deposit settle.
+    1. Deposit 90% of capital into vault VO, leaving ~10% free cash, and let
+       any delayed deposit settle.
     2. Rotate everything into the synchronous vault VS: the VO close is an
        async redeem whose proceeds arrive two days later.
     3. On the rotation cycle the VS buy is capped to the free cash
@@ -1538,10 +1543,10 @@ def test_backtest_async_vault_sell_proceeds_cannot_fund_buys():
        into VS, and the backtest completes with everything settled.
     """
     strategy_universe, pairs = _make_multi_vault_universe([
-        ("VO", VAULT_A_ADDRESS, None),
+        ("VO", VAULT_A_ADDRESS, features),
         ("VS", VAULT_B_ADDRESS, None),
     ])
-    assert not pairs["VO"].is_async_vault(), "VO must be async only via the settlement-delay override"
+    assert not pairs["VO"].is_async_vault()
 
     one_day = datetime.timedelta(days=1)
     allocation = 0.9
@@ -1566,6 +1571,9 @@ def test_backtest_async_vault_sell_proceeds_cannot_fund_buys():
         pm = input.get_position_manager()
         portfolio = state.portfolio
         pair_by_symbol = {p.base.token_symbol: p for p in input.strategy_universe.iterate_pairs()}
+
+        # Calibrate the synthetic Hedge epoch without making its deposits async.
+        pair_by_symbol["VO"].other_data["vault_estimated_settlement"] = SETTLEMENT_DELAY
 
         alpha_model = AlphaModel(input.timestamp, close_position_weight_epsilon=0.001)
         for symbol, weight in weights.items():
@@ -1593,14 +1601,14 @@ def test_backtest_async_vault_sell_proceeds_cannot_fund_buys():
     reserve_address = strategy_universe.reserve_assets[0].address
     hook = _SnapshotHook(reserve_address, pairs["VO"].base.address)
 
-    # 1.-2. VO is async purely via the delay override; completion proves the cap fired
+    # 1.-2. VO exits asynchronously; completion proves the cap fired
     # (an uncapped VS buy would overdraw the simulated wallet by ~80% of equity).
     state, _, _ = _run(
         strategy_universe,
         hook,
         decide=decide,
         delay=SETTLEMENT_DELAY,
-        delay_overrides={VAULT_A_ADDRESS: SETTLEMENT_DELAY},
+        delay_overrides={VAULT_A_ADDRESS: SETTLEMENT_DELAY} if features is None else None,
     )
 
     trades = list(state.portfolio.get_all_trades())

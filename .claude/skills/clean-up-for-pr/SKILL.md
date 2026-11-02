@@ -96,6 +96,14 @@ the entire patch into context.
 
 ## Review with the opposite agent
 
+When the change affects strategy selection, admission, timing or conversion,
+perform the required checks in
+[backtest universe preservation](../../../docs/backtest-universe-preservation.md)
+and include them in the independent review prompt. Supply the baseline universe,
+changed exclusions and relevant prior support evidence. Require a verdict on
+scope correctness as well as code correctness; passing tests do not excuse
+unapproved narrowing. Do not launch a backtest merely to conduct the review.
+
 Before invoking any external agent CLI, read
 [agent tricks and troubleshooting](../../docs/agent-tricks-and-troubleshooting.md)
 in the current session and follow its invocation, permissions, streaming,

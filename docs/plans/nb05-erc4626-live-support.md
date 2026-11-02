@@ -1,5 +1,9 @@
 # NB05 ERC-4626 live support plan
 
+> Superseded for outstanding work by the [NB05 live-readiness plan](nb05-live-readiness.md)
+> on 2 November 2026. Retained as historical implementation research; its baseline,
+> proposed frameworks, conversion work and launch prerequisites are not the current backlog.
+
 ## Scope and baselines
 
 Prepared on 2026-10-29. Plan the remaining adapter and executor work for seven

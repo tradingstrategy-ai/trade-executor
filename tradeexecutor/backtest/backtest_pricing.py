@@ -7,11 +7,13 @@ from typing import Literal, Optional
 
 import numpy as np
 import pandas as pd
+from tradeexecutor.backtest.vault_fees import calculate_vault_fees, vault_exit_rate
 from tradeexecutor.backtest.backtest_execution import BacktestExecution
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
 from tradeexecutor.backtest.vault_windows import VaultWindowSchedule
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import \
     UniswapV2Routing
+from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.types import (AnyTimestamp, Percent, USDollarAmount,
                                        USDollarPrice)
@@ -80,8 +82,12 @@ class BacktestPricing(PricingModel):
         ignore_routing=False,
         vault_state: pd.DataFrame | None = None,
         vault_window_overrides: dict[int, VaultWindowSchedule] | None = None,
+        portfolio: Portfolio | None = None,
     ):
         """
+
+        :param portfolio:
+            Existing portfolio used to calculate position-specific externalised vault fees.
 
         :param candle_universe:
             Candles where our backtesing date comes from
@@ -175,6 +181,7 @@ class BacktestPricing(PricingModel):
         # BacktestRoutingModel or GenericRouting
         # assert isinstance(routing_model, BacktestRoutingModel), f"Routing model must be BacktestRoutingModel got {routing_model.__class__}"
 
+        self.portfolio = portfolio
         self.candle_universe = candle_universe
         self.very_small_amount = very_small_amount
         self.routing_model = routing_model
@@ -302,11 +309,18 @@ class BacktestPricing(PricingModel):
 
         fixed_price = self.fixed_prices.get(pair)
         if fixed_price:
+            net_price = fixed_price
+            if pair.is_vault() and self.portfolio is not None and quantity:
+                position = self.portfolio.get_existing_open_position_by_trading_pair(pair)
+                if position:
+                    fees = calculate_vault_fees(position, ts, quantity, fixed_price, vault_exit_rate(pair))
+                    if fees:
+                        net_price = float(Decimal(fees["net"]) / quantity)
             return TradePricing(
-                price=float(fixed_price),
+                price=float(net_price),
                 mid_price=float(fixed_price),
-                lp_fee=[0],
-                pair_fee=[0],
+                lp_fee=[0.0],
+                pair_fee=[0.0],
                 market_feed_delay=None,
                 side=False,
                 path=[pair]
@@ -346,6 +360,15 @@ class BacktestPricing(PricingModel):
             price = mid_price
             lp_fee = None
             tax = None
+
+        if pair.is_vault() and self.portfolio is not None:
+            position = self.portfolio.get_existing_open_position_by_trading_pair(pair)
+            if position and quantity:
+                fees = calculate_vault_fees(position, ts, quantity, mid_price, vault_exit_rate(pair))
+                if fees:
+                    price = float(Decimal(fees["net"]) / quantity)
+                    # Externalised manager fees are not AMM LP fees.
+                    lp_fee = 0.0
 
         return TradePricing(
             price=float(price),
@@ -743,6 +766,7 @@ def backtest_pricing_factory(
     return BacktestPricing(
         universe.data_universe.candles,
         routing_model,
+        portfolio=execution_model.portfolio,
         pairs=universe.data_universe.pairs,
         vault_state=universe.vault_state,
         vault_window_overrides=getattr(universe, "vault_window_overrides", None),

@@ -1350,7 +1350,7 @@ class VaultTestBatchRunner:
         # Anvil option invokes eth-defi's supported settlement helper instead.
         if (
             self.auto_simulated
-            and pair.is_async_vault()
+            and has_async_vault_lifecycle(pair, attempt.executable_vault)
             and operation == "redeem"
             and not self.settle_async_on_anvil
         ):
@@ -1712,7 +1712,7 @@ class VaultTestBatchRunner:
             pair=attempt.pair,
             buy_only=should_leave_deposit_open(
                 operation=operation,
-                is_async=attempt.pair.is_async_vault(),
+                is_async=has_async_vault_lifecycle(attempt.pair, attempt.executable_vault),
                 redemption_available=redemption_available,
                 manual=self.manual_action is not None,
             ),

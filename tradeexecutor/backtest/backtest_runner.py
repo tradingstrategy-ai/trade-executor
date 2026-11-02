@@ -629,6 +629,7 @@ def run_backtest(
         return BacktestPricing(
             universe,
             routing_model,
+            portfolio=setup.state.portfolio,
             data_delay_tolerance=guess_data_delay_tolerance(universe),
             allow_missing_fees=allow_missing_fees,
             pairs=universe.data_universe.pairs,

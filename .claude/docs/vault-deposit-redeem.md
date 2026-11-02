@@ -50,6 +50,11 @@ the instant path and the queued path.
 
 ## Agent workflow for a vault integration
 
+For changes affecting simulation or allocation, first read
+[backtest universe preservation](../../docs/backtest-universe-preservation.md).
+Apply its scope and exclusion review checks before treating deployment-validation
+gaps as missing backtest support.
+
 Follow the existing route:
 
 `vault factory → protocol manager → generic routing → persisted trade/ticket → settlement resolver`
@@ -95,9 +100,13 @@ and [integration workflow](../../deps/web3-ethereum-defi/.claude/docs/vault-inte
    charts. Check every consumer before changing a flag. Use existing backtest
    estimates and `vault_settlement_delay_overrides` to model timing, and
    document defaults.
+   A synchronous deposit does not establish a synchronous round trip. Public
+   test-trade commands use `has_async_vault_lifecycle()` and manager capabilities;
+   reserve parking must also reject `has_delayed_vault_redemption()`.
    Upshift's conservative classification does not reproduce its configured lag:
    simulated sells use `vault_settlement_delay` (two days by default), even
-   at zero lag, unless a per-vault override applies. A zero override still
+   at zero lag, unless a positive `estimated_settlement` or a per-vault override
+   applies. A zero override still
    settles on a later resolver cycle.
 6. **Keep admission and token identity separate.** Supported calls and accepted
    USDC inputs do not establish permissionless admission or a USDC payout.
@@ -375,7 +384,13 @@ deliberately non-zero to make this visible; pass an explicit
 still settles no earlier than the next cycle).
 
 Otherwise a vault counts as asynchronous when its feature flags include
-`erc_7540_like`, `lagoon_like` or `ostium_like`. The flags are read via
+`erc_7540_like`, `lagoon_like` or `ostium_like`, except Accountable and Plutus
+deposits, which mint shares synchronously despite overlapping ERC-7540 flags.
+Gains (including Nova Markets' inherited epoch manager), Ember, Accountable, Atoma and Upshift have synchronous deposits and
+conservatively delayed redemption proceeds. Plutus Hedge is identified by
+`plutus_like` plus `erc_7540_like` and has delayed exits; Plutus Dolomite has
+only `plutus_like` and is synchronous in both directions. Live managers remain
+authoritative for actual execution, including zero-lag Upshift exits. The flags are read via
 `pair.get_vault_features()`, which accepts either a plain
 `other_data["vault_features"]` list or the features carried inside the pair's
 `VaultMetadata` object (`other_data["token_metadata"]`) —
@@ -388,14 +403,27 @@ their features in `VaultMetadata`.
 does not reliably express a new deposit request for Lagoon, Morpho V2 or
 Yearn. Backtests therefore keep those protocols open by default until their
 readers expose a protocol-specific admission signal; other vaults still honour
-an explicit closed marker or a zero hard cap. D2, Plutus and Lagoon deposits
+an explicit closed marker or a zero hard cap. D2 and Lagoon deposits
 use the two-stage flow in backtests. Their reported `estimated_settlement`
-metadata is the minimum delay (D2 and Plutus use a documented 14-day fallback
+metadata is the minimum delay (D2 uses a documented 14-day fallback
 when it is absent). If the historical feed contains settlement observations,
 the deposit settles only after a qualifying observation after both the request
 and that delay. If the feed has no observations at all, the backtest settles
 after the estimate plus a conservative two-day grace period and records that
-fallback on the trade.
+fallback on the trade. Plutus deposits do not require historical settlement
+observations; the 14-day Plutus fallback applies only to delayed Hedge exits.
+
+Upshift's positive `estimated_settlement` is honoured for delayed redemptions;
+without a positive estimate it retains the default delay. NB05 supplies NEMO's
+thirty-day redemption assumption through the existing pair estimate, leaving
+deposits synchronous. A two-direction delay override would also queue deposits
+and must not be used to represent only a delayed exit.
+
+YieldManager applies the active pair ignore reason and the shared, timestamped
+deposit-admission check before adding to a vault cash venue. These checks block
+only positive adjustments; existing holdings remain available for release through
+normal PositionManager withdrawal handling. Do not halt the whole strategy merely
+because its parking venue cannot currently accept deposits.
 
 The released vault-history reader does not yet load the optional
 `vault_settlement_at` marker. The executor consumes it whenever a caller
@@ -412,7 +440,7 @@ The simulation mirrors the live lifecycle:
   the input for later settlement.
 - On each later cycle the backtest's settlement resolver (the same hook the
   live runner calls) settles every ordinary async trade whose due time has
-  arrived. D2, Plutus and Lagoon deposits additionally follow the historical
+  arrived. D2 and Lagoon deposits additionally follow the historical
   settlement-evidence rule above. The earliest a trade can settle is the *next*
   cycle, even with a zero delay, because requests are created after the resolver
   step within a cycle.
@@ -743,3 +771,29 @@ as evidence of public admission. Eth-defi's numbered migrations 017 and 018
 must be applied and the normal scanner must publish corrected metadata before
 the downloaded universe reflects these fixes. A current adapter preflight
 remains necessary at execution time.
+
+## Externalised fees in backtests
+
+`backtest/vault_fees.py` calculates externalised management and performance fees
+from the position's successful trades. The normal runner binds the portfolio
+to backtest pricing, including generic routes. Net sell quotes feed valuation
+and funding; execution applies the same calculation to the actual reduction.
+Legacy pricing factories and stop-loss pricing also need that portfolio reference;
+binding only inside a decision cycle leaves freshly created valuations gross.
+Internalised fees are already in share prices and are not deducted again.
+Lighter pools and Hypercore managed vaults use the same metadata-driven path.
+Fixed entry/exit costs remain configured token taxes; metadata withdrawal fees
+are not automatically mapped to a tax. Keep them modelled explicitly or excluded.
+
+Fees are assumed to be collected on withdrawal. Vault operators may deduct
+externalised fees earlier; weekly or monthly management-fee collection is not
+currently simulated and may be modelled in future. Current snapshot rates are
+constant-rate assumptions, not evidence of historical fee schedules.
+
+Partial withdrawals remove proportional acquisition principal and principal-time
+exposure. Async requests retain their inputs in the existing trade's
+`backtest_vault_externalised_fees` data; final fees use settlement price and time.
+Open positions are valued net of estimated fees without debiting wallet cash.
+The existing resolver handles restart and duplicate-settlement protection.
+See `docs/reports/backtest-externalised-vault-fees.md` for real-data samples and
+validation, and `tests/backtest/test_externalised_vault_fees.py` for regressions.
