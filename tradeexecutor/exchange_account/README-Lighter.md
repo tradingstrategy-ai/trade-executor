@@ -1028,7 +1028,9 @@ The integration fails closed:
 - Negative, malformed or non-finite equity aborts account correction and NAV
   settlement before state is mutated.
 - A public API failure does not reuse a stale external-account value for a new
-  NAV.
+  NAV. The executor's public Lighter session retries a failing read with
+  exponential backoff for 10 minutes first, so a short outage does not stop
+  the live loop.
 - Negative equity is never accepted, even temporarily.
 
 ## Python API and module structure
@@ -1148,6 +1150,14 @@ Lighter bearer tokens are short-lived. Use `LighterAuthTokenManager` for safe,
 idempotent polling calls so it refreshes near expiry and retries one HTTP 401.
 Do not blindly retry order or withdrawal submission because a timed-out request
 may already have been accepted.
+
+### Lighter API outage stops the executor
+
+A scheduled check that cannot read Lighter for 10 minutes fails, and the live
+loop stops with `LiveSchedulingTaskFailed`. The log shows `Retrying:` warnings
+for `/api/v1/account` followed by a `RetryError` such as `too many 503 error
+responses`. Confirm the public API answers again, then restart the executor
+service; its state is saved before the loop stops.
 
 ### Negative or malformed equity
 

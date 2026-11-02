@@ -8,11 +8,10 @@ import logging
 from decimal import Decimal
 from typing import Callable
 
-from eth_defi.lighter.session import create_lighter_session
-
 from tradeexecutor.exchange_account.derive import DeriveNetwork
 from tradeexecutor.exchange_account.lighter import (
     LIGHTER_PROTOCOL,
+    create_executor_lighter_session,
     create_lighter_account_value_func,
     validate_lighter_exchange_account_pairs,
 )
@@ -191,7 +190,7 @@ def _create_lighter_protocol_value_func(
     credential arguments are accepted here.  A single session is shared by
     all Lighter positions discovered during this correction run.
     """
-    session = create_lighter_session()
+    session = create_executor_lighter_session()
     logger.info("Created public Lighter account value function")
     return create_lighter_account_value_func(session)
 
