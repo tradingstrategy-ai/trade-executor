@@ -48,8 +48,9 @@ identities. The other **326 outcomes remain unchanged**. There are **241 eligibl
 identities** and 106 exclusions. The 345 runtime identities omit two documented
 upstream pair-ID collisions; the assessment retains all 347.
 
-The checked-in [eligibility audit](nb05-eligibility-audit-2026-11-02.csv) is an
-unchanged copy of the final run's `eligibility-audit.csv`. Its `old_reason`
+The checked-in [eligibility audit](nb05-eligibility-audit-2026-11-02.parquet) stores
+the final run's `eligibility-audit.csv` as Zstandard-compressed Parquet, preserving
+all 347 rows and their values. Read it with `pandas.read_parquet()`. Its `old_reason`
 describes the previous 15.61% run and `new_reason` the corrected run;
 `live_route_exclusion` records additional live route exclusions, not a
 production owner/Guard certification. It preserves every identity and its

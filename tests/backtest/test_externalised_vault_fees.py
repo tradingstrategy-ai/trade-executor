@@ -44,7 +44,7 @@ def test_real_vault_fee_strategy(protocol: str, routing: TradeRouting) -> None:
     # 1. Verify frozen input hashes and load a constructed strategy normally.
     root = Path(__file__).parent / 'fixtures/vault_externalised_fees'
     receipt = json.loads((root / 'provenance.json').read_text())
-    for filename, key in [('metadata.json', 'metadata_sha256'), ('prices.csv', 'prices_sha256')]:
+    for filename, key in [('metadata.json', 'metadata_sha256'), ('prices.parquet', 'prices_sha256')]:
         assert hashlib.sha256((root / filename).read_bytes()).hexdigest() == receipt[key]
     universe = load_fee_sample(root, protocol)
     module = read_strategy_module(Path('strategies/test_only/vault_externalised_fees.py'))

@@ -30,7 +30,7 @@ def load_fee_sample(root: Path, protocol: str) -> TradingStrategyUniverse:
     pair_universe = PandasPairUniverse(pairs, exchange_universe=exchange_universe)
     pair = translate_trading_pair(next(pair_universe.iterate_pairs()))
     row = data['vaults'][0]
-    prices = pd.read_csv(root / 'prices.csv', parse_dates=['timestamp'])
+    prices = pd.read_parquet(root / 'prices.parquet')
     prices = prices.loc[prices.address.eq(row['address'])].set_index('timestamp').share_price.resample('1D').last().ffill()
     candles = pd.DataFrame({'timestamp': prices.index, 'open': prices.values, 'high': prices.values,
                             'low': prices.values, 'close': prices.values, 'volume': 0., 'pair_id': pair.internal_id})

@@ -24,7 +24,9 @@ proceeds. Entry costs are not added to the fee basis.
 Metadata was downloaded once through the authenticated vault data client.
 Prices are a small unchanged slice of the authenticated NB05 capture from the
 same day; their source and SHA256 are in the fixture receipt. Daily candles
-resample observed prices and forward-fill gaps. Metadata fee modes are the
+resample observed prices and forward-fill gaps. The checked-in price sample is
+Zstandard-compressed Parquet with typed timestamps and unchanged numeric values.
+Metadata fee modes are the
 published provider classifications, consistent with the pinned fee registry;
 this is simulator evidence, not an independent on-chain audit of each vault's
 operator accounting. Lighter's profitable observed window was selected to
@@ -135,7 +137,7 @@ holding requires known fee-mode metadata and otherwise refuses to guess.
 
 Metadata SHA256: `54d60b1032dc49071544dbfcf2c4cf951822e1f9127e1a5fc4bbc31428262a9d`.
 
-Prices SHA256: `00f79895928ca7eade2191c959211076c7721e59aed7031aa92dbc5292b81808`.
+Prices Parquet SHA256: `64a07883a5da9fd453cfed053c6618b48a3acdcaa0e4878ddb5fb6eb0268606a`.
 
 Executor base: `ee7b1fd325f28359a149ac5a1a54d371c6849ad2`; implementation is in
 [PR #1700](https://github.com/tradingstrategy-ai/trade-executor/pull/1700).
