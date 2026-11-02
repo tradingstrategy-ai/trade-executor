@@ -5,6 +5,7 @@ from decimal import Decimal
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.position import TradingPosition
+from tradeexecutor.strategy.vault_fee_data import get_vault_fee_internalised
 
 
 #: Key in TradeExecution.other_data for request snapshots and realised deductions.
@@ -16,8 +17,9 @@ SECONDS_IN_YEAR = Decimal("31557600")
 def externalised_rates(pair: TradingPairIdentifier) -> tuple[Decimal, Decimal] | None:
     """Resolve the rates shared by backtest quotes, valuation and withdrawals.
 
-    Prefer the attached metadata, falling back to persisted pair fields after
-    state reload. Internalised fees are already reflected in share prices.
+    Prefer the attached metadata and pinned protocol evidence for older bundles,
+    falling back to persisted pair fields after state reload. Internalised fees
+    are already reflected in share prices.
     Completely absent legacy metadata preserves the old fee-free behaviour;
     after internalised/known-zero cases are excluded, partial or invalid inputs
     must fail rather than understate externalised costs.
@@ -34,7 +36,7 @@ def externalised_rates(pair: TradingPairIdentifier) -> tuple[Decimal, Decimal] |
     if not pair.is_vault():
         return None
     metadata = pair.get_vault_metadata()
-    mode = metadata.fee_internalised if metadata else pair.other_data.get("vault_fee_internalised")
+    mode = get_vault_fee_internalised(metadata) if metadata else pair.other_data.get("vault_fee_internalised")
     management = metadata.management_fee if metadata else pair.get_management_fee()
     performance = metadata.performance_fee if metadata else pair.get_performance_fee()
     if mode is True or (management == 0 and performance == 0):

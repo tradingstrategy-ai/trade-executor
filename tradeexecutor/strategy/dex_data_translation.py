@@ -4,6 +4,7 @@ from math import isnan
 from eth_defi.erc_4626.core import GENERIC_ERC4626_PROTOCOL_SLUG
 
 from tradeexecutor.state.identifier import AssetIdentifier, AssetType, TradingPairIdentifier, TradingPairKind
+from tradeexecutor.strategy.vault_fee_data import get_vault_fee_internalised
 from tradingstrategy.chain import ChainId
 from tradingstrategy.exchange import ExchangeType
 from tradingstrategy.lending import LendingReserve
@@ -230,7 +231,7 @@ def translate_trading_pair(dex_pair: DEXPair, cache: dict | None = None) -> Trad
                 pair.other_data["vault_name"] = metadata.vault_name
                 pair.other_data["vault_performance_fee"] = metadata.performance_fee
                 pair.other_data["vault_management_fee"] = metadata.management_fee
-                pair.other_data["vault_fee_internalised"] = metadata.fee_internalised
+                pair.other_data["vault_fee_internalised"] = get_vault_fee_internalised(metadata)
                 pair.other_data["vault_lockup_days"] = metadata.lockup_days
                 pair.other_data["vault_estimated_settlement"] = getattr(metadata, "estimated_settlement", None)
                 # Deposit/redemption gating

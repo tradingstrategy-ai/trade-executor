@@ -166,6 +166,15 @@ def test_fee_arithmetic_and_refusals() -> None:
     loss = calculate_vault_fees(position, end, Decimal(500), 0)
     assert Decimal(loss['net']) == 0
     assert Decimal(loss['performance']) == 0
+    metadata = pair.get_vault_metadata()
+    # Old bundles omitted the mode: known adapter evidence can fill it, while
+    # an unidentified protocol must still refuse rather than assume zero fees.
+    pair.other_data['token_metadata'] = replace(metadata, fee_internalised=None, protocol_name='Morpho')
+    assert calculate_vault_fees(position, end, Decimal(500), 1.2) is None
+    pair.other_data['token_metadata'] = replace(metadata, fee_internalised=None, protocol_name='unidentified', features=[])
+    with pytest.raises(AssertionError, match='Unknown vault fee mode'):
+        calculate_vault_fees(position, end, Decimal(500), 1.2)
+    pair.other_data['token_metadata'] = metadata
     pair.other_data['token_metadata'] = replace(pair.get_vault_metadata(), management_fee=float('nan'))
     with pytest.raises(AssertionError, match='Invalid vault fees'):
         calculate_vault_fees(position, end, Decimal(500), 1.2)

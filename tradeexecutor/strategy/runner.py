@@ -7,7 +7,7 @@ import abc
 import datetime
 import time
 from contextlib import AbstractContextManager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import logging
 from io import StringIO
 from pprint import pformat
@@ -18,6 +18,7 @@ from typing import List, Optional, Tuple, cast, Callable
 from eth_defi.compat import native_datetime_utc_now
 from eth_defi.provider.anvil import is_anvil    , mine
 from tradeexecutor.backtest.backtest_execution import BacktestExecutionFailed
+from tradeexecutor.backtest.vault_fees import FEE_KEY
 from tradeexecutor.cli.double_position import check_double_position
 from tradeexecutor.ethereum.ethereum_protocol_adapters import EthereumPairConfigurator
 from tradeexecutor.ethereum.lagoon.vault import LagoonVaultSyncModel
@@ -353,6 +354,11 @@ class StrategyRunner(abc.ABC):
             if t.pair.is_spot() or t.pair.is_vault():
                 if t.is_buy():
                     t.post_execution_price_structure = pricing_model.get_buy_price(ts, t.pair, t.planned_reserve)
+                elif not execution_context.mode.is_live_trading() and t.other_data.get(FEE_KEY, {}).get("realised"):
+                    # These shares have left the ledger. Re-quoting their cost basis
+                    # against the remaining position is invalid; simulated execution
+                    # has no market impact, so retain its quote with the realised price.
+                    t.post_execution_price_structure = replace(t.price_structure, price=t.executed_price)
                 else:
                     t.post_execution_price_structure = pricing_model.get_sell_price(ts, t.pair, -t.planned_quantity)
             elif t.pair.is_leverage() and t.is_short():

@@ -115,6 +115,8 @@ The executor refuses the known old Hyper-AI wrapper before execution to prevent
 stacking charges. Legacy pending redemption-rate snapshots retain their prior
 behaviour. Old hand-built universes with no fee metadata preserve their previous
 behaviour; partially specified or invalid externalised inputs fail explicitly.
+Older bundles without a fee-mode field use the pinned adapter registry where
+their protocol and address establish it; translation persists the resolved mode.
 Historical Hyper-AI versions remain unchanged. The canonical `hyper-ai.py`
 symlink still selects v12 as of this check; changing the deployed version is
 outside this work. Backtesting a version with the old wrapper requires migrating
