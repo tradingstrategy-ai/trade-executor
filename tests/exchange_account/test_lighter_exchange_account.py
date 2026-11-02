@@ -21,6 +21,7 @@ from tradeexecutor.exchange_account.lighter import (
     LIGHTER_DUST_USDC,
     NegativeLighterEquityError,
     check_lighter_account_set,
+    create_executor_lighter_session,
     create_lighter_account_value_func,
     create_lighter_exchange_account_pair,
     create_lighter_vault_valuation_func,
@@ -106,6 +107,32 @@ def test_lighter_account_value_uses_public_reader(
     reader.assert_called_once_with(session, 456)
 
 
+def test_lighter_executor_session_retries_for_ten_minutes() -> None:
+    """Keep retrying an unavailable Lighter API for 10 minutes.
+
+    Lighter valuation fails closed, so a short outage must not exhaust the
+    retries of a scheduled check and stop the live executor. ``eth_defi``
+    tests the backoff schedule of the time-budgeted retry policy.
+
+    1. Create the executor's public Lighter session.
+    2. Verify the mounted policy retries 503s by time, without a count limit.
+    3. Verify authenticated POST writes are not retried.
+    """
+    # 1. Create the executor's public Lighter session.
+    session = create_executor_lighter_session()
+    retry = session.get_adapter(session.api_url).max_retries
+
+    # 2. Verify the mounted policy retries 503s by time, without a count limit.
+    assert retry.total is None
+    assert retry.max_retry_duration == 600
+    assert retry.backoff_factor == 0.5
+    assert 503 in retry.status_forcelist
+
+    # 3. Verify authenticated POST writes are not retried.
+    assert "POST" not in retry.allowed_methods
+    session.close()
+
+
 def test_lighter_runtime_auto_discovery_wires_account_and_nav_readers(
     mocker: MockerFixture,
 ) -> None:
@@ -123,7 +150,7 @@ def test_lighter_runtime_auto_discovery_wires_account_and_nav_readers(
     account_reader = mocker.Mock(name="lighter_account_reader")
     nav_reader = mocker.Mock(name="lighter_nav_reader")
     session_factory = mocker.patch(
-        "tradeexecutor.ethereum.ethereum_protocol_adapters.create_lighter_session",
+        "tradeexecutor.ethereum.ethereum_protocol_adapters.create_executor_lighter_session",
         return_value=session,
     )
     account_factory = mocker.patch(

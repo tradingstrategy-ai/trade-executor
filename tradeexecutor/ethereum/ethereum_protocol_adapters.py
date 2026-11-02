@@ -16,7 +16,7 @@ from eth_defi.one_delta.deployment import fetch_deployment as fetch_1delta_deplo
 from eth_defi.aave_v3.constants import AAVE_V3_DEPLOYMENTS
 from eth_defi.one_delta.constants import ONE_DELTA_DEPLOYMENTS
 from eth_defi.lighter.constants import LIGHTER_ETHEREUM_DEPLOYMENT_CHAIN_ID, LIGHTER_USDC_ETHEREUM
-from eth_defi.lighter.session import LighterSession, create_lighter_session
+from eth_defi.lighter.session import LighterSession
 from tradeexecutor.ethereum.routing_data import base_uniswap_v3_address_map
 from tradeexecutor.ethereum.lighter.lighter_routing import (
     LighterRouting,
@@ -24,6 +24,7 @@ from tradeexecutor.ethereum.lighter.lighter_routing import (
 )
 from tradeexecutor.ethereum.vault.vault_routing import VaultRouting
 from tradeexecutor.exchange_account.lighter import (
+    create_executor_lighter_session,
     create_lighter_account_value_func,
     create_lighter_available_balance_func,
     create_lighter_vault_valuation_func,
@@ -798,7 +799,7 @@ def create_lighter_adapter(
         Lighter routing, pricing, and valuation models.
     """
     assert routing_id.router_name == "lighter"
-    session = session or create_lighter_session()
+    session = session or create_executor_lighter_session()
     account_value_func = create_lighter_account_value_func(session)
     available_balance_func = create_lighter_available_balance_func(session)
     pricing_model = ExchangeAccountPricingModel(account_value_func, available_balance_func)
@@ -1037,7 +1038,7 @@ class EthereumPairConfigurator(PairConfigurator):
             )
 
         # Keep one unauthenticated HTTP session for both account and NAV reads.
-        self.lighter_session = create_lighter_session()
+        self.lighter_session = create_executor_lighter_session()
         self.account_value_func = create_lighter_account_value_func(self.lighter_session)
 
         self.vault_valuation_func = create_lighter_vault_valuation_func(

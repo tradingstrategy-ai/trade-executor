@@ -16,7 +16,7 @@ from eth_defi.lighter.lagoon import (
     fetch_lighter_pending_balance,
     wait_for_lighter_pending_balance,
 )
-from eth_defi.lighter.session import LighterSession, create_lighter_session
+from eth_defi.lighter.session import LighterSession
 from eth_defi.lighter.transfer import LighterTransferError
 from eth_defi.lighter.valuation import fetch_lighter_total_equity
 from eth_defi.provider.receipt import wait_for_transaction_receipt_robust
@@ -25,7 +25,7 @@ from hexbytes import HexBytes
 from web3 import Web3
 from web3.exceptions import TransactionNotFound
 
-from tradeexecutor.exchange_account.lighter import get_lighter_master_account_index, is_lighter_sub_account_pair
+from tradeexecutor.exchange_account.lighter import create_executor_lighter_session, get_lighter_master_account_index, is_lighter_sub_account_pair
 from tradeexecutor.exchange_account.lighter_operator import (
     LighterOperatorRecord,
     request_lighter_funding_transfer,
@@ -188,7 +188,7 @@ class LighterRouting(RoutingModel):
         super().__init__({}, reserve_token_address.lower())
         self.lighter_contract = Web3.to_checksum_address(lighter_contract)
         self.config = config or LighterRoutingConfig()
-        self.lighter_session = session if session is not None else create_lighter_session()
+        self.lighter_session = session if session is not None else create_executor_lighter_session()
 
     def create_routing_state(
         self,

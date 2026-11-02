@@ -78,6 +78,34 @@ LIGHTER_PUBLIC_SUB_ACCOUNT_FIELDS = (
     "change_pubkey_tx_hash",
     "label",
 )
+#: Seconds the executor's public Lighter API session retries a failing request.
+#:
+#: Lighter valuation fails closed, so a scheduled check that exhausts its
+#: retries stops the live loop. The library default of 5 retries gave up
+#: after about 18 seconds of HTTP 503 responses on 2026-11-01. The session
+#: instead retries for 10 minutes after the first failure, with urllib3's
+#: exponential backoff capped at 120 seconds per sleep: 0, 1, 2, 4, 8, 16,
+#: 32, 64, 120, 120, 120 and a final 113 seconds. urllib3 does not retry
+#: POST requests on error statuses, so this does not repeat authenticated
+#: Lighter writes.
+LIGHTER_EXECUTOR_API_RETRY_DURATION = 600.0
+#: Exponential backoff factor for :data:`LIGHTER_EXECUTOR_API_RETRY_DURATION`, in seconds.
+LIGHTER_EXECUTOR_API_BACKOFF_FACTOR = 0.5
+
+
+def create_executor_lighter_session() -> LighterSession:
+    """Create the public Lighter session used by the live executor.
+
+    Unlike the ``eth_defi`` default, which batch scanners also use, this
+    session keeps retrying a temporarily unavailable Lighter API for 10
+    minutes before an account valuation or NAV read fails.
+    See :data:`LIGHTER_EXECUTOR_API_RETRY_DURATION`.
+    """
+    return create_lighter_session(
+        retries=None,
+        backoff_factor=LIGHTER_EXECUTOR_API_BACKOFF_FACTOR,
+        max_retry_duration=LIGHTER_EXECUTOR_API_RETRY_DURATION,
+    )
 
 
 def get_public_lighter_metadata(metadata: dict[Any, Any]) -> dict[str, Any]:
@@ -164,7 +192,7 @@ def check_lighter_account_set(
     """
     tracked = set(tracked)
     declared = set(declared)
-    lighter_session = session if session is not None else create_lighter_session()
+    lighter_session = session if session is not None else create_executor_lighter_session()
     try:
         accounts = fetch_lighter_accounts(lighter_session, safe_address)
         snapshot = fetch_lighter_accounts_equity(lighter_session, safe_address) if accounts is not None else {}
@@ -539,7 +567,7 @@ def create_lighter_account_value_func(
     compatibility, but Lighter returns a current observation rather than a
     historical Ethereum-block value.
     """
-    lighter_session = session if session is not None else create_lighter_session()
+    lighter_session = session if session is not None else create_executor_lighter_session()
 
     def get_lighter_account_value(
         pair: TradingPairIdentifier,
@@ -577,7 +605,7 @@ def create_lighter_available_balance_func(
     :return:
         Callable accepting an exchange-account pair and returning free USDC.
     """
-    lighter_session = session if session is not None else create_lighter_session()
+    lighter_session = session if session is not None else create_executor_lighter_session()
 
     def get_lighter_available_balance(
         pair: TradingPairIdentifier,
@@ -637,7 +665,7 @@ def create_lighter_vault_valuation_func(
     indices = tuple(int(index) for index in account_indices)
     if not indices or len(set(indices)) != len(indices):
         raise ValueError("Lighter vault valuation needs unique account indices")
-    lighter_session = session if session is not None else create_lighter_session()
+    lighter_session = session if session is not None else create_executor_lighter_session()
     account_value_func = create_lighter_account_value_func(lighter_session)
     reserve_token = fetch_erc20_details(
         web3,
