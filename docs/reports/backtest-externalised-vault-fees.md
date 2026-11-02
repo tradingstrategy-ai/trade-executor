@@ -14,6 +14,11 @@ basis and constant current rates are explicit scenario assumptions. Protocol
 high-water marks, historic rate changes and periodic crystallisation are not
 reproduced. Internalised fees remain in observed prices and are not charged again.
 
+For a reduction with allocated principal `C` and gross proceeds `G`, management
+`M` accrues on principal over time, performance is `rate × max(G − C − M, 0)`,
+and the fixed withdrawal charge applies once to the remaining non-negative
+proceeds. Entry costs are not added to the fee basis.
+
 ## Real-data samples
 
 Metadata was downloaded once through the authenticated vault data client.
@@ -56,6 +61,10 @@ in that row is not applicable (shown as zero), rather than missing cost basis.
 The fixture and per-withdrawal JSON retain exact values and execution dates.
 
 ## Validation
+
+The broader focused checks passed 186 cases covering fees, asynchronous vaults,
+CCTP funding, metadata, timing, CLI action selection and phase-aware allocation.
+These local results are not CI, funded or deployment certification evidence.
 
 - Seven fee tests pass: four real-data strategy scenarios through the normal
   module loader and default generic router, plus Lagoon through a freshly
@@ -100,10 +109,9 @@ The canonical `hyper-ai-v13.py` no longer wraps pricing, mutates dynamic
 performance-fee taxes, or maintains its own cost-basis replay. Its explicit
 capital-friction allowance remains separate. NB05 now admits otherwise eligible
 externalised-fee vaults. The subsequent
-[NB05 rerun](nb05-externalised-fees-backtest-2026-11-02.md) records the full
-financial result and fees paid per vault. The later
-[eligibility-corrected run](nb05-eligibility-corrected-backtest-2026-11-02.md)
-supersedes that result after restoring supported routes and correcting admission.
+[eligibility-corrected NB05 run](nb05-eligibility-corrected-backtest-2026-11-02.md)
+records the financial result and fees paid per vault after restoring supported
+routes and correcting admission.
 The executor refuses the known old Hyper-AI wrapper before execution to prevent
 stacking charges. Legacy pending redemption-rate snapshots retain their prior
 behaviour. Old hand-built universes with no fee metadata preserve their previous
@@ -129,49 +137,9 @@ Metadata SHA256: `54d60b1032dc49071544dbfcf2c4cf951822e1f9127e1a5fc4bbc31428262a
 
 Prices SHA256: `00f79895928ca7eade2191c959211076c7721e59aed7031aa92dbc5292b81808`.
 
-Executor base: `ee7b1fd325f28359a149ac5a1a54d371c6849ad2`; implementation is the accompanying working-tree diff.
+Executor base: `ee7b1fd325f28359a149ac5a1a54d371c6849ad2`; implementation is in
+[PR #1700](https://github.com/tradingstrategy-ai/trade-executor/pull/1700).
 
 web3-ethereum-defi: `27c16e26dd9325427bb35af8e1c5e2efcb63db60`.
 
 trading-strategy: `f80f684758413d27b5350a57718d3ca594a91574`.
-
-## PR cleanup review
-
-Completed on 2 November 2026 using the repository's
-[clean-up-for-pr skill](../../.claude/skills/clean-up-for-pr/SKILL.md).
-Claude CLI with the exact `claude-opus-5-5` model completed an independent
-review and a focused follow-up. The follow-up found no blocking or material
-correctness issues in the fixes. Both runs produced successful terminal results;
-the reviewer inspected source and existing evidence without running tests or
-editing files. Its follow-up Bash commands were denied, so that pass used
-Read/Grep on the exact file paths; the initial review verified the worktree.
-
-The review led to these corrections:
-
-- Public vault test trades use manager capabilities for the whole lifecycle,
-  so synchronous deposits into Accountable or Plutus Hedge do not trigger an
-  automatic real redemption. Simulation retains its queued-redemption refusal.
-- Reserve parking rejects delayed exits as well as queued deposits.
-- Legacy pricing factories and stop-loss pricing receive the portfolio needed
-  for net fee valuation. The real-data test checks saved pre-exit NAV and a
-  freshly created legacy pricing model on each cycle.
-- Fixed withdrawal costs consistently use explicit token taxes. The unused
-  metadata fallback and extra scalar field were removed.
-- Stale NB05 results and fee claims were corrected, historical reports were
-  labelled, and the changelog and agent guidance were updated. UK English,
-  sentence-case headings, links and test conventions were reviewed.
-
-Final focused checks: **186 passed**, with `git diff --check` clean in the
-executor and canonical strategies repositories.
-
-| Checks | Passed | Local log |
-| --- | ---: | --- |
-| Externalised fees, async vaults, CCTP funding, metadata, directional timing and Upshift units | 70 | `/tmp/nb05-cleanup-final-fee-regressions.log` |
-| Vault test-trade command helpers and action selection | 80 | `/tmp/nb05-cleanup-cli-regressions.log` |
-| Phase-aware parking and allocation | 27 | `/tmp/nb05-cleanup-parking-tests.log` |
-| Check-universe, synchronous cash cap and canonical NB05 module | 9 | `/tmp/nb05-cleanup-final-strategy-tests.log` |
-
-These checks do not add funded or fork evidence. This cleanup preceded the
-eligibility-corrected financial run; each run retains its original source snapshot.
-The later report records the Fluid/NEMO corrections. The fee-override and old-state
-limitations described above remain applicable.

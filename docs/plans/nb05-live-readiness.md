@@ -12,8 +12,12 @@ Baseline: executor master `ee7b1fd32`, with eth-defi `27c16e26d`, checked on
 [12-step PR comment](https://github.com/tradingstrategy-ai/trade-executor/pull/1693#issuecomment-6499577978).
 The older plan remains historical technical research. External PR publication is separate.
 
-Implementation results and remaining readiness blockers are recorded in the
-[2 November evidence report](../reports/nb05-live-readiness-2026-11-02.md).
+Implementation and the corrected financial result are recorded in the
+[2 November backtest report](../reports/nb05-eligibility-corrected-backtest-2026-11-02.md).
+The timing fixes and local strategy conversion are implemented; deployment
+validation, current admission and funded rehearsal remain outstanding. The
+table and delivery steps below record the approved baseline scope. The linked
+report records current results and remaining operational checks.
 
 The launch-selection criteria below must not silently become historical backtest
 exclusions. For strategy conversion and financial comparisons, apply
@@ -22,7 +26,7 @@ required review checks.
 
 ## Corrected status and scope
 
-| Area | Corrected status | Remaining requirement |
+| Area | Status at baseline `ee7b1fd32` | Requirement at baseline |
 | --- | --- | --- |
 | Atoma execution | Delivered by #1696/#1697 | Validate production accounts/deployments and complete funded rehearsal. |
 | Upshift execution | Delivered within denomination-matching scope by #1698 | Publish corrected metadata, configure strategy timing and complete funded rehearsal. |

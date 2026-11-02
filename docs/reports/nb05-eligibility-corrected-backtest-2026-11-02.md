@@ -3,8 +3,8 @@
 Completed on 2 November 2026. All 347 original identities were assessed against
 the existing mechanisms and the [universe preservation rules](../backtest-universe-preservation.md).
 The demonstrated D2, unknown-permission, directional timing and parking-admission
-mistakes are corrected. This report supersedes the financial comparison in the
-[15.61% run](nb05-externalised-fees-backtest-2026-11-02.md).
+mistakes are corrected. This is the current financial report; intermediate
+reports are retained in Git history rather than duplicated here.
 
 ## Results
 
@@ -47,6 +47,13 @@ Exactly **21 primary outcomes changed**: HYPE++ plus the twenty unknown-permissi
 identities. The other **326 outcomes remain unchanged**. There are **241 eligible
 identities** and 106 exclusions. The 345 runtime identities omit two documented
 upstream pair-ID collisions; the assessment retains all 347.
+
+The checked-in [eligibility audit](nb05-eligibility-audit-2026-11-02.csv) is an
+unchanged copy of the final run's `eligibility-audit.csv`. Its `old_reason`
+describes the previous 15.61% run and `new_reason` the corrected run;
+`live_route_exclusion` records additional live route exclusions, not a
+production owner/Guard certification. It preserves every identity and its
+before/after reason without repeating earlier inventories.
 
 Remaining primary exclusions are 79 producer blacklists, ten incomplete fee
 records, seven whitelist restrictions, four missing Lighter pool routes, two
@@ -108,15 +115,9 @@ including zero-fee rows. Internalised fees remain in observed share prices.
   windows, async lifecycle, phase-aware backtests, CCTP cash awareness, external
   fees, YieldManager admission/releases and directional classification. The
   command includes `tests/backtest/test_phase_aware_backtest.py` and
-  `tests/units_tests/test_yield.py`; the raw output is
-  `/tmp/nb05-eligibility-complete-tests.log`.
-  After cleanup, all five canonical NB05 and YieldManager admission tests pass
-  again (`/tmp/nb05-final-cleanup-focused-tests.log`). This covers the removed
-  redundant redemption lookup in the deposit guard and explicit exit retention
-  for an ignored parking venue. Saved financial state is unchanged.
-- Claude CLI `claude-opus-5-5` completed an independent review and a focused
-  follow-up. The first review identified the parking assertion's exit problem;
-  the final follow-up found no blocking or material issue in the fixes.
+  `tests/units_tests/test_yield.py`. Five canonical NB05 and YieldManager tests
+  also pass after final cleanup, covering deposit timing and exits from an
+  ignored parking venue.
 - Both financial attempts are preserved. The second adds the shared parking
   gate and produces identical daily equity to the first across all 568 dates.
   They complete within the **same original 900-second budget**, using four CPUs;
@@ -142,9 +143,40 @@ No production hosting, funded transactions or deployment validation was performe
 Current metadata policies and fee rates are scenario inputs, not a historical
 permission or fee archive. Sparse NAV and forward-fill limitations remain.
 
+## Production-readiness boundary
+
+Earlier guarded fork checks passed for Atoma (five cases), Upshift (five cases)
+and the generic public CLI matrix including Fluid (one case). They exercised
+existing focused strategies and impersonated operators, not funded NB05
+production operation.
+The public test-trade command now selects lifecycle handling from manager
+capabilities; `check-universe` uses the strategy's primary chain.
+Reserve parking refuses venues with delayed exits as well as queued deposits.
+
+The actual NB05 notebook was converted to `strategy/master-vault-nb05.py` in
+the canonical `tradingstrategy-ai/strategies` repository. That module and its
+tests are separate from this executor PR. Delivered classification fixes keep
+Gains/Ember exits delayed, Accountable/Plutus deposits synchronous, Plutus Hedge
+exits delayed and Plutus Dolomite synchronous in both directions.
+
+On 2 November at 09:45 UTC, live freshness checks refused Hyperithm and Yearn
+CompoundV3 histories whose latest real prices were 27 October. That dated
+observation must be refreshed before launch. Validate current data, selected
+custody owners, funding, proxy versions and Guards. The production migration
+journal, outstanding Upshift migrations 018/019, metadata publication and
+funded rehearsal were not checked or performed. Follow the
+[readiness plan](../plans/nb05-live-readiness.md) for remaining work.
+
 ## Evidence
 
 Bundle: `/home/mikko/code/vault-notebooks/data/xchain3/nb05-eligibility-corrected-20261102/attempt-02/`.
+
+The checked-in audit is the portable identity/reason summary. The full local
+bundle contains the authenticated inputs, state, source snapshots and charts;
+these large artefacts are not included in this PR. Executor baseline is
+`ee7b1fd325f28359a149ac5a1a54d371c6849ad2` plus the saved engine patch,
+eth-defi is `27c16e26dd9325427bb35af8e1c5e2efcb63db60` and trading-strategy is
+`f80f684758413d27b5350a57718d3ca594a91574`.
 
 - `eligibility-audit.csv`, `eligibility-corrections.json`: all 347 outcomes and live/historical distinction.
 - `original-versus-corrected.csv`, `restored-vault-trades.json`, `eligible-untraded-originals.json`: profit and selection evidence.
@@ -154,3 +186,10 @@ Bundle: `/home/mikko/code/vault-notebooks/data/xchain3/nb05-eligibility-correcte
 - `backtest-state.json`, `equity.csv`, `result.pickle`, `verification.json`: financial state and independent checks.
 - `daily-qualification.csv`, `daily-window-evidence.csv`, `daily-asset-values.csv`, `charts/`, `review-receipt.json`: membership, historical rules, accounting and visual review.
 - `retry-comparison.json` and parent `run-budget.json`: repeat comparison and original deadline receipt.
+
+The [earlier assessment and intermediate reports](https://github.com/tradingstrategy-ai/trade-executor/tree/6110b48061b95e688c47719ce89a5beacb2fab53/docs/reports)
+remain available at their original revision, including all 347 historical
+capability observations and the nine-vault/188-route inventories from
+[PR #1700](https://github.com/tradingstrategy-ai/trade-executor/pull/1700). Their dated
+findings are not current admission evidence. Prior restricted and frozen-input
+controls returned 7.23% and 18.04%; neither is a matched fee-only comparison.

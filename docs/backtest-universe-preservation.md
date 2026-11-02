@@ -27,8 +27,9 @@ coverage while assessing production readiness:
 
 The resulting 15.61% return described the changed universe, not a complete
 comparison of the original strategy's supported routes. See the dated
-[exclusion audit](reports/nb05-exclusion-audit-2026-11-02.md) for identities,
-counts and evidence. This lesson does not establish that every excluded vault
+[corrected backtest report](reports/nb05-eligibility-corrected-backtest-2026-11-02.md)
+and its complete eligibility audit for identities, counts and evidence.
+This lesson does not establish that every excluded vault
 is admissible or ready for production.
 
 ## Rules for implementation
