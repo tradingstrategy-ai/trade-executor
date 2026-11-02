@@ -171,6 +171,8 @@ def test_fee_arithmetic_and_refusals() -> None:
     # an unidentified protocol must still refuse rather than assume zero fees.
     pair.other_data['token_metadata'] = replace(metadata, fee_internalised=None, protocol_name='Morpho')
     assert calculate_vault_fees(position, end, Decimal(500), 1.2) is None
+    pair.other_data['token_metadata'] = replace(metadata, fee_internalised=None, protocol_name='IPOR', features=['ipor_like'])
+    assert calculate_vault_fees(position, end, Decimal(500), 1.2) is None
     pair.other_data['token_metadata'] = replace(metadata, fee_internalised=None, protocol_name='unidentified', features=[])
     with pytest.raises(AssertionError, match='Unknown vault fee mode'):
         calculate_vault_fees(position, end, Decimal(500), 1.2)

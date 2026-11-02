@@ -22,7 +22,7 @@ from pandas.io.formats.style import Styler
 from tradingstrategy.chain import ChainId
 from tradingstrategy.vault import VaultMetadata, get_vault_page
 
-from tradeexecutor.state.identifier import IGNORE_REASON_LACKS_FEE_DATA, TradingPairIdentifier
+from tradeexecutor.state.identifier import IGNORE_REASON_LACKS_FEE_DATA, TradingPairIdentifier, _normalise_erc_4626_features
 
 if TYPE_CHECKING:
     from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
@@ -63,7 +63,7 @@ def get_vault_fee_internalised(metadata: VaultMetadata) -> bool | None:
     if protocol not in VAULT_PROTOCOL_FEE_MATRIX and metadata.features:
         # Historical labels such as "IPOR" predate the canonical "IPOR Fusion".
         # Keep explicit unknown classifications in the registry authoritative.
-        protocol = get_vault_protocol_name(set(metadata.features))
+        protocol = get_vault_protocol_name(_normalise_erc_4626_features(metadata.features))
     mode = get_vault_fee_mode(protocol, metadata.address)
     return mode.is_internalised() if mode is not None else None
 
