@@ -465,11 +465,7 @@ class BacktestExecution(ExecutionModel):
             return False
         if pair.pool_address and pair.pool_address.lower() in self.vault_settlement_delay_overrides:
             return True
-        features = pair.get_vault_features() or set()
-        requires_historical_deposit_settlement = bool(features & {
-            ERC4626Feature.lagoon_like,
-            ERC4626Feature.d2_like,
-        })
+        requires_historical_deposit_settlement = self._requires_historical_deposit_settlement(pair)
         if is_buy is True:
             return pair.is_async_vault() or requires_historical_deposit_settlement
         if is_buy is False:
@@ -491,6 +487,34 @@ class BacktestExecution(ExecutionModel):
             ERC4626Feature.lagoon_like,
             ERC4626Feature.d2_like,
         })
+
+    @staticmethod
+    def _uses_protocol_settlement_estimate(features: set[ERC4626Feature]) -> bool:
+        """Whether a queued backtest request can use the vault's reported delay.
+
+        Used by :py:meth:`_get_settlement_due` after checking explicit per-vault
+        overrides. Lagoon and Upshift use deployment-specific estimates; the
+        families in :py:data:`VAULT_SETTLEMENT_DELAY_FALLBACKS` also prefer a
+        positive estimate over their conservative protocol default. Other
+        families retain the Ostium schedule or global simulation delay even
+        when their metadata contains an estimate.
+
+        This only selects a timing policy for an already delayed request.
+        Callers must use :py:meth:`_is_async_vault` for the trade direction
+        first, so an exit estimate cannot introduce a queue on a synchronous
+        deposit. Live execution follows the protocol manager's capabilities.
+
+        :param features:
+            Protocol features of the vault being simulated; empty if unknown.
+        :return:
+            Whether to consult the estimate. Missing or non-positive estimates
+            still require the caller's protocol or global fallback.
+        """
+        estimate_features = {
+            ERC4626Feature.lagoon_like,
+            ERC4626Feature.upshift_like,
+        } | VAULT_SETTLEMENT_DELAY_FALLBACKS.keys()
+        return bool(features & estimate_features)
 
     def _get_settlement_due(self, pair, ts: datetime.datetime) -> datetime.datetime:
         """When does an async vault request made at ``ts`` become claimable?
@@ -514,8 +538,7 @@ class BacktestExecution(ExecutionModel):
                 return ts + override
 
         features = pair.get_vault_features() or set()
-        uses_protocol_settlement_estimate = bool(features & ({ERC4626Feature.lagoon_like, ERC4626Feature.upshift_like} | VAULT_SETTLEMENT_DELAY_FALLBACKS.keys()))
-        if uses_protocol_settlement_estimate:
+        if self._uses_protocol_settlement_estimate(features):
             estimated_settlement = pair.get_vault_estimated_settlement()
             if estimated_settlement is not None:
                 return ts + estimated_settlement
