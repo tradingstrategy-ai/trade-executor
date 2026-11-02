@@ -386,6 +386,6 @@ def test_queue_vault_pair_ids_rejects_async_venue():
         with pytest.raises(AssertionError, match="must be synchronous"):
             queue_vault_pair_ids(async_ruleset)
 
-    # 2. Sync venue -> accepted.
+    # 2. A synchronous venue passes.
     sync_ruleset = _StubRuleset(weights=[_StubRule(pair=_StubPair(internal_id=101))])
     assert queue_vault_pair_ids(sync_ruleset) == {101}

@@ -125,7 +125,7 @@ def test_fee_arithmetic_and_refusals() -> None:
     2. Verify a half withdrawal and later settlement against hand-calculated amounts.
     3. Check losses, invalid metadata and the legacy-wrapper guard.
     """
-    # 1. Minimal ledger doubles isolate arithmetic; the preceding test covers real execution.
+    # 1. Use minimal ledger doubles to isolate arithmetic from execution machinery.
     root = Path(__file__).parent / 'fixtures/vault_externalised_fees'
     pair = next(load_fee_sample(root, 'lagoon').iterate_pairs())
     pair.other_data['token_metadata'] = replace(pair.get_vault_metadata(), management_fee=.02, performance_fee=.20)

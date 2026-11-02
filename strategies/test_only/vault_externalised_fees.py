@@ -5,6 +5,12 @@ from tradeexecutor.testing.vault_fee_sample import load_fee_sample
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
+from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.strategy.execution_context import ExecutionContext
+from tradeexecutor.strategy.parameters import StrategyParameters
+from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet
+from tradeexecutor.strategy.pandas_trader.trading_universe_input import CreateTradingUniverseInput
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 
 trading_strategy_engine_version = "0.5"
 
@@ -19,12 +25,28 @@ class Parameters:
     backtest_end = None
 
 
-def create_indicators(parameters, indicators, strategy_universe, execution_context):
-    """No indicators are needed for the constructed schedule."""
+def create_indicators(parameters: StrategyParameters, indicators: IndicatorSet,
+                      strategy_universe: TradingStrategyUniverse, execution_context: ExecutionContext) -> None:
+    """Register no indicators because this test uses a fixed trading schedule.
+
+    All arguments are unused but retained for the engine's indicator callback
+    interface, allowing the fixture strategy to load through the normal runner.
+    """
 
 
-def decide_trades(input: StrategyInput):
-    """Exercise additions and partial/full reductions without strategy fee handling."""
+def decide_trades(input: StrategyInput) -> list[TradeExecution]:
+    """Exercise acquisition basis and partial/full fee deductions through normal trades.
+
+    Deposit on cycle 1, top up on 10, halve the position on 20 and exit on 30.
+    Skip actions while settlement is pending so each reduction owns a distinct
+    request. These deliberately fixed amounts and cycle numbers are test support, not
+    optimisable strategy parameters or a production allocation policy.
+
+    :param input:
+        Current cycle, state and single-vault fixture universe supplied by the engine.
+    :return:
+        Ordinary position-manager trades; fees are calculated by the backtester.
+    """
     manager = input.get_position_manager()
     pair = next(input.strategy_universe.iterate_pairs())
     if input.cycle == 1:
@@ -41,6 +63,14 @@ def decide_trades(input: StrategyInput):
     return []
 
 
-def create_trading_universe(input):
-    """Load the bundled Lagoon example; tests supply other real sample universes."""
+def create_trading_universe(input: CreateTradingUniverseInput) -> TradingStrategyUniverse:
+    """Load the bundled Lagoon example for standalone module execution.
+
+    Tests supply other sample universes directly. ``input`` is unused because
+    this offline fixture has fixed data instead of client/timestamp-dependent
+    acquisition; it remains part of the normal universe callback contract.
+
+    :return:
+        Single-vault universe built from captured Lagoon metadata and prices.
+    """
     return load_fee_sample(Path(__file__).resolve().parents[2] / 'tests/backtest/fixtures/vault_externalised_fees', 'lagoon')

@@ -1524,7 +1524,8 @@ def test_async_vault_redeem_does_not_fund_same_cycle_satellite_buy(
         satellite_vault_pair.other_data["vault_features"] = {feature}
         execution = BacktestExecution(wallet=wallet)
 
-    # 1. Bridge 10_000 USDC to Base, request an 8_000 async vault deposit and settle it.
+    # 1. Bridge 10_000 USDC to Base and deposit 8_000 into a vault. Protocol
+    #    deposits settle immediately; the override-only case settles later.
     _establish_idle_satellite_capital(state, execution, wallet, cctp_pair, usdc_arbitrum, Decimal(10_000))
     vault_buy = _create_satellite_buy(state, satellite_vault_pair, usdc_arbitrum, Decimal(8_000))
     routing_model, routing_state = _routing(wallet, usdc_arbitrum)
@@ -1575,13 +1576,15 @@ def test_async_vault_redeem_does_not_fund_same_cycle_satellite_buy(
         reserve_asset=usdc_arbitrum,
     )
 
-    # 4. Assert the planner ignores the async redeem proceeds.
+    # 4. Assert the planner ignores the async redeem proceeds and bridges only the
+    #    4_000 shortfall above the 2_000 idle Base bridge capital.
     bridge_trades = [t for t in result if t.pair.is_cctp_bridge()]
     assert len(bridge_trades) == 1
     assert bridge_trades[0].is_buy()
     assert bridge_trades[0].planned_reserve == Decimal(4_000)
 
-    # 5. Execute the cycle and assert request-time redeem accounting.
+    # 5. Execute the cycle and assert the redeem request debited wallet shares
+    #    immediately while no Base USDC proceeds appeared yet.
     execution.execute_trades(
         ts=cycle_ts,
         state=state,

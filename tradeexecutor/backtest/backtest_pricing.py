@@ -87,7 +87,10 @@ class BacktestPricing(PricingModel):
         """
 
         :param portfolio:
-            Existing portfolio used to calculate position-specific externalised vault fees.
+            Authoritative portfolio supplying acquisition basis and holding periods
+            for externalised vault fees. The runner binds this before valuation
+            and trading. Without it, standalone pricing cannot deduct these
+            position-specific costs and returns ordinary market/tax quotes.
 
         :param candle_universe:
             Candles where our backtesing date comes from
@@ -296,8 +299,30 @@ class BacktestPricing(PricingModel):
         self,
         ts: datetime.datetime,
         pair: TradingPairIdentifier,
-        quantity: Optional[Decimal]
+        quantity: Decimal | None
     ) -> TradePricing:
+        """Quote a sale for trade sizing, funding checks or position valuation.
+
+        For an externalised-fee vault with an open position in the bound
+        portfolio, the executable price includes management/performance fees
+        and the configured exit charge. The gross share price remains available
+        as ``mid_price`` so execution can recalculate fees on actual amounts.
+        Manager fees are not reported as AMM liquidity-provider fees.
+
+        Without a bound portfolio or position, this returns the ordinary market
+        and tax quote; it cannot infer acquisition basis or elapsed holding time.
+
+        :param ts:
+            Naive UTC pricing time, also used for management-fee accrual.
+        :param pair:
+            Pair to sell; a vault's base asset is its share token.
+        :param quantity:
+            Positive base-token/share amount. ``None`` is a price-only probe
+            without position-specific externalised fee deductions.
+        :return:
+            Executable ``price`` and gross ``mid_price`` in quote-token units
+            per base token/share, together with route and market-feed diagnostics.
+        """
 
         assert pair is not None, "Pair missing"
 

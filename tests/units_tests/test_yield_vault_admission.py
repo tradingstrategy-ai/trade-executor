@@ -17,6 +17,7 @@ class _CapturedClosurePricing:
     assessment: VaultClosure
 
     def get_vault_closure(self, *args, **kwargs) -> VaultClosure:
+        """Return the fixture assessment; query arguments are intentionally ignored."""
         return self.assessment
 
 

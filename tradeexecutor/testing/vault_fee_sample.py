@@ -1,6 +1,8 @@
 """Build an offline vault backtest from unmodified metadata and observed prices."""
 
+import datetime
 import json
+from decimal import Decimal
 from pathlib import Path
 
 import pandas as pd
@@ -12,13 +14,30 @@ from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 
 from tradeexecutor.cli.loop import ExecutionTestHook
+from tradeexecutor.backtest.backtest_sync import BacktestSyncModel
+from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeStatus
 from tradeexecutor.strategy.dex_data_translation import translate_trading_pair
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 
 
 def load_fee_sample(root: Path, protocol: str) -> TradingStrategyUniverse:
-    """Load a real vault's identity, rates and prices via the normal translation path."""
+    """Build an offline, single-vault universe for fee integration tests.
+
+    Use normal metadata translation so fee detection exercises the same path as
+    downloaded data. Observed share prices become daily OHLC candles using the
+    last observation and forward-filling gaps; this is a test sampling assumption.
+
+    :param root:
+        Fixture directory containing ``metadata.json`` and Zstandard-compressed
+        ``prices.parquet``. Prices need naive UTC ``timestamp``, ``address`` and
+        denomination-token ``share_price`` columns.
+    :param protocol:
+        Protocol-slug substring selecting exactly one vault in this fixture.
+    :return:
+        Daily single-vault universe whose reserve asset is its denomination
+        token. No network request or synthetic fee adjustment is made.
+    """
     data = json.loads((root / "metadata.json").read_text())
     data['vaults'] = [r for r in data['vaults'] if protocol in r['protocol_slug']]
     vaults = load_vault_database_with_metadata(data)
@@ -43,11 +62,25 @@ def load_fee_sample(root: Path, protocol: str) -> TradingStrategyUniverse:
 class PendingFeeSnapshot(ExecutionTestHook):
     """Capture an unresolved withdrawal and its wallet for an isolated restart check."""
 
-    def __init__(self):
-        self.state_json = None
-        self.balances = None
+    def __init__(self) -> None:
+        """Start without a capture; later cycles must not overwrite the first one."""
+        self.state_json: str | None = None
+        self.balances: dict[str, Decimal] | None = None
 
-    def on_before_cycle(self, cycle, cycle_st, state, sync_model):
+    def on_before_cycle(self, cycle: int, cycle_st: datetime.datetime,
+                        state: State, sync_model: BacktestSyncModel) -> None:
+        """Capture normal serialised state and balances while an exit is pending.
+
+        The restart test restores these into fresh objects to check that request
+        fee inputs survive and a repeated resolver call cannot credit cash twice.
+        ``cycle`` and ``cycle_st`` are unused hook-interface arguments: capture
+        follows trade status rather than a hard-coded schedule.
+
+        :param state:
+            Current backtest state, serialised once at the first pending sell.
+        :param sync_model:
+            Backtest treasury model whose simulated wallet balances are copied.
+        """
         if self.state_json is None and any(t.is_sell() and t.get_status() == TradeStatus.vault_settlement_pending
                                            for t in state.portfolio.get_all_trades()):
             self.state_json = state.to_json()

@@ -50,9 +50,12 @@ def test_vault_directional_timing() -> None:
         assert overridden._is_async_vault(pair, is_buy=False)
 
     # 4. Check Upshift estimates affect delayed exits without delaying deposits.
+    pair = TradingPairIdentifier(base, quote, base.address, base.address, fee=0,
+        kind=TradingPairKind.vault, other_data={"vault_features": {ERC4626Feature.upshift_like}})
     pair.other_data["vault_estimated_settlement"] = datetime.timedelta(days=7)
     timestamp = datetime.datetime(2026, 1, 1)
     assert not execution._is_async_vault(pair, is_buy=True)
     assert execution._get_settlement_due(pair, timestamp) == timestamp + datetime.timedelta(days=7)
     pair.other_data["vault_estimated_settlement"] = 0
+    # Zero metadata falls back to the global two-day delay; only an explicit override permits zero.
     assert execution._get_settlement_due(pair, timestamp) == timestamp + datetime.timedelta(days=2)

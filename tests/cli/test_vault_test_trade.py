@@ -606,6 +606,7 @@ def test_mixed_vault_cli_actions_use_manager_capabilities(feature: ERC4626Featur
     assert not pair.is_async_vault()
     capability = VaultDepositManagerCapability(can_deposit=True, can_redeem=True,
         deposit_flow="synchronous", redemption_flow="asynchronous")
+    # Read capability lazily so later assignments switch the flow under test.
     vault = SimpleNamespace(get_deposit_manager_capability=lambda: capability)
     attempt = MagicMock(pair=pair, executable_vault=vault, open_trade_position=None)
     runner = object.__new__(VaultTestBatchRunner)

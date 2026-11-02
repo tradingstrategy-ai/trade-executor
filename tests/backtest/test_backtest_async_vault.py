@@ -944,13 +944,18 @@ def test_backtest_async_vault_settlement_due_defaults() -> None:
     ERC4626Feature.lagoon_like,
     ERC4626Feature.d2_like,
 ])
-def test_backtest_protocol_deposit_requires_historical_settlement_event(feature):
+def test_backtest_protocol_deposit_requires_historical_settlement_event(feature: ERC4626Feature) -> None:
     """D2 and Lagoon deposits need both delay and event evidence.
 
     The request on 1 January has passed its two-day delay before the historical
     event on 4 January. It must remain in the queue until that event is visible;
     an old event from before the request must not release it.
+
+    1. Build a queued vault with an old event and a later qualifying event.
+    2. Run one deposit with a minimum delay shorter than the event wait.
+    3. Verify execution waits for the qualifying historical event.
     """
+    # 1. Build a queued vault with an old event and a later qualifying event.
     strategy_universe, pairs = _make_multi_vault_universe([
         ("VQUEUE", "0x" + "f1" * 20, {feature}),
     ])
@@ -977,11 +982,13 @@ def test_backtest_protocol_deposit_requires_historical_settlement_event(feature)
             return input.get_position_manager().open_spot(pair, value=INITIAL_DEPOSIT * 0.5)
         return []
 
+    # 2. Run one deposit with a minimum delay shorter than the event wait.
     state, _, _ = _run(
         strategy_universe,
         decide=deposit_once,
         delay_overrides={pair.pool_address: datetime.timedelta(days=2)},
     )
+    # 3. Verify execution waits for the qualifying historical event.
     trade = next(iter(state.portfolio.get_all_trades()))
     assert trade.is_success()
     assert trade.executed_at >= actual_event
@@ -993,13 +1000,18 @@ def test_backtest_protocol_deposit_requires_historical_settlement_event(feature)
     ERC4626Feature.lagoon_like,
     ERC4626Feature.d2_like,
 ])
-def test_backtest_protocol_deposit_without_observations_uses_grace_period(feature):
+def test_backtest_protocol_deposit_without_observations_uses_grace_period(feature: ERC4626Feature) -> None:
     """No observed settlement history falls back to estimate plus two days.
 
     A vault with *some* historical observations remains evidence-gated. This
     fallback only covers the absence of any settlement observations, which
     otherwise leaves a diagnostic-only protocol permanently pending.
+
+    1. Build a queued vault without settlement observations.
+    2. Run one deposit with an explicit minimum delay.
+    3. Check settlement and diagnostics record the additional no-history grace period.
     """
+    # 1. Build a queued vault without settlement observations.
     strategy_universe, pairs = _make_multi_vault_universe([
         ("VQUEUE", "0x" + "f2" * 20, {feature}),
     ])
@@ -1010,11 +1022,13 @@ def test_backtest_protocol_deposit_without_observations_uses_grace_period(featur
             return input.get_position_manager().open_spot(pair, value=INITIAL_DEPOSIT * 0.5)
         return []
 
+    # 2. Run one deposit with an explicit minimum delay.
     state, _, _ = _run(
         strategy_universe,
         decide=deposit_once,
         delay_overrides={pair.pool_address: SETTLEMENT_DELAY},
     )
+    # 3. Check settlement and diagnostics record the additional no-history grace period.
     trade = next(iter(state.portfolio.get_all_trades()))
     expected_settlement = START_AT + SETTLEMENT_DELAY + NO_HISTORICAL_SETTLEMENT_OBSERVATION_GRACE_PERIOD
 
@@ -1523,7 +1537,7 @@ def test_position_has_pending_vault_settlement_shapes():
     {ERC4626Feature.accountable_like, ERC4626Feature.erc_7540_like},
     {ERC4626Feature.plutus_like, ERC4626Feature.erc_7540_like},
 ])
-def test_backtest_async_vault_sell_proceeds_cannot_fund_buys(features: set[ERC4626Feature] | None):
+def test_backtest_async_vault_sell_proceeds_cannot_fund_buys(features: set[ERC4626Feature] | None) -> None:
     """Delayed vault withdrawals cannot fund purchases before settlement.
 
     A redemption requested from an async vault pays out only after settlement,
@@ -1532,16 +1546,12 @@ def test_backtest_async_vault_sell_proceeds_cannot_fund_buys(features: set[ERC46
     synchronously and must be classified before their first withdrawal. The
     no-feature case uses the existing override and position-history fallback.
 
-    1. Deposit 90% of capital into vault VO, leaving ~10% free cash, and let
-       any delayed deposit settle.
-    2. Rotate everything into the synchronous vault VS: the VO close is an
-       async redeem whose proceeds arrive two days later.
-    3. On the rotation cycle the VS buy is capped to the free cash
-       (capped_by_pending_settlement_cash flag), instead of assuming the
-       redemption proceeds are spendable - which would crash the wallet.
-    4. After the redemption settles, a later rebalance redeploys the proceeds
-       into VS, and the backtest completes with everything settled.
+    1. Configure a 90% allocation into VO followed by rotation into synchronous VS.
+    2. Run the schedule with delayed VO exits and the appropriate deposit flow.
+    3. Check the rotation-cycle VS buy is capped to currently available cash.
+    4. Check settled redemption proceeds are redeployed into VS on a later cycle.
     """
+    # 1. Configure a 90% allocation into VO followed by rotation into synchronous VS.
     strategy_universe, pairs = _make_multi_vault_universe([
         ("VO", VAULT_A_ADDRESS, features),
         ("VS", VAULT_B_ADDRESS, None),
@@ -1601,7 +1611,8 @@ def test_backtest_async_vault_sell_proceeds_cannot_fund_buys(features: set[ERC46
     reserve_address = strategy_universe.reserve_assets[0].address
     hook = _SnapshotHook(reserve_address, pairs["VO"].base.address)
 
-    # 1.-2. VO exits asynchronously; completion proves the cap fired
+    # 2. Run the schedule with delayed VO exits and the appropriate deposit flow.
+    # Completion proves the cap fired
     # (an uncapped VS buy would overdraw the simulated wallet by ~80% of equity).
     state, _, _ = _run(
         strategy_universe,
@@ -1614,7 +1625,7 @@ def test_backtest_async_vault_sell_proceeds_cannot_fund_buys(features: set[ERC46
     trades = list(state.portfolio.get_all_trades())
     assert all(t.is_success() for t in trades), f"Unsettled trades: {trades}"
 
-    # 3. The rotation-cycle VS buy was capped to the free cash.
+    # 3. Check the rotation-cycle VS buy is capped to currently available cash.
     assert TradingPairSignalFlags.capped_by_pending_settlement_cash in flags_by_cycle[rotation_ts], \
         f"Cap never fired on the rotation cycle: {flags_by_cycle[rotation_ts]}"
     cash_at_rotation = next(s["cash"] for s in hook.snapshots if s["ts"] == rotation_ts)
@@ -1623,7 +1634,7 @@ def test_backtest_async_vault_sell_proceeds_cannot_fund_buys(features: set[ERC46
     assert rotation_buys <= cash_at_rotation + 1e-6, \
         f"Rotation buys {rotation_buys} exceed free cash {cash_at_rotation}"
 
-    # 4. The redemption proceeds were redeployed into VS on a later cycle.
+    # 4. Check settled redemption proceeds are redeployed into VS on a later cycle.
     # Compare the final position value, not the buy volume: while the VO close
     # is pending its pinned value shrinks the deployable target, which can
     # cause benign sell-and-rebuy churn on VS in between.

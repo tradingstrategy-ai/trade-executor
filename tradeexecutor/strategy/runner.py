@@ -820,6 +820,7 @@ class StrategyRunner(abc.ABC):
             routing_state = routing_setup.routing_state
             pricing_model = routing_setup.pricing_model
             valuation_model = routing_setup.valuation_model
+            # Valuation runs before strategy decisions and needs fee-net position NAV.
             if hasattr(self.execution_model, "bind_vault_fee_pricing"):
                 self.execution_model.bind_vault_fee_pricing(pricing_model, state.portfolio)
 
@@ -919,6 +920,7 @@ class StrategyRunner(abc.ABC):
                         routing_state=routing_state,
                         routing_model=self.routing_model,
                     )
+                    # Rebind callback-created routes and refuse legacy fee wrappers before execution.
                     if hasattr(self.execution_model, "bind_vault_fee_pricing"):
                         self.execution_model.bind_vault_fee_pricing(pricing_model, state.portfolio)
                     assert type(rebalance_trades) == list

@@ -7,12 +7,30 @@ from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.position import TradingPosition
 
 
+#: Key in TradeExecution.other_data for request snapshots and realised deductions.
 FEE_KEY = "backtest_vault_externalised_fees"
+#: Annualisation convention for management fees: 365.25 days, expressed in seconds.
 SECONDS_IN_YEAR = Decimal("31557600")
 
 
 def externalised_rates(pair: TradingPairIdentifier) -> tuple[Decimal, Decimal] | None:
-    """Resolve known externalised rates without charging fees already in NAV."""
+    """Resolve the rates shared by backtest quotes, valuation and withdrawals.
+
+    Prefer the attached metadata, falling back to persisted pair fields after
+    state reload. Internalised fees are already reflected in share prices.
+    Completely absent legacy metadata preserves the old fee-free behaviour;
+    after internalised/known-zero cases are excluded, partial or invalid inputs
+    must fail rather than understate externalised costs.
+
+    :param pair:
+        Vault pair with fee mode and fractional annual management/performance rates.
+    :return:
+        Management and performance rates as Decimals, or ``None`` for a non-vault,
+        internalised fees, known zero rates or wholly absent legacy fee metadata.
+    :raises AssertionError:
+        Fee mode is unknown, a required rate is missing, or rates are non-finite
+        or outside the inclusive range zero to one.
+    """
     if not pair.is_vault():
         return None
     metadata = pair.get_vault_metadata()
@@ -38,6 +56,11 @@ def vault_exit_rate(pair: TradingPairIdentifier) -> float:
     backtester. Using them only for externalised-fee vaults would give otherwise
     identical vaults different fixed-cost treatment. Callers must model these
     costs explicitly or exclude the route, as NB05 already does.
+
+    :param pair:
+        Pair whose base share token may carry an explicitly configured sell tax.
+    :return:
+        Fraction of proceeds charged on exit, or zero when no tax is configured.
     """
     return pair.get_sell_tax() or 0
 
@@ -48,6 +71,14 @@ def remaining_basis(position: TradingPosition, timestamp: datetime.datetime) -> 
     Successful buys accrue from share settlement; successful reductions remove
     basis proportionally. Pending requests leave basis intact until settlement,
     so the existing ledger also supports quotes and restart without another balance.
+
+    :param position:
+        Position with its complete successful acquisition/reduction ledger.
+    :param timestamp:
+        Naive UTC valuation or settlement time, at or after the ledger's trades.
+    :return:
+        Remaining share quantity, denomination-token principal excluding entry
+        costs, and principal multiplied by holding years (365.25 days per year).
     """
     quantity = principal = exposure = Decimal(0)
     for trade in sorted(position.get_successful_trades(), key=lambda t: t.executed_at):
@@ -70,7 +101,8 @@ def remaining_basis(position: TradingPosition, timestamp: datetime.datetime) -> 
 
 
 def calculate_vault_fees(position: TradingPosition, timestamp: datetime.datetime, quantity: Decimal,
-                         gross_price: float, exit_rate: float = 0, snapshot: dict | None = None) -> dict | None:
+                         gross_price: float, exit_rate: float = 0,
+                         snapshot: dict[str, str | int] | None = None) -> dict[str, str | int] | None:
     """Calculate net withdrawal and its fee components in denomination units.
 
     Vault operators may deduct externalised fees before withdrawal. This simulator
@@ -78,6 +110,34 @@ def calculate_vault_fees(position: TradingPosition, timestamp: datetime.datetime
     fee deductions weekly or monthly; periodic collection is not simulated here.
     Constant snapshot rates, principal-based management and proportional cost basis
     are simulation assumptions, not protocol-specific high-water-mark accounting.
+
+    Used for indicative net quotes and actual synchronous withdrawals. Queued
+    withdrawals save the returned record at request time and pass it back on
+    settlement so basis and rates survive restart while management fees continue
+    accruing. This calculation does not debit cash or mutate the position.
+
+    :param position:
+        Vault position supplying the pair metadata and successful trade ledger.
+    :param timestamp:
+        Naive UTC quote, request or settlement time.
+    :param quantity:
+        Non-negative number of shares being reduced. With a snapshot, this must
+        be the same requested reduction whose basis the snapshot records.
+    :param gross_price:
+        Denomination-token value per share before manager fees or exit charges.
+    :param exit_rate:
+        Fractional fixed exit charge, applied once after management/performance fees.
+    :param snapshot:
+        Prior result for this request, or ``None`` to derive proportional basis
+        from the current ledger. The snapshot fixes principal, principal-years,
+        fee rates and their accrual timestamp; gross proceeds use the new price.
+    :return:
+        JSON-compatible record with version, ISO timestamp and decimal strings
+        for basis, rates, quantities, fee components and net proceeds. Monetary
+        values use denomination-token units. ``None`` means no externalised fee
+        calculation applies or the unsnapshotted ledger has no shares.
+    :raises AssertionError:
+        Rates, amounts or metadata are invalid, or a fresh reduction exceeds holdings.
     """
     rates = (Decimal(snapshot["management_rate"]), Decimal(snapshot["performance_rate"])) if snapshot else externalised_rates(position.pair)
     if rates is None:
@@ -101,6 +161,8 @@ def calculate_vault_fees(position: TradingPosition, timestamp: datetime.datetime
     exit_fee_rate = Decimal(str(exit_rate))
     assert exit_fee_rate.is_finite() and 0 <= exit_fee_rate <= 1
     nominal_management = exposure * rates[0]
+    # A loss cannot create a negative payout; retain the uncapped accrual in the
+    # record so the amount actually collected remains distinguishable from it.
     management = min(gross, nominal_management)
     performance = max(gross - principal - nominal_management, Decimal(0)) * rates[1]
     after_fees = gross - management - performance

@@ -14,6 +14,7 @@ from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel, Backte
 from tradeexecutor.backtest.simulated_wallet import SimulatedWallet, OutOfSimulatedBalance
 from tradeexecutor.state.state import State
 from tradeexecutor.state.portfolio import Portfolio
+from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.trade import (
     TradeExecution,
     TradeStatus,
@@ -89,7 +90,7 @@ def fix_sell_token_amount(
 #: window never spans a full cycle and the queue dynamics stay invisible.
 DEFAULT_VAULT_SETTLEMENT_DELAY = datetime.timedelta(days=2)
 
-#: Grace period after an expected D2, Plutus or Lagoon settlement. If the
+#: Grace period after an expected D2 or Lagoon deposit settlement. If the
 #: historical feed contains no settlement observations for the vault at all,
 #: settle after this grace period instead of permanently stranding capital.
 NO_HISTORICAL_SETTLEMENT_OBSERVATION_GRACE_PERIOD = datetime.timedelta(days=2)
@@ -170,6 +171,17 @@ class BacktestExecution(ExecutionModel):
 
         Quotes and valuation need the portfolio's cost basis and holding period.
         Refuse the former strategy wrapper so it cannot charge the same fees twice.
+
+        Bind before valuation and again after strategy callbacks, which may
+        replace pricing or install a legacy wrapper. Existing routes and routes
+        created later must read the same portfolio; this adds no persistent ledger.
+
+        :param pricing_model:
+            Direct backtest pricing or a generic router with lazily created routes.
+        :param portfolio:
+            The current state's authoritative portfolio and successful trade history.
+        :raises AssertionError:
+            The known strategy-local fee wrapper would duplicate automatic deductions.
         """
         assert not hasattr(pricing_model, "_vault_redemption_fee_by_pair_id"), (
             "Remove the strategy-local Hyper-AI fee wrapper; backtesting now charges vault fees automatically"
@@ -185,8 +197,29 @@ class BacktestExecution(ExecutionModel):
             pricing_model.portfolio = portfolio
 
     def _vault_fee_result(self, state: State, trade: TradeExecution, ts: datetime.datetime,
-                          quantity: Decimal, gross_price: float, exit_rate: float) -> dict | None:
-        """Calculate fees before wallet mutation, retaining legacy request snapshots."""
+                          quantity: Decimal, gross_price: float, exit_rate: float) -> dict[str, str | int] | None:
+        """Calculate a reduction's fees before execution changes balances.
+
+        Synchronous sells derive basis from the ledger; delayed sells reuse their
+        request snapshot. Legacy saved redemption rates stay on their original
+        settlement path and must never be combined with the automatic fee record.
+
+        :param state:
+            State owning the trade's position and its acquisition ledger.
+        :param trade:
+            Reduction being quoted at request time or executed at settlement.
+        :param ts:
+            Naive UTC request or execution time used for management-fee accrual.
+        :param quantity:
+            Positive share amount after any execution rounding adjustment.
+        :param gross_price:
+            Denomination tokens per share before fees.
+        :param exit_rate:
+            Fractional fixed withdrawal charge from the existing sell-tax path.
+        :return:
+            The fee calculation record, or ``None`` for non-vault, legacy-rate
+            or otherwise non-externalised reductions.
+        """
         if not trade.pair.is_vault():
             return None
         if "backtest_vault_redemption_fee" in trade.other_data:
@@ -449,17 +482,21 @@ class BacktestExecution(ExecutionModel):
     # Async (two-stage ERC-7540 / Ostium) vault deposit/redeem simulation
     #
 
-    def _is_async_vault(self, pair, *, is_buy: bool | None = None) -> bool:
+    def _is_async_vault(self, pair: TradingPairIdentifier, *, is_buy: bool | None = None) -> bool:
         """Does this vault trade use a delayed settlement flow in backtest?
 
-        True if the pair has an explicit settlement-delay override, or its vault
-        features mark it as ERC-7540 / Lagoon / Ostium style. D2 and
-        Lagoon deposits additionally require a recorded historical settlement
-        event after their minimum average-delay floor.
+        Selects the simulated lifecycle before computing its settlement delay.
+        Explicit overrides queue both directions. Otherwise deposits use deposit
+        classification and historical-event requirements, while sells use the
+        separate delayed-redemption classification. Live calls use manager capabilities.
 
+        :param pair:
+            Pair whose vault features and optional address override select the flow.
         :param is_buy:
             Trade direction. ``None`` answers whether either vault flow may be
             delayed and preserves the existing diagnostic helper behaviour.
+        :return:
+            Whether this direction uses the simulated request/settle lifecycle.
         """
         if not pair.is_vault():
             return False
@@ -473,12 +510,21 @@ class BacktestExecution(ExecutionModel):
         return pair.is_async_vault() or pair.has_delayed_vault_redemption() or requires_historical_deposit_settlement
 
     @staticmethod
-    def _requires_historical_deposit_settlement(pair) -> bool:
+    def _requires_historical_deposit_settlement(pair: TradingPairIdentifier) -> bool:
         """Does a backtest deposit need historical settlement evidence?
 
         D2 and Lagoon deposits remain event-gated when the historical
         feed includes settlement observations. A two-day grace period is used
         only when no observations exist at all.
+
+        Used both to select queued deposits and to decide whether the resolver
+        must consult event history after the minimum delay. This does not gate
+        redemptions or synchronous Plutus deposits.
+
+        :param pair:
+            Pair being checked for simulated deposit settlement.
+        :return:
+            True for D2/Lagoon vaults; false for other pairs.
         """
         if not pair.is_vault():
             return False
@@ -516,8 +562,11 @@ class BacktestExecution(ExecutionModel):
         } | VAULT_SETTLEMENT_DELAY_FALLBACKS.keys()
         return bool(features & estimate_features)
 
-    def _get_settlement_due(self, pair, ts: datetime.datetime) -> datetime.datetime:
-        """When does an async vault request made at ``ts`` become claimable?
+    def _get_settlement_due(self, pair: TradingPairIdentifier, ts: datetime.datetime) -> datetime.datetime:
+        """Compute the minimum simulated settlement time for a queued request.
+
+        Historical deposit-event checks may defer completion beyond this time.
+        An explicit zero delay still waits for the next resolver cycle.
 
         Precedence:
 
@@ -531,6 +580,13 @@ class BacktestExecution(ExecutionModel):
            :py:data:`OSTIUM_BACKTEST_SETTLEMENT_HOUR`, preserving the
            historical backtest approximation.
         5. The global default delay (``vault_settlement_delay``).
+
+        :param pair:
+            Vault pair already selected for delayed execution in this direction.
+        :param ts:
+            Naive UTC request timestamp.
+        :return:
+            Earliest settlement timestamp under the selected simulation delay.
         """
         if pair.pool_address:
             override = self.vault_settlement_delay_overrides.get(pair.pool_address.lower())
@@ -678,7 +734,7 @@ class BacktestExecution(ExecutionModel):
                         trade.other_data["vault_settlement_fallback_used"] = True
                         trade.other_data["vault_settlement_fallback_reason"] = "no_historical_settlement_observations"
                     else:
-                        # A D2, Plutus or Lagoon deposit is not allocated merely
+                        # A D2 or Lagoon deposit is not allocated merely
                         # because its average delay elapsed when the historical
                         # feed does contain settlement observations. It needs a
                         # real event after this request's delay.
