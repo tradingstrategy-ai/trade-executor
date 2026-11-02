@@ -6,7 +6,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
+from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind, IGNORE_REASON_REQUIRES_WHITELIST
 from tradeexecutor.strategy.pandas_trader.yield_manager import YieldManager, YieldRuleset, YieldWeightingRule, YieldDecision
 from tradeexecutor.strategy.vault_closure import VaultClosure, VaultClosureOutcome
 
@@ -50,14 +50,14 @@ def test_yield_vault_admission_keeps_releases_available() -> None:
     holding = SimpleNamespace(get_value=lambda: 100., get_current_price=lambda: 1.,
         get_quantity=lambda: Decimal(100), position_id=1)
     # 2. Check explicit exclusions and historical closure refuse new parking deposits.
-    pair.set_ignore_reason('deposit_permission_unknown')
+    pair.set_ignore_reason(IGNORE_REASON_REQUIRES_WHITELIST)
     assert manager.generate_rebalance_trades(1, timestamp, {pair: holding}, buy) == []
     pair.other_data.pop('ignore_reason')
     assert manager.generate_rebalance_trades(1, timestamp, {pair: holding}, buy) == []
     adjust.assert_not_called()
     # 3. Check withdrawal still emits, then allow an unknown historical assumption.
     sell = {pair: YieldDecision(rule, 0.0, 0., 100.)}
-    pair.set_ignore_reason('deposit_permission_unknown')
+    pair.set_ignore_reason(IGNORE_REASON_REQUIRES_WHITELIST)
     assert manager.generate_rebalance_trades(1, timestamp, {pair: holding}, sell) == ['trade intent']
     pair.other_data.pop('ignore_reason')
     assert manager.generate_rebalance_trades(1, timestamp, {pair: holding}, sell) == ['trade intent']

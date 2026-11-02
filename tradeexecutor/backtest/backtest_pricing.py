@@ -317,8 +317,8 @@ class BacktestPricing(PricingModel):
         :param pair:
             Pair to sell; a vault's base asset is its share token.
         :param quantity:
-            Positive base-token/share amount. ``None`` is a price-only probe
-            without position-specific externalised fee deductions.
+            Positive base-token/share amount. Fixed-price fixtures also accept
+            ``None`` for a gross-price probe without position-specific fees.
         :return:
             Executable ``price`` and gross ``mid_price`` in quote-token units
             per base token/share, together with route and market-feed diagnostics.
@@ -334,61 +334,49 @@ class BacktestPricing(PricingModel):
 
         fixed_price = self.fixed_prices.get(pair)
         if fixed_price:
-            net_price = fixed_price
-            if pair.is_vault() and self.portfolio is not None and quantity:
-                position = self.portfolio.get_existing_open_position_by_trading_pair(pair)
-                if position:
-                    fees = calculate_vault_fees(position, ts, quantity, fixed_price, vault_exit_rate(pair))
-                    if fees:
-                        net_price = float(Decimal(fees["net"]) / quantity)
-            return TradePricing(
-                price=float(net_price),
-                mid_price=float(fixed_price),
-                lp_fee=[0.0],
-                pair_fee=[0.0],
-                market_feed_delay=None,
-                side=False,
-                path=[pair]
+            # Fixed-price fixtures bypass market fees, but still owe position-based fees.
+            price = mid_price = fixed_price
+            lp_fee = pair_fee = 0.0
+            tax = tax_percent = delay = None
+        else:
+            mid_price, delay = self.candle_universe.get_price_with_tolerance(
+                pair_id,
+                ts,
+                tolerance=self.data_delay_tolerance,
+                kind=self.candle_timepoint_kind,
+                pair_name_hint=pair.get_ticker(),
             )
 
-        mid_price, delay = self.candle_universe.get_price_with_tolerance(
-            pair_id,
-            ts,
-            tolerance=self.data_delay_tolerance,
-            kind=self.candle_timepoint_kind,
-            pair_name_hint=pair.get_ticker(),
-        )
+            fee_result = self.get_pair_fee(ts, pair, "sell", separate_tax=True)
+            if fee_result is None:
+                pair_fee = tax_percent = None
+            else:
+                pair_fee, tax_percent = fee_result
 
-        fee_result = self.get_pair_fee(ts, pair, "sell", separate_tax=True)
-        if fee_result is None:
-            pair_fee = tax_percent = None
-        else:
-            pair_fee, tax_percent = fee_result
+            if pair_fee is not None:
+                reserve = float(quantity) * mid_price
+                lp_fee = float(reserve) * pair_fee
+                tax = float(reserve) * tax_percent
 
-        if pair_fee is not None:
-            reserve = float(quantity) * mid_price
-            lp_fee = float(reserve) * pair_fee
-            tax = float(reserve) * tax_percent
+                # Move price below mid price
+                price = mid_price * (1 - pair_fee)
 
-            # Move price below mid price
-            price = mid_price * (1 - pair_fee)
+                if not pair.is_vault():
+                    assert lp_fee > 0, f"After simulating SELL trade, got non-positive LP fee: {pair} {quantity}: ${lp_fee}.\n"\
+                                   f"Mid price: {mid_price}, quantity: {quantity}, reserve: {reserve} , pair fee: {pair_fee}\n" \
 
-            if not pair.is_vault():
-                assert lp_fee > 0, f"After simulating SELL trade, got non-positive LP fee: {pair} {quantity}: ${lp_fee}.\n"\
-                               f"Mid price: {mid_price}, quantity: {quantity}, reserve: {reserve} , pair fee: {pair_fee}\n" \
+            else:
+                # Fee information not available
+                if (not self.allow_missing_fees) and (self.trading_fee_override is None):
+                    raise AssertionError(f"Pair lacks fee information: {pair}")
 
-        else:
-            # Fee information not available
-            if (not self.allow_missing_fees) and (self.trading_fee_override is None):
-                raise AssertionError(f"Pair lacks fee information: {pair}")
+                price = mid_price
+                lp_fee = None
+                tax = None
 
-            price = mid_price
-            lp_fee = None
-            tax = None
-
-        if pair.is_vault() and self.portfolio is not None:
+        if pair.is_vault() and self.portfolio is not None and quantity:
             position = self.portfolio.get_existing_open_position_by_trading_pair(pair)
-            if position and quantity:
+            if position:
                 fees = calculate_vault_fees(position, ts, quantity, mid_price, vault_exit_rate(pair))
                 if fees:
                     price = float(Decimal(fees["net"]) / quantity)
@@ -400,7 +388,7 @@ class BacktestPricing(PricingModel):
             mid_price=float(mid_price),
             lp_fee=lp_fee,
             pair_fee=pair_fee,
-            market_feed_delay=delay.to_pytimedelta(),
+            market_feed_delay=delay.to_pytimedelta() if delay is not None else None,
             side=False,
             path=[pair],
             token_tax=tax,

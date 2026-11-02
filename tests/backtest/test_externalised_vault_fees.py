@@ -150,6 +150,12 @@ def test_fee_arithmetic_and_refusals() -> None:
     quote = pricing.get_sell_price(end, pair, Decimal(1000))
     assert quote.price * 1000 == pytest.approx(1144, abs=1e-6)
     assert quote.get_total_lp_fees() == 0
+    assert quote.mid_price == pytest.approx(1.2)
+    assert quote.market_feed_delay is None
+    assert pricing.get_sell_price(end, pair, None).price == pytest.approx(1.2)
+    # Without acquisition history, standalone fixed-price quotes remain gross.
+    unbound_pricing = BacktestPricing(universe, generate_simple_routing_model(universe), fixed_prices={pair: 1.2})
+    assert unbound_pricing.get_sell_price(end, pair, Decimal(1000)).price == pytest.approx(1.2)
     # An existing fixed exit cost is collected once after management/performance.
     pair.other_data['token_metadata'] = replace(pair.get_vault_metadata(), withdrawal_fee=.01)
     assert vault_exit_rate(pair) == 0
@@ -218,9 +224,15 @@ def test_pending_fee_recovery() -> None:
     old_trade.other_data.pop(FEE_KEY)
     old_trade.other_data["backtest_vault_redemption_fee"] = .1
     old_trade.pair.other_data.pop("vault_fee_internalised", None)
+    # Reloaded position and trade descriptors are separate objects.
+    legacy.portfolio.get_position_by_id(old_trade.position_id).pair.other_data.pop("vault_fee_internalised", None)
     old_wallet = SimulatedWallet()
     old_wallet.balances = hook.balances.copy()
     old_pricing = BacktestPricing(universe, generate_simple_routing_model(universe), portfolio=legacy.portfolio)
+    # The runner values holdings before recovery, so resuming it needs fee-mode
+    # metadata. Direct recovery can still honour the saved redemption rate.
+    with pytest.raises(AssertionError, match="Unknown vault fee mode"):
+        old_pricing.get_sell_price(due, old_trade.pair, abs(old_trade.planned_quantity))
     old_execution = BacktestExecution(old_wallet)
     old_execution.resolve_pending_vault_settlements(legacy, due, old_pricing)
     assert old_trade.is_success()

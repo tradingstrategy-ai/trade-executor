@@ -11,6 +11,7 @@ from tradeexecutor.analysis.credit import display_vault_position_table, display_
 from tradeexecutor.analysis.vault_position_helpers import find_latest_position_for_pair
 from tradeexecutor.analysis.vault import visualise_vaults
 from tradeexecutor.backtest.backtest_execution import (
+    BacktestExecution,
     DEFAULT_VAULT_SETTLEMENT_DELAY,
     NO_HISTORICAL_SETTLEMENT_OBSERVATION_GRACE_PERIOD,
 )
@@ -31,11 +32,7 @@ def _has_backtest_settlement_logic(pair) -> bool:
     """Does a vault use a multi-stage settlement flow in a backtest?"""
     if not pair.is_vault():
         return False
-    features = pair.get_vault_features() or set()
-    return pair.is_async_vault() or pair.has_delayed_vault_redemption() or bool(features & {
-        ERC4626Feature.lagoon_like,
-        ERC4626Feature.d2_like,
-    })
+    return pair.is_async_vault() or pair.has_delayed_vault_redemption() or BacktestExecution._requires_historical_deposit_settlement(pair)
 
 
 def _format_settlement_estimate(delay: datetime.timedelta) -> str:
@@ -79,11 +76,7 @@ def _get_settlement_estimate_used(pair, trades) -> datetime.timedelta:
 def _get_no_data_settlement_delay(pair, trades) -> datetime.timedelta:
     """Get the simulated settlement delay when the historical feed is empty."""
     delay = _get_settlement_estimate_used(pair, trades)
-    features = pair.get_vault_features() or set()
-    if features & {
-        ERC4626Feature.lagoon_like,
-        ERC4626Feature.d2_like,
-    }:
+    if BacktestExecution._requires_historical_deposit_settlement(pair):
         return delay + NO_HISTORICAL_SETTLEMENT_OBSERVATION_GRACE_PERIOD
     return delay
 

@@ -920,7 +920,7 @@ class StrategyRunner(abc.ABC):
                         routing_state=routing_state,
                         routing_model=self.routing_model,
                     )
-                    # Rebind callback-created routes and refuse legacy fee wrappers before execution.
+                    # Callbacks may install a legacy fee wrapper; refuse it before execution.
                     if hasattr(self.execution_model, "bind_vault_fee_pricing"):
                         self.execution_model.bind_vault_fee_pricing(pricing_model, state.portfolio)
                     assert type(rebalance_trades) == list

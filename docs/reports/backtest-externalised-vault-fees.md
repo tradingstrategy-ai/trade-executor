@@ -51,16 +51,15 @@ then exits. The constructed strategy contains no fee calculation or mutation.
 |---|---:|---:|---:|---:|---:|---:|
 | lagoon | 3 | 750.000000 | 756.340664 | 0.790554 | 1.165523 | 754.384586 |
 | lagoon | 4 | 750.000000 | 658.513992 | 1.355236 | 0.000000 | 657.158756 |
-| ipor | 3 | 0.000000 | 749.992936 | 0.000000 | 0.000000 | 749.992936 |
-| ipor | 4 | 0.000000 | 749.992936 | 0.000000 | 0.000000 | 749.992936 |
+| ipor | 3 | — | 749.992936 | 0.000000 | 0.000000 | 749.992936 |
+| ipor | 4 | — | 749.992936 | 0.000000 | 0.000000 | 749.992936 |
 | lighter | 3 | 750.000000 | 853.580505 | 0.000000 | 10.358051 | 843.222455 |
 | lighter | 4 | 750.000000 | 789.903011 | 0.000000 | 3.990301 | 785.912710 |
 | hyperliquid | 3 | 750.000000 | 785.671184 | 0.000000 | 3.567118 | 782.104066 |
 | hyperliquid | 4 | 750.000000 | 794.647545 | 0.000000 | 4.464754 | 790.182790 |
 
-IPOR has no external fee breakdown: its fees are already internalised. Principal
-in that row is not applicable (shown as zero), rather than missing cost basis.
-The fixture and per-withdrawal JSON retain exact values and execution dates.
+IPOR's fees are already internalised, so no externalised-fee basis is recorded.
+The tests recalculate each withdrawal independently from the captured inputs.
 
 ## Validation
 
@@ -101,9 +100,7 @@ poetry run pytest /home/mikko/code/strategies/tests/test_master_vault_nb05.py -q
 
 The fixtures and their SHA256 receipt are in
 `tests/backtest/fixtures/vault_externalised_fees/`. Offline tests assert the input
-hashes. `withdrawals.json` records the default-router demonstration results;
-tests calculate expectations independently rather than using those results as
-an oracle.
+hashes and calculate expectations independently from the trade ledger.
 
 ## Compatibility and caller cleanup
 
@@ -129,9 +126,10 @@ automatic calculation does not infer a fixed withdrawal tax from metadata;
 NB05 explicitly models Atoma and excludes other unmodelled entry/exit costs.
 The supported fee scenarios use vault pairs with zero AMM trading fees and no
 `trading_fee_override`. Combining exchange-fee overrides with manager fees is
-not validated by these results. Old states with fee rates but no fee mode can
-still settle a legacy saved redemption-rate request; repricing the remaining
-holding requires known fee-mode metadata and otherwise refuses to guess.
+not validated by these results. A direct resolver call can settle a legacy
+saved redemption-rate request even if fee-mode metadata is missing. Resuming
+the normal backtest runner requires that metadata first: it values open holdings
+before resolving pending requests and refuses to guess their fee mode.
 
 ## Input hashes and revisions
 

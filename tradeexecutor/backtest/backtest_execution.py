@@ -169,12 +169,9 @@ class BacktestExecution(ExecutionModel):
     def bind_vault_fee_pricing(self, pricing_model: PricingModel, portfolio: Portfolio) -> None:
         """Bind acquisition history to both existing and lazily created pricing routes.
 
-        Quotes and valuation need the portfolio's cost basis and holding period.
-        Refuse the former strategy wrapper so it cannot charge the same fees twice.
-
-        Bind before valuation and again after strategy callbacks, which may
-        replace pricing or install a legacy wrapper. Existing routes and routes
-        created later must read the same portfolio; this adds no persistent ledger.
+        Quotes and valuation need cost basis and holding periods. Call before
+        valuation and again after callbacks to detect the former strategy fee
+        wrapper and prevent double charging.
 
         :param pricing_model:
             Direct backtest pricing or a generic router with lazily created routes.
@@ -197,7 +194,7 @@ class BacktestExecution(ExecutionModel):
             pricing_model.portfolio = portfolio
 
     def _vault_fee_result(self, state: State, trade: TradeExecution, ts: datetime.datetime,
-                          quantity: Decimal, gross_price: float, exit_rate: float) -> dict[str, str | int] | None:
+                          quantity: Decimal, gross_price: float) -> dict[str, str | int] | None:
         """Calculate a reduction's fees before execution changes balances.
 
         Synchronous sells derive basis from the ledger; delayed sells reuse their
@@ -214,8 +211,6 @@ class BacktestExecution(ExecutionModel):
             Positive share amount after any execution rounding adjustment.
         :param gross_price:
             Denomination tokens per share before fees.
-        :param exit_rate:
-            Fractional fixed withdrawal charge from the existing sell-tax path.
         :return:
             The fee calculation record, or ``None`` for non-vault, legacy-rate
             or otherwise non-externalised reductions.
@@ -223,11 +218,12 @@ class BacktestExecution(ExecutionModel):
         if not trade.pair.is_vault():
             return None
         if "backtest_vault_redemption_fee" in trade.other_data:
+            # Reloaded state must not combine incompatible fee accounting formats.
             assert FEE_KEY not in trade.other_data, "Mixed legacy and automatic vault fees"
             return None
         position = state.portfolio.get_position_by_id(trade.position_id)
         record = trade.other_data.get(FEE_KEY, {})
-        return calculate_vault_fees(position, ts, quantity, gross_price, exit_rate, record.get("request"))
+        return calculate_vault_fees(position, ts, quantity, gross_price, vault_exit_rate(trade.pair), record.get("request"))
 
     def simulate_spot(self, state: State, trade: TradeExecution) -> Tuple[Decimal, Decimal, bool]:
         """Spot market translation simulation with a simulated wallet.
@@ -308,8 +304,7 @@ class BacktestExecution(ExecutionModel):
             executed_quantity, sell_amount_epsilon_fix = fix_sell_token_amount(base_balance, trade.planned_quantity)
             executed_reserve = abs(Decimal(trade.planned_quantity) * Decimal(trade.planned_price))
             gross_price = trade.planned_mid_price or trade.planned_price
-            exit_rate = vault_exit_rate(trade.pair)
-            fees = self._vault_fee_result(state, trade, trade.opened_at, abs(executed_quantity), gross_price, exit_rate)
+            fees = self._vault_fee_result(state, trade, trade.opened_at, abs(executed_quantity), gross_price)
             if fees:
                 trade.other_data[FEE_KEY] = {"realised": fees}
                 executed_reserve = Decimal(fees["net"])
@@ -538,23 +533,16 @@ class BacktestExecution(ExecutionModel):
     def _uses_protocol_settlement_estimate(features: set[ERC4626Feature]) -> bool:
         """Whether a queued backtest request can use the vault's reported delay.
 
-        Used by :py:meth:`_get_settlement_due` after checking explicit per-vault
-        overrides. Lagoon and Upshift use deployment-specific estimates; the
-        families in :py:data:`VAULT_SETTLEMENT_DELAY_FALLBACKS` also prefer a
-        positive estimate over their conservative protocol default. Other
-        families retain the Ostium schedule or global simulation delay even
-        when their metadata contains an estimate.
-
-        This only selects a timing policy for an already delayed request.
-        Callers must use :py:meth:`_is_async_vault` for the trade direction
-        first, so an exit estimate cannot introduce a queue on a synchronous
-        deposit. Live execution follows the protocol manager's capabilities.
+        :py:meth:`_get_settlement_due` uses this after explicit overrides.
+        Lagoon, Upshift and :py:data:`VAULT_SETTLEMENT_DELAY_FALLBACKS` families
+        prefer a positive metadata estimate; others keep their existing schedule.
+        Call :py:meth:`_is_async_vault` for the trade direction first: this
+        timing policy must not turn synchronous deposits into queued ones.
 
         :param features:
             Protocol features of the vault being simulated; empty if unknown.
         :return:
-            Whether to consult the estimate. Missing or non-positive estimates
-            still require the caller's protocol or global fallback.
+            Whether to consult the estimate before using a protocol/global fallback.
         """
         estimate_features = {
             ERC4626Feature.lagoon_like,
@@ -648,7 +636,7 @@ class BacktestExecution(ExecutionModel):
             trade.planned_quantity = request_quantity
             trade.planned_reserve = abs(request_quantity) * Decimal(str(trade.planned_price))
             fees = self._vault_fee_result(state, trade, ts, abs(request_quantity),
-                                          trade.planned_mid_price or trade.planned_price, vault_exit_rate(trade.pair))
+                                          trade.planned_mid_price or trade.planned_price)
             if fees:
                 trade.other_data[FEE_KEY] = {"request": fees}
             self.wallet.update_balance(base, request_quantity, f"vault redeem request #{trade.trade_id}")
@@ -805,8 +793,7 @@ class BacktestExecution(ExecutionModel):
                 else:
                     settlement_price = float(trade.planned_mid_price) * (1.0 - float(redemption_fee))
             fees = self._vault_fee_result(state, trade, ts, abs(executed_quantity),
-                                          pricing.mid_price if pricing_model is not None else (trade.planned_mid_price or trade.planned_price),
-                                          vault_exit_rate(trade.pair))
+                                          pricing.mid_price if pricing_model is not None else (trade.planned_mid_price or trade.planned_price))
             if fees:
                 trade.other_data.setdefault(FEE_KEY, {})["realised"] = fees
                 settlement_price = float(Decimal(fees["net"]) / abs(executed_quantity))

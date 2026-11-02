@@ -111,10 +111,9 @@ def calculate_vault_fees(position: TradingPosition, timestamp: datetime.datetime
     Constant snapshot rates, principal-based management and proportional cost basis
     are simulation assumptions, not protocol-specific high-water-mark accounting.
 
-    Used for indicative net quotes and actual synchronous withdrawals. Queued
-    withdrawals save the returned record at request time and pass it back on
-    settlement so basis and rates survive restart while management fees continue
-    accruing. This calculation does not debit cash or mutate the position.
+    Quotes and withdrawals share this calculation, which does not mutate state.
+    Queued withdrawals save the result at request time and pass it back at
+    settlement to preserve basis and rates while management fees keep accruing.
 
     :param position:
         Vault position supplying the pair metadata and successful trade ledger.

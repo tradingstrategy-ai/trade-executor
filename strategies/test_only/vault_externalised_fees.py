@@ -39,8 +39,7 @@ def decide_trades(input: StrategyInput) -> list[TradeExecution]:
 
     Deposit on cycle 1, top up on 10, halve the position on 20 and exit on 30.
     Skip actions while settlement is pending so each reduction owns a distinct
-    request. These deliberately fixed amounts and cycle numbers are test support, not
-    optimisable strategy parameters or a production allocation policy.
+    request.
 
     :param input:
         Current cycle, state and single-vault fixture universe supplied by the engine.
@@ -66,9 +65,8 @@ def decide_trades(input: StrategyInput) -> list[TradeExecution]:
 def create_trading_universe(input: CreateTradingUniverseInput) -> TradingStrategyUniverse:
     """Load the bundled Lagoon example for standalone module execution.
 
-    Tests supply other sample universes directly. ``input`` is unused because
-    this offline fixture has fixed data instead of client/timestamp-dependent
-    acquisition; it remains part of the normal universe callback contract.
+    Tests supply other sample universes directly. The callback's ``input`` is
+    unused because this fixture reads fixed local data.
 
     :return:
         Single-vault universe built from captured Lagoon metadata and prices.
