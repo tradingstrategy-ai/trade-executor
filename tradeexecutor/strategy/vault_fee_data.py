@@ -13,13 +13,16 @@
 
 from typing import TYPE_CHECKING
 
+from eth_defi.erc_4626.core import get_vault_protocol_name
+from eth_defi.vault.fee import VAULT_PROTOCOL_FEE_MATRIX, get_vault_fee_mode
+
 import pandas as pd
 from pandas.io.formats.style import Styler
 
 from tradingstrategy.chain import ChainId
 from tradingstrategy.vault import VaultMetadata, get_vault_page
 
-from tradeexecutor.state.identifier import IGNORE_REASON_LACKS_FEE_DATA, TradingPairIdentifier
+from tradeexecutor.state.identifier import IGNORE_REASON_LACKS_FEE_DATA, TradingPairIdentifier, _normalise_erc_4626_features
 
 if TYPE_CHECKING:
     from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
@@ -38,6 +41,31 @@ IGNORED_VAULT_COLUMNS = [
     "Missing fees",
     "Link",
 ]
+
+
+def get_vault_fee_internalised(metadata: VaultMetadata) -> bool | None:
+    """Resolve fee accounting for current metadata and older bundled vault data.
+
+    Older bundles carry rates and protocol names but omit the fee mode. Reuse
+    the pinned adapter registry, including its address-specific exceptions,
+    rather than guessing from rates. Explicit metadata takes precedence.
+
+    :param metadata:
+        Vault identity, protocol and optional published fee accounting mode.
+    :return:
+        Whether fees are in the share price, or ``None`` without evidence.
+    """
+    if metadata.fee_internalised is not None:
+        return metadata.fee_internalised
+    if metadata.address is None:
+        return None
+    protocol = metadata.protocol_name
+    if protocol not in VAULT_PROTOCOL_FEE_MATRIX and metadata.features:
+        # Historical labels such as "IPOR" predate the canonical "IPOR Fusion".
+        # Keep explicit unknown classifications in the registry authoritative.
+        protocol = get_vault_protocol_name(_normalise_erc_4626_features(metadata.features))
+    mode = get_vault_fee_mode(protocol, metadata.address)
+    return mode.is_internalised() if mode is not None else None
 
 
 def get_missing_vault_fee_data(metadata: VaultMetadata | None) -> list[str]:
@@ -65,15 +93,16 @@ def get_missing_vault_fee_data(metadata: VaultMetadata | None) -> list[str]:
 
     management_fee = metadata.management_fee
     performance_fee = metadata.performance_fee
+    internalised = get_vault_fee_internalised(metadata)
 
-    if metadata.fee_internalised or (management_fee == 0 and performance_fee == 0):
+    if internalised or (management_fee == 0 and performance_fee == 0):
         # Net returns derivable from the share price alone
         pass
-    elif metadata.fee_internalised is False and management_fee is not None and performance_fee is not None:
+    elif internalised is False and management_fee is not None and performance_fee is not None:
         # Externalised fees with known values
         pass
     else:
-        if metadata.fee_internalised is None:
+        if internalised is None:
             missing.append("fee mode")
         if management_fee is None:
             missing.append("management fee")

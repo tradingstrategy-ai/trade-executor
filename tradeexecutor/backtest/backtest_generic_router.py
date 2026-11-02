@@ -8,6 +8,7 @@ from tradeexecutor.backtest.backtest_valuation import BacktestValuationModel
 from tradeexecutor.ethereum.routing_data import (create_compatible_routing,
                                                  get_reserve_currency_by_asset)
 from tradeexecutor.state.identifier import TradingPairIdentifier
+from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.generic.default_protocols import (
     default_match_router, default_supported_routers)
@@ -34,6 +35,9 @@ class EthereumBacktestPairConfigurator(PairConfigurator):
     - Uniswap v3 likes
     """
 
+
+    #: Bound by backtest execution before quotes or valuation; routes share this portfolio.
+    portfolio: Portfolio | None = None
 
     def get_supported_routers(self) -> Set[ProtocolRoutingId]:
         return default_supported_routers(self.strategy_universe)
@@ -127,6 +131,7 @@ class EthereumBacktestPairConfigurator(PairConfigurator):
             pairs=strategy_universe.data_universe.pairs,
             three_leg_resolution=three_leg_resolution,
             ignore_routing=self.ignore_routing,  # Disable price routing checks for cross-chain strategies for now
+            portfolio=self.portfolio,
             vault_state=strategy_universe.vault_state,
             # Candles are passed positionally (not the universe), so the BacktestPricing shortcut
             # cannot auto-pick the synthetic window overrides here - thread them explicitly so the

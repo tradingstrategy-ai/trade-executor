@@ -244,6 +244,17 @@ invariant-4 widening sound. Avoid Lagoon/Ostium/Gains-style venues.
 
 ## Backtest window modelling
 
+Follow [backtest universe preservation](../../docs/backtest-universe-preservation.md)
+when converting or reviewing a strategy. Preserve inherited windows unless their
+removal is authorised, and distinguish deposit timing from redemption timing.
+Do not remove supported routes merely because their simulation uses a declared
+assumption.
+
+YieldManager checks the pair's ignore reason and shared deposit admission before
+positive vault parking adjustments. A blocked deposit leaves cash in reserve;
+negative adjustments still release existing holdings. Do not replace this with
+a strategy-wide assertion that would also prevent exits.
+
 Real historical `vault_state` has open/closed truth but may mark D2/Gains
 always-open and has no next-open column, so backtests can synthesise windows:
 

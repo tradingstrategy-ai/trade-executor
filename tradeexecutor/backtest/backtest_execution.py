@@ -9,9 +9,12 @@ from tabulate import tabulate
 
 from eth_defi.erc_4626.core import ERC4626Feature
 
+from tradeexecutor.backtest.vault_fees import FEE_KEY, calculate_vault_fees, externalised_rates, vault_exit_rate
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel, BacktestRoutingState
 from tradeexecutor.backtest.simulated_wallet import SimulatedWallet, OutOfSimulatedBalance
 from tradeexecutor.state.state import State
+from tradeexecutor.state.portfolio import Portfolio
+from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.trade import (
     TradeExecution,
     TradeStatus,
@@ -23,6 +26,7 @@ from tradeexecutor.strategy.account_correction import calculate_total_assets
 from tradeexecutor.strategy.execution_model import ExecutionModel, AutoClosingOrderUnsupported
 from tradeexecutor.strategy.generic.generic_router import GenericRouting, GenericRoutingState
 from tradeexecutor.strategy.interest import set_interest_checkpoint
+from tradeexecutor.strategy.pricing_model import PricingModel
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +90,7 @@ def fix_sell_token_amount(
 #: window never spans a full cycle and the queue dynamics stay invisible.
 DEFAULT_VAULT_SETTLEMENT_DELAY = datetime.timedelta(days=2)
 
-#: Grace period after an expected D2, Plutus or Lagoon settlement. If the
+#: Grace period after an expected D2 or Lagoon deposit settlement. If the
 #: historical feed contains no settlement observations for the vault at all,
 #: settle after this grace period instead of permanently stranding capital.
 NO_HISTORICAL_SETTLEMENT_OBSERVATION_GRACE_PERIOD = datetime.timedelta(days=2)
@@ -121,6 +125,8 @@ class BacktestExecution(ExecutionModel):
                  vault_settlement_delay_overrides: dict[str, datetime.timedelta] | None = None,
                  ):
         self.wallet = wallet
+        # Runtime reference only: the existing state owns the acquisition ledger.
+        self.portfolio: Portfolio | None = None
         self.max_slippage = max_slippage
         self.lp_fees = lp_fees
         self.stop_loss_data_available = stop_loss_data_available
@@ -159,6 +165,65 @@ class BacktestExecution(ExecutionModel):
     def initialize(self):
         """Set up the wallet"""
         logger.info("Initialising backtest execution model")
+
+    def bind_vault_fee_pricing(self, pricing_model: PricingModel, portfolio: Portfolio) -> None:
+        """Bind acquisition history to both existing and lazily created pricing routes.
+
+        Quotes and valuation need cost basis and holding periods. Call before
+        valuation and again after callbacks to detect the former strategy fee
+        wrapper and prevent double charging.
+
+        :param pricing_model:
+            Direct backtest pricing or a generic router with lazily created routes.
+        :param portfolio:
+            The current state's authoritative portfolio and successful trade history.
+        :raises AssertionError:
+            The known strategy-local fee wrapper would duplicate automatic deductions.
+        """
+        assert not hasattr(pricing_model, "_vault_redemption_fee_by_pair_id"), (
+            "Remove the strategy-local Hyper-AI fee wrapper; backtesting now charges vault fees automatically"
+        )
+        self.portfolio = portfolio
+        configurator = getattr(pricing_model, "pair_configurator", None)
+        if configurator is not None:
+            configurator.portfolio = portfolio
+            for config in configurator.configs.values():
+                if hasattr(config.pricing_model, "portfolio"):
+                    config.pricing_model.portfolio = portfolio
+        elif hasattr(pricing_model, "portfolio"):
+            pricing_model.portfolio = portfolio
+
+    def _vault_fee_result(self, state: State, trade: TradeExecution, ts: datetime.datetime,
+                          quantity: Decimal, gross_price: float) -> dict[str, str | int] | None:
+        """Calculate a reduction's fees before execution changes balances.
+
+        Synchronous sells derive basis from the ledger; delayed sells reuse their
+        request snapshot. Legacy saved redemption rates stay on their original
+        settlement path and must never be combined with the automatic fee record.
+
+        :param state:
+            State owning the trade's position and its acquisition ledger.
+        :param trade:
+            Reduction being quoted at request time or executed at settlement.
+        :param ts:
+            Naive UTC request or execution time used for management-fee accrual.
+        :param quantity:
+            Positive share amount after any execution rounding adjustment.
+        :param gross_price:
+            Denomination tokens per share before fees.
+        :return:
+            The fee calculation record, or ``None`` for non-vault, legacy-rate
+            or otherwise non-externalised reductions.
+        """
+        if not trade.pair.is_vault():
+            return None
+        if "backtest_vault_redemption_fee" in trade.other_data:
+            # Reloaded state must not combine incompatible fee accounting formats.
+            assert FEE_KEY not in trade.other_data, "Mixed legacy and automatic vault fees"
+            return None
+        position = state.portfolio.get_position_by_id(trade.position_id)
+        record = trade.other_data.get(FEE_KEY, {})
+        return calculate_vault_fees(position, ts, quantity, gross_price, vault_exit_rate(trade.pair), record.get("request"))
 
     def simulate_spot(self, state: State, trade: TradeExecution) -> Tuple[Decimal, Decimal, bool]:
         """Spot market translation simulation with a simulated wallet.
@@ -238,6 +303,11 @@ class BacktestExecution(ExecutionModel):
                 raise AssertionError(f"Tried to execute sell on position {position} that is not open. This trade is {trade}, pair {trade.pair}, trade id: {trade.trade_id}, position id: {trade.position_id}, last trade was {last_trade}")
             executed_quantity, sell_amount_epsilon_fix = fix_sell_token_amount(base_balance, trade.planned_quantity)
             executed_reserve = abs(Decimal(trade.planned_quantity) * Decimal(trade.planned_price))
+            gross_price = trade.planned_mid_price or trade.planned_price
+            fees = self._vault_fee_result(state, trade, trade.opened_at, abs(executed_quantity), gross_price)
+            if fees:
+                trade.other_data[FEE_KEY] = {"realised": fees}
+                executed_reserve = Decimal(fees["net"])
 
 
         if trade.is_buy():
@@ -407,28 +477,27 @@ class BacktestExecution(ExecutionModel):
     # Async (two-stage ERC-7540 / Ostium) vault deposit/redeem simulation
     #
 
-    def _is_async_vault(self, pair, *, is_buy: bool | None = None) -> bool:
+    def _is_async_vault(self, pair: TradingPairIdentifier, *, is_buy: bool | None = None) -> bool:
         """Does this vault trade use a delayed settlement flow in backtest?
 
-        True if the pair has an explicit settlement-delay override, or its vault
-        features mark it as ERC-7540 / Lagoon / Ostium style. D2, Plutus and
-        Lagoon deposits additionally require a recorded historical settlement
-        event after their minimum average-delay floor.
+        Selects the simulated lifecycle before computing its settlement delay.
+        Explicit overrides queue both directions. Otherwise deposits use deposit
+        classification and historical-event requirements, while sells use the
+        separate delayed-redemption classification. Live calls use manager capabilities.
 
+        :param pair:
+            Pair whose vault features and optional address override select the flow.
         :param is_buy:
             Trade direction. ``None`` answers whether either vault flow may be
             delayed and preserves the existing diagnostic helper behaviour.
+        :return:
+            Whether this direction uses the simulated request/settle lifecycle.
         """
         if not pair.is_vault():
             return False
         if pair.pool_address and pair.pool_address.lower() in self.vault_settlement_delay_overrides:
             return True
-        features = pair.get_vault_features() or set()
-        requires_historical_deposit_settlement = bool(features & {
-            ERC4626Feature.lagoon_like,
-            ERC4626Feature.d2_like,
-            ERC4626Feature.plutus_like,
-        })
+        requires_historical_deposit_settlement = self._requires_historical_deposit_settlement(pair)
         if is_buy is True:
             return pair.is_async_vault() or requires_historical_deposit_settlement
         if is_buy is False:
@@ -436,12 +505,21 @@ class BacktestExecution(ExecutionModel):
         return pair.is_async_vault() or pair.has_delayed_vault_redemption() or requires_historical_deposit_settlement
 
     @staticmethod
-    def _requires_historical_deposit_settlement(pair) -> bool:
+    def _requires_historical_deposit_settlement(pair: TradingPairIdentifier) -> bool:
         """Does a backtest deposit need historical settlement evidence?
 
-        D2, Plutus and Lagoon deposits remain event-gated when the historical
+        D2 and Lagoon deposits remain event-gated when the historical
         feed includes settlement observations. A two-day grace period is used
         only when no observations exist at all.
+
+        Used both to select queued deposits and to decide whether the resolver
+        must consult event history after the minimum delay. This does not gate
+        redemptions or synchronous Plutus deposits.
+
+        :param pair:
+            Pair being checked for simulated deposit settlement.
+        :return:
+            True for D2/Lagoon vaults; false for other pairs.
         """
         if not pair.is_vault():
             return False
@@ -449,24 +527,54 @@ class BacktestExecution(ExecutionModel):
         return bool(features & {
             ERC4626Feature.lagoon_like,
             ERC4626Feature.d2_like,
-            ERC4626Feature.plutus_like,
         })
 
-    def _get_settlement_due(self, pair, ts: datetime.datetime) -> datetime.datetime:
-        """When does an async vault request made at ``ts`` become claimable?
+    @staticmethod
+    def _uses_protocol_settlement_estimate(features: set[ERC4626Feature]) -> bool:
+        """Whether a queued backtest request can use the vault's reported delay.
+
+        :py:meth:`_get_settlement_due` uses this after explicit overrides.
+        Lagoon, Upshift and :py:data:`VAULT_SETTLEMENT_DELAY_FALLBACKS` families
+        prefer a positive metadata estimate; others keep their existing schedule.
+        Call :py:meth:`_is_async_vault` for the trade direction first: this
+        timing policy must not turn synchronous deposits into queued ones.
+
+        :param features:
+            Protocol features of the vault being simulated; empty if unknown.
+        :return:
+            Whether to consult the estimate before using a protocol/global fallback.
+        """
+        estimate_features = {
+            ERC4626Feature.lagoon_like,
+            ERC4626Feature.upshift_like,
+        } | VAULT_SETTLEMENT_DELAY_FALLBACKS.keys()
+        return bool(features & estimate_features)
+
+    def _get_settlement_due(self, pair: TradingPairIdentifier, ts: datetime.datetime) -> datetime.datetime:
+        """Compute the minimum simulated settlement time for a queued request.
+
+        Historical deposit-event checks may defer completion beyond this time.
+        An explicit zero delay still waits for the next resolver cycle.
 
         Precedence:
 
         1. Per-vault override (``vault_settlement_delay_overrides``) — a fixed
            delay from the request time.
         2. The vault's positive ``estimated_settlement`` metadata for Lagoon,
-           D2, Plutus and Atoma.
+           D2, Plutus, Atoma and Upshift.
         3. Conservative protocol defaults in
            :py:data:`VAULT_SETTLEMENT_DELAY_FALLBACKS`.
         4. Ostium-style vaults (``ostium_like`` feature) — the next day at
            :py:data:`OSTIUM_BACKTEST_SETTLEMENT_HOUR`, preserving the
            historical backtest approximation.
         5. The global default delay (``vault_settlement_delay``).
+
+        :param pair:
+            Vault pair already selected for delayed execution in this direction.
+        :param ts:
+            Naive UTC request timestamp.
+        :return:
+            Earliest settlement timestamp under the selected simulation delay.
         """
         if pair.pool_address:
             override = self.vault_settlement_delay_overrides.get(pair.pool_address.lower())
@@ -474,8 +582,7 @@ class BacktestExecution(ExecutionModel):
                 return ts + override
 
         features = pair.get_vault_features() or set()
-        uses_protocol_settlement_estimate = bool(features & ({ERC4626Feature.lagoon_like} | VAULT_SETTLEMENT_DELAY_FALLBACKS.keys()))
-        if uses_protocol_settlement_estimate:
+        if self._uses_protocol_settlement_estimate(features):
             estimated_settlement = pair.get_vault_estimated_settlement()
             if estimated_settlement is not None:
                 return ts + estimated_settlement
@@ -528,6 +635,10 @@ class BacktestExecution(ExecutionModel):
             assert request_quantity < 0, f"Expected a negative async vault redeem quantity for trade {trade}"
             trade.planned_quantity = request_quantity
             trade.planned_reserve = abs(request_quantity) * Decimal(str(trade.planned_price))
+            fees = self._vault_fee_result(state, trade, ts, abs(request_quantity),
+                                          trade.planned_mid_price or trade.planned_price)
+            if fees:
+                trade.other_data[FEE_KEY] = {"request": fees}
             self.wallet.update_balance(base, request_quantity, f"vault redeem request #{trade.trade_id}")
             trade.other_data[VAULT_SETTLEMENT_REQUEST_QUANTITY_KEY] = str(request_quantity)
 
@@ -611,7 +722,7 @@ class BacktestExecution(ExecutionModel):
                         trade.other_data["vault_settlement_fallback_used"] = True
                         trade.other_data["vault_settlement_fallback_reason"] = "no_historical_settlement_observations"
                     else:
-                        # A D2, Plutus or Lagoon deposit is not allocated merely
+                        # A D2 or Lagoon deposit is not allocated merely
                         # because its average delay elapsed when the historical
                         # feed does contain settlement observations. It needs a
                         # real event after this request's delay.
@@ -666,11 +777,14 @@ class BacktestExecution(ExecutionModel):
             # Redeem: realise reserve at the current (settlement-time) price.
             executed_quantity = trade.get_vault_settlement_request_quantity()
             if pricing_model is not None:
-                pricing = pricing_model.get_sell_price(ts, pair, abs(executed_quantity))
                 redemption_fee = trade.other_data.get("backtest_vault_redemption_fee")
                 if redemption_fee is None:
+                    pricing = pricing_model.get_sell_price(ts, pair, abs(executed_quantity))
                     settlement_price = pricing.price
                 else:
+                    # Old state may lack fee-mode metadata. Its saved redemption rate
+                    # is authoritative; obtain gross NAV without invoking new fee quotes.
+                    pricing = pricing_model.get_buy_price(ts, pair, Decimal(1))
                     settlement_price = pricing.mid_price * (1.0 - float(redemption_fee))
             else:
                 redemption_fee = trade.other_data.get("backtest_vault_redemption_fee")
@@ -678,6 +792,11 @@ class BacktestExecution(ExecutionModel):
                     settlement_price = float(trade.planned_price)
                 else:
                     settlement_price = float(trade.planned_mid_price) * (1.0 - float(redemption_fee))
+            fees = self._vault_fee_result(state, trade, ts, abs(executed_quantity),
+                                          pricing.mid_price if pricing_model is not None else (trade.planned_mid_price or trade.planned_price))
+            if fees:
+                trade.other_data.setdefault(FEE_KEY, {})["realised"] = fees
+                settlement_price = float(Decimal(fees["net"]) / abs(executed_quantity))
             executed_reserve = abs(executed_quantity) * Decimal(str(settlement_price))
             # Wallet: receive reserve. The shares already left the wallet at
             # request time and must not be debited a second time.
@@ -960,6 +1079,14 @@ class BacktestExecution(ExecutionModel):
         assert isinstance(ts, datetime.datetime)
         assert isinstance(routing_model, (BacktestRoutingModel, GenericRouting))
         assert isinstance(routing_state, (BacktestRoutingState, GenericRoutingState))
+
+        # Validate entered vaults before starting trades or mutating the wallet.
+        for trade in trades:
+            rates = externalised_rates(trade.pair)
+            if rates is not None:
+                assert "backtest_vault_redemption_fee" not in trade.other_data, (
+                    "New externalised vault trades must use automatic fees; remove the legacy redemption-rate override"
+                )
 
         # When the batch contains CCTP bridge trades, we must execute each
         # trade sequentially (start -> simulate -> settle) so that bridge

@@ -7,7 +7,7 @@ import abc
 import datetime
 import time
 from contextlib import AbstractContextManager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import logging
 from io import StringIO
 from pprint import pformat
@@ -18,6 +18,7 @@ from typing import List, Optional, Tuple, cast, Callable
 from eth_defi.compat import native_datetime_utc_now
 from eth_defi.provider.anvil import is_anvil    , mine
 from tradeexecutor.backtest.backtest_execution import BacktestExecutionFailed
+from tradeexecutor.backtest.vault_fees import FEE_KEY
 from tradeexecutor.cli.double_position import check_double_position
 from tradeexecutor.ethereum.ethereum_protocol_adapters import EthereumPairConfigurator
 from tradeexecutor.ethereum.lagoon.vault import LagoonVaultSyncModel
@@ -353,6 +354,11 @@ class StrategyRunner(abc.ABC):
             if t.pair.is_spot() or t.pair.is_vault():
                 if t.is_buy():
                     t.post_execution_price_structure = pricing_model.get_buy_price(ts, t.pair, t.planned_reserve)
+                elif not execution_context.mode.is_live_trading() and t.other_data.get(FEE_KEY, {}).get("realised"):
+                    # These shares have left the ledger. Re-quoting their cost basis
+                    # against the remaining position is invalid; simulated execution
+                    # has no market impact, so retain its quote with the realised price.
+                    t.post_execution_price_structure = replace(t.price_structure, price=t.executed_price)
                 else:
                     t.post_execution_price_structure = pricing_model.get_sell_price(ts, t.pair, -t.planned_quantity)
             elif t.pair.is_leverage() and t.is_short():
@@ -820,6 +826,9 @@ class StrategyRunner(abc.ABC):
             routing_state = routing_setup.routing_state
             pricing_model = routing_setup.pricing_model
             valuation_model = routing_setup.valuation_model
+            # Valuation runs before strategy decisions and needs fee-net position NAV.
+            if hasattr(self.execution_model, "bind_vault_fee_pricing"):
+                self.execution_model.bind_vault_fee_pricing(pricing_model, state.portfolio)
 
             if self.execution_context.mode.is_live_trading() and store is not None:
                 self.execution_model.set_pre_broadcast_state_sync_callback(lambda: store.sync(state))
@@ -917,6 +926,9 @@ class StrategyRunner(abc.ABC):
                         routing_state=routing_state,
                         routing_model=self.routing_model,
                     )
+                    # Callbacks may install a legacy fee wrapper; refuse it before execution.
+                    if hasattr(self.execution_model, "bind_vault_fee_pricing"):
+                        self.execution_model.bind_vault_fee_pricing(pricing_model, state.portfolio)
                     assert type(rebalance_trades) == list
                     debug_details["rebalance_trades"] = rebalance_trades
 

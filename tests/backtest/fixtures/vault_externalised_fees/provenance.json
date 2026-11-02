@@ -1,0 +1,16 @@
+{
+  "metadata_sha256": "54d60b1032dc49071544dbfcf2c4cf951822e1f9127e1a5fc4bbc31428262a9d",
+  "metadata_generated_at": "2026-11-02T13:20:11Z",
+  "source": "Authenticated vault metadata loader, 2 November 2026",
+  "rate_assumption": "Constant current snapshot, not historical rate evidence",
+  "prices_sha256": "64a07883a5da9fd453cfed053c6618b48a3acdcaa0e4878ddb5fb6eb0268606a",
+  "prices_source": "Authenticated NB05 capture on 2 November 2026, vault-prices.parquet SHA256 22957a698202551cd205c2d36952e38bb2a2c6fa031a162c9942df1a262a1596",
+  "lighter_selection": "Profitable observed pool window selected to exercise a non-zero performance fee; not an allocation backtest or parameter optimisation.",
+  "captured_at_utc": "2026-11-02T14:51:44.962711",
+  "packages": {
+    "pandas": "2.3.3",
+    "web3-ethereum-defi": "1.1",
+    "trading-strategy": "0.28"
+  },
+  "prices_format": "Apache Parquet with Zstandard compression"
+}

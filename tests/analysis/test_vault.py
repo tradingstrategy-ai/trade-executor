@@ -31,8 +31,11 @@ class _VaultPair:
         self.pool_address = address
         self.other_data = {}
         self._metadata = SimpleNamespace(
+            address=address,
             deposit_permission=permission,
+            protocol_name="test-protocol",
             protocol_slug="test-protocol",
+            features=[],
             risk_level=risk_level,
             fee_internalised=None,
             management_fee=None,

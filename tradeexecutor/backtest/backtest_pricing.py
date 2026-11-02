@@ -7,11 +7,13 @@ from typing import Literal, Optional
 
 import numpy as np
 import pandas as pd
+from tradeexecutor.backtest.vault_fees import calculate_vault_fees, vault_exit_rate
 from tradeexecutor.backtest.backtest_execution import BacktestExecution
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
 from tradeexecutor.backtest.vault_windows import VaultWindowSchedule
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import \
     UniswapV2Routing
+from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.types import (AnyTimestamp, Percent, USDollarAmount,
                                        USDollarPrice)
@@ -80,8 +82,15 @@ class BacktestPricing(PricingModel):
         ignore_routing=False,
         vault_state: pd.DataFrame | None = None,
         vault_window_overrides: dict[int, VaultWindowSchedule] | None = None,
+        portfolio: Portfolio | None = None,
     ):
         """
+
+        :param portfolio:
+            Authoritative portfolio supplying acquisition basis and holding periods
+            for externalised vault fees. The runner binds this before valuation
+            and trading. Without it, standalone pricing cannot deduct these
+            position-specific costs and returns ordinary market/tax quotes.
 
         :param candle_universe:
             Candles where our backtesing date comes from
@@ -175,6 +184,7 @@ class BacktestPricing(PricingModel):
         # BacktestRoutingModel or GenericRouting
         # assert isinstance(routing_model, BacktestRoutingModel), f"Routing model must be BacktestRoutingModel got {routing_model.__class__}"
 
+        self.portfolio = portfolio
         self.candle_universe = candle_universe
         self.very_small_amount = very_small_amount
         self.routing_model = routing_model
@@ -289,8 +299,30 @@ class BacktestPricing(PricingModel):
         self,
         ts: datetime.datetime,
         pair: TradingPairIdentifier,
-        quantity: Optional[Decimal]
+        quantity: Decimal | None
     ) -> TradePricing:
+        """Quote a sale for trade sizing, funding checks or position valuation.
+
+        For an externalised-fee vault with an open position in the bound
+        portfolio, the executable price includes management/performance fees
+        and the configured exit charge. The gross share price remains available
+        as ``mid_price`` so execution can recalculate fees on actual amounts.
+        Manager fees are not reported as AMM liquidity-provider fees.
+
+        Without a bound portfolio or position, this returns the ordinary market
+        and tax quote; it cannot infer acquisition basis or elapsed holding time.
+
+        :param ts:
+            Naive UTC pricing time, also used for management-fee accrual.
+        :param pair:
+            Pair to sell; a vault's base asset is its share token.
+        :param quantity:
+            Positive base-token/share amount. Fixed-price fixtures also accept
+            ``None`` for a gross-price probe without position-specific fees.
+        :return:
+            Executable ``price`` and gross ``mid_price`` in quote-token units
+            per base token/share, together with route and market-feed diagnostics.
+        """
 
         assert pair is not None, "Pair missing"
 
@@ -302,57 +334,61 @@ class BacktestPricing(PricingModel):
 
         fixed_price = self.fixed_prices.get(pair)
         if fixed_price:
-            return TradePricing(
-                price=float(fixed_price),
-                mid_price=float(fixed_price),
-                lp_fee=[0],
-                pair_fee=[0],
-                market_feed_delay=None,
-                side=False,
-                path=[pair]
+            # Fixed-price fixtures bypass market fees, but still owe position-based fees.
+            price = mid_price = fixed_price
+            lp_fee = pair_fee = 0.0
+            tax = tax_percent = delay = None
+        else:
+            mid_price, delay = self.candle_universe.get_price_with_tolerance(
+                pair_id,
+                ts,
+                tolerance=self.data_delay_tolerance,
+                kind=self.candle_timepoint_kind,
+                pair_name_hint=pair.get_ticker(),
             )
 
-        mid_price, delay = self.candle_universe.get_price_with_tolerance(
-            pair_id,
-            ts,
-            tolerance=self.data_delay_tolerance,
-            kind=self.candle_timepoint_kind,
-            pair_name_hint=pair.get_ticker(),
-        )
+            fee_result = self.get_pair_fee(ts, pair, "sell", separate_tax=True)
+            if fee_result is None:
+                pair_fee = tax_percent = None
+            else:
+                pair_fee, tax_percent = fee_result
 
-        fee_result = self.get_pair_fee(ts, pair, "sell", separate_tax=True)
-        if fee_result is None:
-            pair_fee = tax_percent = None
-        else:
-            pair_fee, tax_percent = fee_result
+            if pair_fee is not None:
+                reserve = float(quantity) * mid_price
+                lp_fee = float(reserve) * pair_fee
+                tax = float(reserve) * tax_percent
 
-        if pair_fee is not None:
-            reserve = float(quantity) * mid_price
-            lp_fee = float(reserve) * pair_fee
-            tax = float(reserve) * tax_percent
+                # Move price below mid price
+                price = mid_price * (1 - pair_fee)
 
-            # Move price below mid price
-            price = mid_price * (1 - pair_fee)
+                if not pair.is_vault():
+                    assert lp_fee > 0, f"After simulating SELL trade, got non-positive LP fee: {pair} {quantity}: ${lp_fee}.\n"\
+                                   f"Mid price: {mid_price}, quantity: {quantity}, reserve: {reserve} , pair fee: {pair_fee}\n" \
 
-            if not pair.is_vault():
-                assert lp_fee > 0, f"After simulating SELL trade, got non-positive LP fee: {pair} {quantity}: ${lp_fee}.\n"\
-                               f"Mid price: {mid_price}, quantity: {quantity}, reserve: {reserve} , pair fee: {pair_fee}\n" \
+            else:
+                # Fee information not available
+                if (not self.allow_missing_fees) and (self.trading_fee_override is None):
+                    raise AssertionError(f"Pair lacks fee information: {pair}")
 
-        else:
-            # Fee information not available
-            if (not self.allow_missing_fees) and (self.trading_fee_override is None):
-                raise AssertionError(f"Pair lacks fee information: {pair}")
+                price = mid_price
+                lp_fee = None
+                tax = None
 
-            price = mid_price
-            lp_fee = None
-            tax = None
+        if pair.is_vault() and self.portfolio is not None and quantity:
+            position = self.portfolio.get_existing_open_position_by_trading_pair(pair)
+            if position:
+                fees = calculate_vault_fees(position, ts, quantity, mid_price, vault_exit_rate(pair))
+                if fees:
+                    price = float(Decimal(fees["net"]) / quantity)
+                    # Externalised manager fees are not AMM LP fees.
+                    lp_fee = 0.0
 
         return TradePricing(
             price=float(price),
             mid_price=float(mid_price),
             lp_fee=lp_fee,
             pair_fee=pair_fee,
-            market_feed_delay=delay.to_pytimedelta(),
+            market_feed_delay=delay.to_pytimedelta() if delay is not None else None,
             side=False,
             path=[pair],
             token_tax=tax,
@@ -743,6 +779,7 @@ def backtest_pricing_factory(
     return BacktestPricing(
         universe.data_universe.candles,
         routing_model,
+        portfolio=execution_model.portfolio,
         pairs=universe.data_universe.pairs,
         vault_state=universe.vault_state,
         vault_window_overrides=getattr(universe, "vault_window_overrides", None),

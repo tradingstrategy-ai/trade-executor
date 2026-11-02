@@ -20,6 +20,12 @@ if assessment.status is VaultClosureOutcome.unknown:
 
 ## Outcomes and controls
 
+Before adding selection filters, read
+[backtest universe preservation](backtest-universe-preservation.md). It records
+the NB05 scope error and required implementation/review checks. A strategy-wide
+filter on current unknown permission must not replace this contract's historical
+admission policy.
+
 | Enum outcome | Meaning | Default interaction |
 | --- | --- | --- |
 | `open` | Available evidence permits the operation | Allowed |

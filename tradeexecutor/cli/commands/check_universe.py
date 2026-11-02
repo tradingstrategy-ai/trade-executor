@@ -12,7 +12,7 @@ from eth_defi.compat import native_datetime_utc_now
 from tradingstrategy.chain import ChainId
 from .app import app
 from .shared_options import unit_testing
-from ..bootstrap import prepare_executor_id, prepare_cache_and_token_cache, create_web3_config, create_client, create_execution_and_sync_model, resolve_deployment_file
+from ..bootstrap import prepare_executor_id, prepare_cache_and_token_cache, create_web3_config, create_client, create_execution_and_sync_model, resolve_deployment_file, configure_default_chain
 from ..log import setup_logging
 from ...analysis.pair import display_strategy_universe
 from ...strategy.approval import UncheckedApprovalModel
@@ -89,9 +89,9 @@ def check_universe(
     if not web3config.has_any_connection():
         # Only revelvant if create_trading_universe() uses web3 connection.
         # Default to Ethereum mainnet for legacy tests.
-        web3config.default_chain_id = mod.chain_id or ChainId.ethereum
+        web3config.default_chain_id = mod.get_default_chain_id() or ChainId.ethereum
     else:
-        web3config.choose_single_chain(mod.chain_id)
+        configure_default_chain(web3config, mod)
 
     # create_trading_universe() which needs to access Lagoon
     if asset_management_mode is None:

@@ -84,7 +84,7 @@ def test_pricing_uses_denomination_manager_estimate(monkeypatch: pytest.MonkeyPa
         ({ERC4626Feature.lagoon_like}, True),
         ({ERC4626Feature.atoma_like}, True),
         (set(), True),
-        ({ERC4626Feature.gains_like}, False),
+        ({ERC4626Feature.gains_like}, True),
         ({ERC4626Feature.d2_like}, True),
     ],
 )

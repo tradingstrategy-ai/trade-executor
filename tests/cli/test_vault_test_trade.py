@@ -11,6 +11,7 @@ from unittest.mock import ANY, MagicMock, patch
 
 import pytest
 from eth_defi.middleware import ProbablyNodeHasNoBlock
+from eth_defi.erc_4626.core import ERC4626Feature
 from eth_defi.testing.fork_blocks import MIDNIGHT_BLOCKS
 from eth_defi.vault.base import VaultSpec
 from eth_defi.vault.deposit_redeem import (
@@ -113,7 +114,7 @@ from tradeexecutor.ethereum.vault.vault_routing import (
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.ethereum.web3config import Web3Config
 from tradeexecutor.cli.log import setup_custom_log_levels
-from tradeexecutor.state.identifier import AssetIdentifier
+from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeStatus
 from tradeexecutor.strategy.execution_model import AssetManagementMode
@@ -584,6 +585,62 @@ def test_async_vault_lifecycle_uses_manager_capability_metadata() -> None:
     assert (
         has_async_vault_lifecycle(asynchronous_pair, missing_capability_vault) is True
     )
+
+
+@pytest.mark.parametrize("feature", [ERC4626Feature.accountable_like, ERC4626Feature.plutus_like])
+def test_mixed_vault_cli_actions_use_manager_capabilities(feature: ERC4626Feature) -> None:
+    """A synchronous deposit must not make a queued redemption look immediate.
+
+    1. Build a real mixed-direction pair and substitute chain-backed command services.
+    2. Check automatic real deposits stay open, then check a synchronous control.
+    3. Check automatic simulation refuses the queued redeem without settlement support.
+
+    Transaction execution, valuation and persistence are mocked to inspect command
+    decisions without connecting to a chain or submitting funded transactions.
+    """
+    # 1. Build a real mixed-direction pair and substitute chain-backed command services.
+    quote = AssetIdentifier(1, "0x" + "11" * 20, "USDC", 6)
+    base = AssetIdentifier(1, "0x" + "22" * 20, "SHARE", 18)
+    pair = TradingPairIdentifier(base, quote, base.address, base.address, fee=0,
+        kind=TradingPairKind.vault, other_data={"vault_features": {feature, ERC4626Feature.erc_7540_like}})
+    assert not pair.is_async_vault()
+    capability = VaultDepositManagerCapability(can_deposit=True, can_redeem=True,
+        deposit_flow="synchronous", redemption_flow="asynchronous")
+    # Read capability lazily so later assignments switch the flow under test.
+    vault = SimpleNamespace(get_deposit_manager_capability=lambda: capability)
+    attempt = MagicMock(pair=pair, executable_vault=vault, open_trade_position=None)
+    runner = object.__new__(VaultTestBatchRunner)
+    runner.state = State()
+    runner.runtime = MagicMock()
+    runner.store = MagicMock()
+    runner.max_slippage = 0.01
+    runner.amount = Decimal(1)
+    runner.manual_action = None
+    runner.current_attempt = SimpleNamespace(original_trade_ids=set())
+    # 2. Check automatic real deposits stay open, then check a synchronous control.
+    with (
+        patch.object(runner_module, "revalue_state"),
+        patch.object(runner_module, "perform_test_trade") as execute,
+        patch.object(runner_module, "get_vault_trade_position", return_value=object()),
+        patch.object(VaultTestBatchRunner, "_stamp_real_lifecycle"),
+    ):
+        runner._execute_real(attempt, "deposit", redemption_available=True)
+        assert execute.call_args.kwargs["buy_only"] is True
+        capability = VaultDepositManagerCapability(can_deposit=True, can_redeem=True,
+            deposit_flow="synchronous", redemption_flow="synchronous")
+        runner._execute_real(attempt, "deposit", redemption_available=True)
+        assert execute.call_args.kwargs["buy_only"] is False
+    # 3. Check automatic simulation refuses the queued redeem without settlement support.
+    capability = VaultDepositManagerCapability(can_deposit=True, can_redeem=True,
+        deposit_flow="synchronous", redemption_flow="asynchronous")
+    runner.auto_simulated = True
+    runner.settle_async_on_anvil = False
+    with (
+        patch.object(VaultTestBatchRunner, "_choose_operation", return_value="redeem"),
+        patch.object(VaultTestBatchRunner, "_record_terminal_result") as record,
+    ):
+        assert runner._process_attempt(attempt, MagicMock()) is False
+        assert record.call_args.kwargs["result"] == "simulation_unsupported_async"
 
 
 def test_shared_bridge_position_blocks_unrelated_vault() -> None:

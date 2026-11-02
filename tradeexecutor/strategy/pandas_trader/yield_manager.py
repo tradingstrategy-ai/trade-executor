@@ -23,6 +23,7 @@ from tradeexecutor.state.types import USDollarAmount, Percent
 from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.tvl_size_risk import BaseTVLSizeRiskModel
+from tradeexecutor.strategy.vault_closure import can_interact_with_vault
 from eth_defi.compat import native_datetime_utc_now
 
 logger = logging.getLogger(__name__)
@@ -322,14 +323,22 @@ class YieldManager:
     ) -> list[TradeExecution]:
         """Create trades to adjust yield positions.
 
+        Vault increases require both strategy inclusion and deposit admission at
+        this timestamp. Refusal leaves funds in reserve. Reductions remain
+        available for excluded or deposit-closed holdings so parking policy
+        cannot prevent the strategy from releasing its existing cash.
+
         :param cycle:
             Strategy cycle number for diagnostics
+
+        :param timestamp:
+            Naive UTC decision time for historical or live deposit-admission checks.
 
         :param current_yield_positions:
             Where is our cash currently held
 
         :param desired_yield_positions:
-            What are the desired positiosn at the end of this cycle
+            Desired positions at the end of this cycle.
         """
 
         trades = []
@@ -385,6 +394,17 @@ class YieldManager:
                     case TradingPairKind.cash:
                         raise AssertionError("Cash should not be in desired positions")
                     case TradingPairKind.vault:
+                        # Deposit restrictions must not trap capital already held here.
+                        if dollar_delta > 0 and (
+                            pair.get_ignore_reason() is not None
+                            or not can_interact_with_vault(
+                                pair, timestamp=timestamp,
+                                pricing_model=self.position_manager.pricing_model,
+                                operation="deposit",
+                            )
+                        ):
+                            logger.info("Skipping yield deposit into unavailable venue %s", pair)
+                            continue
                         trades += self.position_manager.adjust_position(
                             pair=pair,
                             dollar_delta=dollar_delta,

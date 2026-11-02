@@ -30,6 +30,12 @@ instructions; do not import its configuration, migration or publication workflow
 
 ## Check repository fit and correctness
 
+For selection, admission, timing or strategy conversion, read
+[backtest universe preservation](../../../docs/backtest-universe-preservation.md)
+and apply its required review checks. Require evidence for new exclusions and
+removed inherited assumptions; flag unapproved historical-universe narrowing
+as a correctness issue, including when the proposed tests assert that narrowing.
+
 - Does the plan cover the user's actual request and all affected entry points,
   callers and consumers? Are sequencing, prerequisites and acceptance criteria
   concrete and consistent? Flag contradictory steps, circular prerequisites and

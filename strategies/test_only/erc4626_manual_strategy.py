@@ -38,6 +38,8 @@ SOURCE_VAULTS = [
     ("morpho_v2", "0x55a2b207b0074e13adcb858950a81b7a04775e0f", "gtusdcb", 18, [ERC4626Feature.morpho_v2_like]),
     ("yearn_v3", "0x2b0b6376083c6e1f376c7439f328436a673f333c", "yPT-aUSDC", 6, [ERC4626Feature.yearn_v3_like]),
     ("compounder", "0xcacc53bacce744ac7b5c1ec7eb7e3ab01330733b", "ysUSDC", 6, [ERC4626Feature.yearn_compounder_like]),
+    # NB05 parks cash here; verify its guarded release alongside directional vaults.
+    ("fluid", "0x1a996cb54bb95462040408c06122d45d6cdb6096", "fUSDC", 6, [ERC4626Feature.fluid_like]),
 ]
 
 

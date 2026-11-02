@@ -17,6 +17,7 @@ working on that area:
 | `.claude/docs/hypercore-vault.md` | HyperCore native vault execution — properties, data structures, deposit/withdrawal phases, HyperEVM interactions, modules and diagrams |
 | `.claude/docs/phase-aware-alpha-model.md` | Phase-aware alpha model — parking window-gated vault deposits in a yield-bearing queue vault, park/promote event log, correctness invariants, backtest window modelling, diagnostics charts |
 | `docs/vault-closure.md` and `docs/api/vault-closure.md` | Unified admission rules for strategies and charts; keep protocol evidence, live account restrictions and optional strategy policy separate |
+| [Backtest universe preservation](docs/backtest-universe-preservation.md) | **Read before changing or reviewing backtest selection, admission, timing or notebook conversion**: prevent live-readiness requirements from silently narrowing historical coverage |
 | `docs/strategy-parameters.md` | **Read before writing or editing a strategy module**: the one module-level variable, which `Parameters` the engine reads, and what must not go in `Parameters` (deployment output, protocol constants, test knobs, environment variables) |
 
 ## State persistence

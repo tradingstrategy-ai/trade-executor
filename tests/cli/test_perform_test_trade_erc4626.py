@@ -73,7 +73,7 @@ def test_erc4626_pair_selection_and_cli_refusals(monkeypatch: MonkeyPatch) -> No
     # 4. Check the manual tutorial's shell syntax and complete declared matrix.
     script = Path(__file__).resolve().parents[2] / "scripts/lagoon/manual-erc4626-cli.sh"
     subprocess.run(["bash", "-n", str(script)], check=True)
-    assert {p.get_vault_name() for p in load_universe().iterate_pairs()} == {"generic", "morpho_v1", "morpho_v2", "yearn_v3", "compounder"}
+    assert {p.get_vault_name() for p in load_universe().iterate_pairs()} == {"generic", "morpho_v1", "morpho_v2", "yearn_v3", "compounder", "fluid"}
 
 
 def test_shared_capacity_and_empty_quote_are_refused() -> None:

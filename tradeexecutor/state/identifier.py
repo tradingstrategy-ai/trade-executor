@@ -85,16 +85,22 @@ ASYNC_VAULT_FEATURES = {
 
 #: Vault feature flags whose redemption cash must not fund a same-cycle buy.
 #:
-#: D2 and Atoma redemptions are bounded by epoch windows and Plutus Hedge
-#: redemptions may require operator fulfilment. Their deposits remain synchronous, so they
+#: D2, Atoma and Gains redemptions are bounded by epoch windows and Ember
+#: redemptions require operator fulfilment. Their deposits remain synchronous, so they
 #: intentionally do not belong to :py:data:`ASYNC_VAULT_FEATURES`.
+#: Nova Markets inherits the Gains epoch manager; Accountable also deposits
+#: synchronously but defers exit proceeds. Plutus Hedge is covered by its
+#: additional ERC-7540 flag, while Dolomite's Plutus-only flags remain synchronous.
 #: Upshift uses this same conservative funding rule even when its current lag
 #: is zero; the deposit manager independently selects instant or queued execution.
 DELAYED_VAULT_REDEMPTION_FEATURES = ASYNC_VAULT_FEATURES | {
     ERC4626Feature.d2_like,
-    ERC4626Feature.plutus_like,
     ERC4626Feature.atoma_like,
     ERC4626Feature.upshift_like,
+    ERC4626Feature.gains_like,
+    ERC4626Feature.nova_markets_like,
+    ERC4626Feature.ember_like,
+    ERC4626Feature.accountable_like,
 }
 
 
@@ -956,16 +962,23 @@ class TradingPairIdentifier:
         return _normalise_erc_4626_features(feats)
 
     def is_async_vault(self) -> bool:
-        """Does this vault use a two-stage (async) deposit/redeem flow?
+        """Does this vault's classification require a queued deposit?
 
         ERC-7540 (Lagoon) and Ostium-style vaults queue deposit and redemption
         requests for a later claim instead of settling in the same transaction.
         Capital committed to such a request is unavailable until the vault
         operator (or epoch) settles the queue.
 
+        Accountable and Plutus deposits stay synchronous even when withdrawal
+        interfaces carry ERC-7540 flags. Use :py:meth:`has_delayed_vault_redemption`
+        when deciding whether exit proceeds can fund trades. Live calls follow
+        the deposit manager's capabilities rather than this planning category.
+
         :return:
             True if the pair is a vault whose feature flags mark a
-            request/claim settlement queue.
+            deposit request/claim queue. With known-empty features, any slug
+            other than an explicit generic ERC-4626 marker (including a missing
+            slug) retains the queued fallback. Missing features return false.
         """
         if not self.is_vault():
             return False
@@ -974,6 +987,11 @@ class TradingPairIdentifier:
             return False
         if not features:
             return not is_generic_erc4626_protocol_slug(self.get_vault_protocol())
+        # These managers mint shares immediately even when their withdrawal
+        # interface carries ERC-7540 metadata. Plutus Dolomite is synchronous
+        # in both directions; Hedge additionally carries erc_7540_like.
+        if features & {ERC4626Feature.accountable_like, ERC4626Feature.plutus_like}:
+            return False
         return bool(features & ASYNC_VAULT_FEATURES)
 
     def has_delayed_vault_redemption(self) -> bool:
@@ -1002,6 +1020,15 @@ class TradingPairIdentifier:
 
         The public metadata serialises this as seconds. Accept a timedelta as
         well to keep manually constructed test and strategy universes useful.
+
+        A pair-level ``vault_estimated_settlement`` takes precedence over the
+        attached metadata. Non-positive values do not imply instant settlement;
+        the simulator falls back to its protocol/default delay. An explicit
+        executor delay override is required to model a zero delay.
+
+        :return:
+            Positive duration, or ``None`` for a non-vault, missing estimate or
+            unsupported/non-positive value.
         """
         if not self.is_vault():
             return None

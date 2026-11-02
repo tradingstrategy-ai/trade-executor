@@ -176,8 +176,13 @@ def test_vault_rebalance_strategy(
     strategy_universe: TradingStrategyUniverse,
     tmp_path: Path,
 ):
-    """Simple vault rebalacne strategy."""
-    # Calculate all indicators where parameters have changed and store the result on disk
+    """Run a vault rebalance with protocol-aware settlement timing.
+
+    1. Prepare the indicator cache for the bundled historical vault universe.
+    2. Run the strategy through the normal backtester.
+    3. Check trade outcomes with Gains redemption proceeds delayed.
+    """
+    # 1. Prepare the indicator cache for the bundled historical vault universe.
     parameters = StrategyParameters.from_class(Parameters)
     indicator_storage = DiskIndicatorStorage(
         tmp_path,
@@ -191,6 +196,7 @@ def test_vault_rebalance_strategy(
         max_workers=4,
     )
 
+    # 2. Run the strategy through the normal backtester.
     result = run_backtest_inline(
         client=None,
         decide_trades=decide_trades,
@@ -203,11 +209,13 @@ def test_vault_rebalance_strategy(
         indicator_combinations=indicator_data.indicator_combinations,
     )
 
+    # 3. Check trade outcomes with Gains redemption proceeds delayed.
     state = result.state
     assert len(state.portfolio.closed_positions) >= 1
 
     trades = list(state.portfolio.get_all_trades())
-    assert len(trades) == 506
+    # Delayed Gains exits cannot fund the same-cycle rebalance.
+    assert len(trades) == 477
     for t in trades:
         assert t.get_status() == TradeStatus.success
         assert t.is_success(), f"Trade {t.id} is not successful: {t}"
