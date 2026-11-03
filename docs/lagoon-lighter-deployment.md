@@ -224,7 +224,9 @@ multichain vault with `check-wallet`, the state and the NAV.
 
 [`scripts/lagoon/manual-multi-vault-cli.sh`](../scripts/lagoon/manual-multi-vault-cli.sh)
 is the runbook: it deploys an Arbitrum vault and opens and closes a Lighter
-pool, Atoma and Upshift position. With `SIMULATE=true` it runs the same
+pool, Atoma and Upshift position. `--targets lighter,upshift` finishes the
+two positions without a long lock in one sitting; `--targets atoma` days
+later closes Atoma after its epoch and redeems the investor. With `SIMULATE=true` it runs the same
 commands on Arbitrum and Ethereum forks with the fake Lighter sequencer and
 forged CCTP attestations. See the
 [implementation plan](plans/arbitrum-multi-vault-live-plan.md) for minimum

@@ -56,15 +56,23 @@
 #   SUBSCRIPTION_USDC, AMOUNT_LIGHTER, AMOUNT_ATOMA, AMOUNT_UPSHIFT
 #                                         Optional amounts, defaults above.
 #
+# Targets: --targets lighter,atoma,upshift (the default) selects which
+# positions steps 3-5 open and close in this invocation. Steps 6-7 run only
+# once every target is done, so the ones with no lock can finish first:
+# Lighter (5-minute mint lockup, ~25-minute withdrawal) and Upshift (no lock)
+# in one sitting, Atoma (shares lock until the end of its 3-day epoch, exit
+# settled at the end of the next) days later with --targets atoma.
+#
 # Start:
 #   source .local-test.env
 #   SIMULATE=true bash scripts/lagoon/manual-multi-vault-cli.sh --deploy --subscribe
-# Live:
+# Live, in two sittings:
 #   export MULTI_VAULT_TEST_PRIVATE_KEY=...  # keep in your shell; never pass as an argument
-#   bash scripts/lagoon/manual-multi-vault-cli.sh --deploy --subscribe
+#   bash scripts/lagoon/manual-multi-vault-cli.sh --deploy --subscribe --targets lighter,upshift
+#   source <run directory>/env.sh && bash scripts/lagoon/manual-multi-vault-cli.sh --targets atoma
 # Continue after an interruption or a wait:
 #   source <run directory>/env.sh
-#   bash scripts/lagoon/manual-multi-vault-cli.sh
+#   bash scripts/lagoon/manual-multi-vault-cli.sh [--targets ...]
 #
 # Resuming: every step reads the state file. A completed buy is never
 # repeated; a pending exit is resumed, never requested again. Atoma's live
@@ -74,13 +82,21 @@
 set -Eeuo pipefail
 DEPLOY=false
 SUBSCRIBE=false
-for argument in "$@"; do
-    case "$argument" in
+TARGETS=lighter,atoma,upshift
+while [ $# -gt 0 ]; do
+    case "$1" in
         --deploy) DEPLOY=true ;;
         --subscribe) SUBSCRIBE=true ;;
-        *) echo "Usage: $0 [--deploy] [--subscribe]" >&2; exit 2 ;;
+        --targets) TARGETS="$2"; shift ;;
+        --targets=*) TARGETS="${1#--targets=}" ;;
+        *) echo "Usage: $0 [--deploy] [--subscribe] [--targets lighter,atoma,upshift]" >&2; exit 2 ;;
     esac
+    shift
 done
+for target in ${TARGETS//,/ }; do
+    case "$target" in lighter|atoma|upshift) ;; *) echo "Unknown target '$target'; use lighter, atoma or upshift" >&2; exit 2 ;; esac
+done
+is_selected() { case ",$TARGETS," in *",$1,"*) return 0 ;; *) return 1 ;; esac; }
 umask 077
 cd "$(dirname "$0")/../.."
 command -v jq >/dev/null
@@ -275,8 +291,9 @@ test_target() {
     if [ "$phase" = close ] && [ "$target" = atoma ]; then
         if [ "$MULTI_VAULT_SIMULATE" = true ]; then
             run "${HELPER[@]}" atoma-unlock
-        else
-            log "Atoma shares lock until the next epoch. If close-only refuses with insufficient_unlocked_shares, rerun after the lock."
+        elif ! "${HELPER[@]}" atoma-unlocked; then
+            log "atoma is waiting for its epoch lock. Keep this state and rerun --targets atoma after the time above."
+            return 0
         fi
     fi
     if [ "$phase" = close ]; then
@@ -285,18 +302,30 @@ test_target() {
     fi
     if [ "$phase" != done ]; then
         log "$target is waiting ($phase). Keep this state and rerun after the protocol settles."
-        exit 0
+        return 0
     fi
     # check-accounts is single-chain; check-wallet reads both chains' Safes.
     run "${EXECUTOR[@]}" check-wallet
 }
 
 step 3 "Lighter pool: deposit, mint, burn, withdraw and claim"
-test_target lighter "(lighter, lighter-pool-281474976552918)" "$AMOUNT_LIGHTER"
+if is_selected lighter; then test_target lighter "(lighter, lighter-pool-281474976552918)" "$AMOUNT_LIGHTER"; else log "lighter not selected"; fi
 step 4 "Atoma Index: deposit, request withdrawal and claim"
-test_target atoma "(arbitrum, 0xcc56410e1a136af0eceb7241c6ae394f4d8b581c)" "$AMOUNT_ATOMA"
+if is_selected atoma; then test_target atoma "(arbitrum, 0xcc56410e1a136af0eceb7241c6ae394f4d8b581c)" "$AMOUNT_ATOMA"; else log "atoma not selected"; fi
 step 5 "Upshift Core USDC: deposit and redeem through the satellite"
-test_target upshift "(ethereum, 0xE9B725010A9E419412ed67d0fA5f3A5f40159D32)" "$AMOUNT_UPSHIFT"
+if is_selected upshift; then test_target upshift "(ethereum, 0xE9B725010A9E419412ed67d0fA5f3A5f40159D32)" "$AMOUNT_UPSHIFT"; else log "upshift not selected"; fi
+
+# The investor is redeemed only once every target, selected or not, is done.
+REMAINING=""
+for target in lighter atoma upshift; do
+    phase="$("${HELPER[@]}" phase "$target")"
+    [ "$phase" = done ] || REMAINING="$REMAINING $target($phase)"
+done
+if [ -n "$REMAINING" ]; then
+    log "Targets not yet done:$REMAINING. Rerun with --targets <name> when they can proceed; the investor is redeemed once all are done."
+    [ "$MULTI_VAULT_SIMULATE" != true ] || log "Simulation forks keep running in $MULTI_VAULT_SIM_DIR"
+    exit 0
+fi
 
 # Step 6: no automatic corrections; a discrepancy stops the run.
 # check-accounts and correct-accounts support one chain only, so this

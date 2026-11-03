@@ -256,6 +256,20 @@ def phase(target: str, strategy_file: Path = typer.Option(STRATEGY_FILE)) -> Non
     print(get_target_phase(State.read_json_file(Path(os.environ["STATE_FILE"])), pair))
 
 
+@app.command("atoma-unlocked")
+def atoma_unlocked(strategy_file: Path = typer.Option(STRATEGY_FILE)) -> None:
+    """Exit 0 when the Safe's Atoma shares are unlocked, 3 while they are locked."""
+    web3 = create_multi_provider_web3(os.environ["JSON_RPC_ARBITRUM"])
+    pair = get_target_pair(load_universe(strategy_file), "atoma")
+    lagoon = LagoonVault(web3, VaultSpec(42161, os.environ["VAULT_ADDRESS"]))
+    end = AtomaVault(web3, VaultSpec(42161, pair.pool_address)).get_deposit_manager().get_redemption_delay_over(lagoon.safe_address)
+    chain_time = web3.eth.get_block("latest")["timestamp"]
+    if calendar.timegm(end.timetuple()) > chain_time:
+        print(f"Atoma shares are locked until {end} UTC")
+        raise typer.Exit(3)
+    print("Atoma shares are unlocked")
+
+
 @app.command("atoma-unlock")
 def atoma_unlock(strategy_file: Path = typer.Option(STRATEGY_FILE)) -> None:
     """Simulation only: mine past the Safe's Atoma share lock."""

@@ -53,7 +53,7 @@ from typing import Callable
 from eth_defi.abi import get_deployed_contract
 from eth_defi.compat import native_datetime_utc_now
 from eth_defi.lighter.api import LIGHTER_COLLATERAL_TOLERANCE
-from eth_defi.lighter.constants import LIGHTER_L1_CONTRACT, LIGHTER_USDC_ETHEREUM
+from eth_defi.lighter.constants import LIGHTER_L1_CONTRACT, LIGHTER_POOL_LOCKUP, LIGHTER_USDC_ETHEREUM
 from eth_defi.lighter.execution import (
     LighterOperation,
     LighterOperationStage,
@@ -111,6 +111,12 @@ DEFAULT_LIGHTER_POOL_COLLATERAL_TIMEOUT_SECONDS = 5 * 60
 
 #: Polling interval for Lighter reads.
 DEFAULT_LIGHTER_POOL_POLL_SECONDS = 5.0
+
+#: Wait after a pool buy before its shares can be burned: Lighter's public-pool
+#: lockup plus a margin for clock skew. Measured from the executor's own
+#: execution time of the buy, not Lighter's ``entry_timestamp``, whose units
+#: upstream has not verified on a funded account.
+LIGHTER_POOL_EXIT_LOCKUP = LIGHTER_POOL_LOCKUP + datetime.timedelta(seconds=30)
 
 
 class LighterPoolPhase(enum.StrEnum):
@@ -535,6 +541,7 @@ class LighterPoolRouting(RoutingModel):
         if data["phase"] == LighterPoolPhase.burn:
             self._mark_pending(state, trade, data)
             if "burn" not in data["operations"]:
+                self._wait_for_pool_lockup(state, trade)
                 _, equity = fetch_execution_account(ctx.session, ctx.operator.account_index)
                 data["collateral_before_burn"] = str(equity.available_balance)
 
@@ -664,6 +671,27 @@ class LighterPoolRouting(RoutingModel):
             if operation is not None and operation.stage == LighterOperationStage.rejected:
                 raise VaultRequestInvariantViolation(f"Lighter {kind} operation {operation.tx_hash} was rejected; inspect the trade before retrying") from error
             raise
+
+    def _wait_for_pool_lockup(self, state: State, trade: TradeExecution) -> None:
+        """Wait until the position's latest pool buy is past Lighter's lockup.
+
+        Lighter rejects a burn of shares minted within the pool lockup
+        (five minutes). A test or strategy that exits right after entering
+        would otherwise have its burn rejected, which halts the trade.
+
+        :param state:
+            Strategy state.
+        :param trade:
+            Sell trade about to burn.
+        """
+        position = state.portfolio.get_position_by_id(trade.position_id)
+        bought_at = max((t.executed_at for t in position.trades.values() if t.is_buy() and t.is_success()), default=None)
+        if bought_at is None:
+            return
+        unlock_at = bought_at + LIGHTER_POOL_EXIT_LOCKUP
+        while (remaining := (unlock_at - native_datetime_utc_now()).total_seconds()) > 0:
+            logger.info("Waiting %.0f s for the Lighter pool lockup of trade #%d's shares to end at %s", remaining, trade.trade_id, unlock_at)
+            time.sleep(min(remaining, 30.0))
 
     def _wait_for_collateral(self, ctx: LighterPoolContext, minimum: Decimal, timeout: float) -> Decimal:
         """Wait for total collateral to reach a minimum, such as a credited deposit."""

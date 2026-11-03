@@ -30,6 +30,7 @@ Install it with :py:meth:`FakeLighterCore.get_patches`, for example
 ``for target, replacement in core.get_patches(): mocker.patch(target, new=replacement)``.
 """
 
+import datetime
 import json
 import time
 from dataclasses import dataclass, field
@@ -88,6 +89,8 @@ class FakeLighterPool:
     status: int = 0
     #: Fractional equity growth applied before every burn, so exits realise profit.
     growth_per_burn: Decimal = Decimal("0.001")
+    #: Seconds after a mint during which its shares cannot be burned; Lighter uses five minutes.
+    lockup_seconds: int = 5
 
     def get_share_value(self) -> Decimal:
         """Return USDC per raw share."""
@@ -559,6 +562,8 @@ class FakeLighterCore:
             holding = account.pool_shares.get(pool.index)
             if holding is None or holding.shares < shares:
                 return {"code": 21701, "message": "insufficient shares"}
+            if now < holding.entry_timestamp + pool.lockup_seconds:
+                return {"code": 21705, "message": "pool shares are still locked"}
             pool.equity *= 1 + pool.growth_per_burn
             gross = shares * pool.get_share_value()
             principal = holding.principal * shares / holding.shares
@@ -702,6 +707,9 @@ class FakeLighterCore:
             (f"{pool_routing}.create_lighter_pool_signer", self.create_pool_signer),
             (f"{pool_routing}.wait_for_transaction_receipt_robust", self.wait_for_transaction_receipt_robust),
             ("eth_defi.lighter.execution.requests", SimpleNamespace(Session=lambda: FakeLighterSubmission(self))),
+            # The fake's lockup is seconds, not Lighter's five minutes; keep the
+            # router's wait consistent with it so simulations stay fast.
+            (f"{pool_routing}.LIGHTER_POOL_EXIT_LOCKUP", datetime.timedelta(seconds=7)),
         ]
 
     # ----- Installation -----

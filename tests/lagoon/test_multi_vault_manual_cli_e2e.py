@@ -54,9 +54,10 @@ def test_multi_vault_manual_cli_simulated() -> None:
     Circle attestations are forged for real burns and only Atoma's share lock
     is advanced on the clock.
 
-    1. Run the script from a fresh run directory with deployment and subscription.
-    2. Check that every target is complete and no trade is unfinished.
-    3. Check that a rerun after the forks stopped refuses instead of redeploying.
+    1. Run the script from a fresh run directory with deployment, subscription and the two unlocked targets; it stops before redemption.
+    2. Rerun for Atoma: it completes the last target and redeems the investor.
+    3. Check that every target is complete and no trade is unfinished.
+    4. Check that a rerun after the forks stopped refuses instead of redeploying.
     """
     # A private temporary directory, not pytest's tmp_path: concurrent pytest
     # sessions of the same user rotate and delete older basetemps during this
@@ -65,12 +66,17 @@ def test_multi_vault_manual_cli_simulated() -> None:
     with tempfile.TemporaryDirectory(prefix="multi-vault-e2e-") as directory:
         run_dir = Path(directory) / f"multi-vault-{uuid.uuid4().hex[:8]}"
         try:
-            # 1. Run the script from a fresh run directory with deployment and subscription.
-            result = _run_script(run_dir, "--deploy", "--subscribe")
+            # 1. Run the script from a fresh run directory with deployment, subscription and the two unlocked targets; it stops before redemption.
+            first = _run_script(run_dir, "--deploy", "--subscribe", "--targets", "lighter,upshift")
+            assert first.returncode == 0, first.stdout[-6000:] + first.stderr[-6000:]
+            assert "Targets not yet done: atoma(open)" in first.stdout and "Investor redeemed" not in first.stdout
+
+            # 2. Rerun for Atoma: it completes the last target and redeems the investor.
+            result = _run_script(run_dir, "--targets", "atoma")
             assert result.returncode == 0, result.stdout[-6000:] + result.stderr[-6000:]
             assert "Investor redeemed" in result.stdout
 
-            # 2. Check that every target is complete and no trade is unfinished.
+            # 3. Check that every target is complete and no trade is unfinished.
             state = State.read_json_file(run_dir / "state/multi-vault-cli.json")
             universe = load_universe(REPOSITORY / STRATEGY_FILE)
             for target in ("lighter", "atoma", "upshift"):
@@ -79,7 +85,7 @@ def test_multi_vault_manual_cli_simulated() -> None:
             lighter_trades = [t for t in state.portfolio.get_all_trades() if t.pair.is_lighter_pool()]
             assert [t.other_data["lighter_pool"]["phase"] for t in lighter_trades] == ["complete", "complete"]
 
-            # 3. Check that a rerun after the forks stopped refuses instead of redeploying.
+            # 4. Check that a rerun after the forks stopped refuses instead of redeploying.
             rerun = _run_script(run_dir)
             assert rerun.returncode == 1
             assert "No running simulation" in rerun.stdout
