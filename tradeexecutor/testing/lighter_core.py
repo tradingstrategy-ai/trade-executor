@@ -61,6 +61,9 @@ _USDC_SCALE = Decimal(10) ** 6
 
 
 #: Liquidity pool (LLP) index reported by the fake system configuration.
+#: Lighter's withdrawal history end cursor, ``{"index":-1,"index2":-1}`` in base64.
+FAKE_LIGHTER_END_CURSOR = "eyJpbmRleCI6LTEsImluZGV4MiI6LTF9"
+
 FAKE_LIGHTER_LLP_INDEX = 281474976710654
 
 #: Fake transaction types returned by :class:`FakeLighterPoolSigner`.
@@ -105,7 +108,7 @@ class FakeLighterHolding:
     shares: int = 0
     #: Cost of the shares still held, USDC.
     principal: Decimal = Decimal(0)
-    #: Unix time of the last entry.
+    #: Unix time of the last entry in milliseconds, as the real API reports it.
     entry_timestamp: int = 0
 
 
@@ -521,7 +524,10 @@ class FakeLighterCore:
                 return 400, {"code": 21500, "message": "transaction not found"}
             return 200, {"code": API_SUCCESS, **tx}
         if path == "/api/v1/withdraw/history":
-            return 200, {"code": API_SUCCESS, "withdraws": list(self.secure_withdrawals), "cursor": None}
+            # Mainnet returns the same end cursor after the last row and an
+            # empty page when that cursor is followed (observed 2026-11-03).
+            rows = [] if params.get("cursor") == FAKE_LIGHTER_END_CURSOR else list(self.secure_withdrawals)
+            return 200, {"code": API_SUCCESS, "withdraws": rows, "cursor": FAKE_LIGHTER_END_CURSOR}
         raise AssertionError(f"Fake Lighter API has no read {path}")
 
     def handle_send_tx(self, tx_type: int, tx_info: str) -> dict[str, Any]:
@@ -555,14 +561,14 @@ class FakeLighterCore:
             holding = account.pool_shares.setdefault(pool.index, FakeLighterHolding())
             holding.shares += shares
             holding.principal += cost
-            holding.entry_timestamp = now
+            holding.entry_timestamp = now * 1000
         elif tx_type == FAKE_TX_TYPE_BURN:
             pool = self.pools[int(payload["PublicPoolIndex"])]
             shares = int(payload["ShareAmount"])
             holding = account.pool_shares.get(pool.index)
             if holding is None or holding.shares < shares:
                 return {"code": 21701, "message": "insufficient shares"}
-            if now < holding.entry_timestamp + pool.lockup_seconds:
+            if now * 1000 < holding.entry_timestamp + pool.lockup_seconds * 1000:
                 return {"code": 21705, "message": "pool shares are still locked"}
             pool.equity *= 1 + pool.growth_per_burn
             gross = shares * pool.get_share_value()

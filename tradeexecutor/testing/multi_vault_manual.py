@@ -230,6 +230,9 @@ def request_deposit(amount: str = typer.Option(..., envvar="SUBSCRIPTION_USDC"))
     if vault.vault_contract.functions.maxDeposit(wallet.address).call() > 0:
         print("claimable")
         return
+    balance = usdc.fetch_balance_of(wallet.address)
+    if balance < Decimal(amount):
+        raise RuntimeError(f"Investor {wallet.address} has {balance} Arbitrum USDC; needs {amount} for the subscription")
     amount_raw = usdc.convert_to_raw(Decimal(amount))
     broadcast_and_wait(web3, wallet, usdc.approve(vault.address, Decimal(amount)), f"approve {amount} USDC to the vault")
     broadcast_and_wait(web3, wallet, vault.request_deposit(wallet.address, amount_raw), f"request a {amount} USDC deposit")
@@ -258,13 +261,17 @@ def phase(target: str, strategy_file: Path = typer.Option(STRATEGY_FILE)) -> Non
 
 @app.command("atoma-unlocked")
 def atoma_unlocked(strategy_file: Path = typer.Option(STRATEGY_FILE)) -> None:
-    """Exit 0 when the Safe's Atoma shares are unlocked, 3 while they are locked."""
+    """Exit 0 when the Safe's Atoma shares are unlocked, 3 while they are locked.
+
+    The manager reports no deadline once the deposit epoch has passed. Any
+    other exit status is a failure of this check, not a lock.
+    """
     web3 = create_multi_provider_web3(os.environ["JSON_RPC_ARBITRUM"])
     pair = get_target_pair(load_universe(strategy_file), "atoma")
     lagoon = LagoonVault(web3, VaultSpec(42161, os.environ["VAULT_ADDRESS"]))
     end = AtomaVault(web3, VaultSpec(42161, pair.pool_address)).get_deposit_manager().get_redemption_delay_over(lagoon.safe_address)
     chain_time = web3.eth.get_block("latest")["timestamp"]
-    if calendar.timegm(end.timetuple()) > chain_time:
+    if end is not None and calendar.timegm(end.timetuple()) > chain_time:
         print(f"Atoma shares are locked until {end} UTC")
         raise typer.Exit(3)
     print("Atoma shares are unlocked")

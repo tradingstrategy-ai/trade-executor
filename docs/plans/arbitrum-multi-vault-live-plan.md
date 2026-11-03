@@ -598,7 +598,7 @@ Record eventual commands, revisions, blocks, transaction evidence and limitation
 
 ## Implementation status
 
-Implemented on 3 November 2026 against executor master `6f4563b07` and eth-defi `02b6caf`; no eth-defi change was needed.
+Implemented on 3 November 2026 against executor master `6f4563b07` and eth-defi `02b6caf`. The funded run of the same day needed three eth-defi changes: Lighter `entry_timestamp` in milliseconds, the withdrawal history end cursor, and the reviewed Atoma fee-split implementation ([#1722](https://github.com/tradingstrategy-ai/web3-ethereum-defi/pull/1722)). Its results are in the [deployment guide](../lagoon-lighter-deployment.md#arbitrum-hub-with-lighter-public-pools).
 
 | Area | Status |
 | --- | --- |

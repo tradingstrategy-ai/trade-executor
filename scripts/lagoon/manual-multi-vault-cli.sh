@@ -15,6 +15,8 @@
 #  2. Initialise the state and subscribe the investor's capital.
 #  3. Lighter pool: bridge to Ethereum, deposit, mint; burn, withdraw, claim, bridge back.
 #  4. Atoma Index: deposit; after the share lock, request, settle and claim.
+#     A live exit takes at least six to nine days; rerun --targets atoma for
+#     the request and again for the claim.
 #  5. Upshift Core USDC: bridge, deposit; redeem, bridge back.
 #  6. Reconcile books and NAV (state audit and check-wallet: check-accounts
 #     supports one chain only).
@@ -220,10 +222,13 @@ fi
 
 DEPLOYER_ADDRESS="$("${HELPER[@]}" identity)"
 log "Deployer and investor: $DEPLOYER_ADDRESS"
-if [ "$DEPLOY" = true ] || [ "$SUBSCRIBE" = true ]; then
-    PREFLIGHT=(preflight --subscription-usdc "$([ "$SUBSCRIBE" = true ] && echo "$SUBSCRIPTION_USDC" || echo 0)")
-    [ "$DEPLOY" = true ] && PREFLIGHT+=(--bootstrap)
-    run "${HELPER[@]}" "${PREFLIGHT[@]}"
+# A fresh deployment checks the subscription money up front, before the
+# long activation. A resumed run may already have it in a pending request,
+# so request-deposit checks the balance only when it requests.
+if [ "$DEPLOY" = true ]; then
+    run "${HELPER[@]}" preflight --bootstrap --subscription-usdc "$([ "$SUBSCRIBE" = true ] && echo "$SUBSCRIPTION_USDC" || echo 0)"
+elif [ "$SUBSCRIBE" = true ]; then
+    run "${HELPER[@]}" preflight
 fi
 
 # Step 1: the deployment artefact is authoritative. After an interrupted
@@ -291,9 +296,15 @@ test_target() {
     if [ "$phase" = close ] && [ "$target" = atoma ]; then
         if [ "$MULTI_VAULT_SIMULATE" = true ]; then
             run "${HELPER[@]}" atoma-unlock
-        elif ! "${HELPER[@]}" atoma-unlocked; then
+        fi
+        local lock_status=0
+        "${HELPER[@]}" atoma-unlocked || lock_status=$?
+        if [ "$lock_status" -eq 3 ]; then
             log "atoma is waiting for its epoch lock. Keep this state and rerun --targets atoma after the time above."
             return 0
+        elif [ "$lock_status" -ne 0 ]; then
+            log "Could not read the Atoma share lock (exit $lock_status)."
+            exit "$lock_status"
         fi
     fi
     if [ "$phase" = close ]; then

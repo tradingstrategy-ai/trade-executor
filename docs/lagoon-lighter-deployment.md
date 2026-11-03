@@ -225,12 +225,44 @@ multichain vault with `check-wallet`, the state and the NAV.
 [`scripts/lagoon/manual-multi-vault-cli.sh`](../scripts/lagoon/manual-multi-vault-cli.sh)
 is the runbook: it deploys an Arbitrum vault and opens and closes a Lighter
 pool, Atoma and Upshift position. `--targets lighter,upshift` finishes the
-two positions without a long lock in one sitting; `--targets atoma` days
-later closes Atoma after its epoch and redeems the investor. With `SIMULATE=true` it runs the same
-commands on Arbitrum and Ethereum forks with the fake Lighter sequencer and
-forged CCTP attestations. See the
+two positions without a long lock in one sitting. Atoma takes three runs of
+`--targets atoma`: deposit, request and claim. New shares stay locked until the
+current 72-hour epoch ends, and a withdrawal requested in epoch N can settle only
+after epoch N+1 ends, so the claim becomes possible six to nine days after the
+deposit at the earliest, once Atoma's operator has settled that epoch. The last
+run claims and redeems the investor.
+With `SIMULATE=true` the script runs the same commands on Arbitrum and Ethereum
+forks with the fake Lighter sequencer and forged CCTP attestations. See the
 [implementation plan](plans/arbitrum-multi-vault-live-plan.md) for minimum
-funding and the remaining live verification.
+funding.
+
+The first funded run, on 3 November 2026, used vault
+[`0xCF68aF3B…`](https://arbiscan.io/address/0xCF68aF3BDFC38868F473a3177be174bFD9B36e99)
+and Lighter account 766589:
+
+| Step | Observed result |
+|---|---|
+| Deployment with coordinated activation | 20 minutes |
+| pmalt round trip | 5.999515 USDC minted 8,093 raw shares; the burn released 6.000178 USDC |
+| Secure withdrawal | 44 minutes from request to claim |
+| CCTP, each direction | about 15–20 minutes |
+| Upshift Core USDC round trip | 5 USDC in, 4.999999 USDC out |
+| Atoma Index deposit | 100 USDC minted 89.82658215276 shares, locked for epoch 452 |
+
+Plan on these when operating such a vault:
+
+- Lighter's `entry_timestamp` is in Unix milliseconds, and its withdrawal history
+  ends with an empty page that repeats the end cursor, not with an empty cursor.
+- If `lagoon-settle` fails with a Hypersync `RuntimeError: inner receiver`, unset
+  `HYPERSYNC_API_KEY` to use the RPC log reader and resume.
+- The 1 USDC activation deposit sits in the Lighter account outside NAV until a
+  pool buy invests it. The first subscription of this run settled at a vault
+  value of 18.99 USDC for 20 shares, so subscribe only after that buy on a vault
+  with outside investors.
+- Atoma upgrades its proxies often, and eth-defi refuses an unreviewed
+  implementation for exits as well as deposits. Check the implementation before
+  opening a position; see
+  [eth-defi issue 1721](https://github.com/tradingstrategy-ai/web3-ethereum-defi/issues/1721).
 
 ## Pair a compatible strategy module
 

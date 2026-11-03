@@ -1,5 +1,6 @@
 """Lighter public-pool identity, routing, deployment translation, admission and operation resume."""
 
+import datetime
 import json
 from contextlib import ExitStack
 from decimal import Decimal
@@ -7,6 +8,7 @@ from pathlib import Path
 from unittest import mock
 from unittest.mock import MagicMock
 
+import click
 import pytest
 from eth_defi.lighter.constants import LIGHTER_USDC_ETHEREUM
 from eth_defi.token import USDC_NATIVE_TOKEN
@@ -31,6 +33,7 @@ from tradeexecutor.strategy.redemption import DepositBlockReason
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.testing.erc4626_manual import load_universe
 from tradeexecutor.testing.lighter_core import FakeLighterAccount, FakeLighterCore, FakeLighterPool
+from tradeexecutor.testing import multi_vault_manual
 
 
 STRATEGY_FILE = Path(__file__).resolve().parents[2] / "strategies/test_only/multi_vault_arbitrum.py"
@@ -199,3 +202,63 @@ def test_lighter_pool_operation_resume_never_resubmits() -> None:
         with pytest.raises(VaultRequestInvariantViolation, match="was rejected"):
             router._run_operation(ctx, data, "mint", signer, prepare)
         assert len(core.api_transactions) == 2
+
+
+def test_multi_vault_tutorial_resume_checks(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture) -> None:
+    """A resumed live tutorial reads the vault state before it needs money or a lock.
+
+    Both cases stopped a funded run on 2026-11-03 or would have: simulation
+    does not reach them. The chain is mocked because each case needs a vault
+    state that a fork only reaches after days of epochs.
+
+    1. A pending subscription needs no money in an empty investor wallet
+    2. A new subscription without the money fails before the approval
+    3. Unlocked Atoma shares have no deadline and exit normally
+    4. Locked Atoma shares exit with the status the script waits on
+    """
+    usdc = MagicMock()
+    usdc.fetch_balance_of.return_value = Decimal(0)
+    vault = MagicMock()
+    pending = vault.vault_contract.functions.pendingDepositRequest.return_value.call
+    claimable = vault.vault_contract.functions.maxDeposit.return_value.call
+    monkeypatch.setenv("JSON_RPC_ARBITRUM", "http://localhost")
+    monkeypatch.setenv("PRIVATE_KEY", "0x" + "11" * 32)
+    monkeypatch.setenv("VAULT_ADDRESS", "0x" + "22" * 20)
+    monkeypatch.setattr(multi_vault_manual, "create_multi_provider_web3", MagicMock())
+    monkeypatch.setattr(multi_vault_manual, "get_vault", lambda web3: vault)
+    monkeypatch.setattr(multi_vault_manual, "fetch_erc20_details", lambda *args: usdc)
+
+    # 1. A pending subscription needs no money in an empty investor wallet
+    pending.return_value = 111_000_000
+    multi_vault_manual.request_deposit(amount="111")
+    assert capsys.readouterr().out.strip() == "pending"
+    usdc.approve.assert_not_called()
+
+    # 2. A new subscription without the money fails before the approval
+    pending.return_value = 0
+    claimable.return_value = 0
+    with pytest.raises(RuntimeError, match="needs 111"):
+        multi_vault_manual.request_deposit(amount="111")
+    usdc.approve.assert_not_called()
+
+    # 3. Unlocked Atoma shares have no deadline and exit normally
+    manager = MagicMock()
+    atoma = MagicMock()
+    atoma.return_value.get_deposit_manager.return_value = manager
+    web3 = MagicMock()
+    web3.eth.get_block.return_value = {"timestamp": 1_800_000_000}
+    monkeypatch.setattr(multi_vault_manual, "create_multi_provider_web3", lambda url: web3)
+    monkeypatch.setattr(multi_vault_manual, "load_universe", MagicMock())
+    monkeypatch.setattr(multi_vault_manual, "get_target_pair", lambda universe, target: MagicMock(pool_address="0x" + "33" * 20))
+    monkeypatch.setattr(multi_vault_manual, "LagoonVault", MagicMock())
+    monkeypatch.setattr(multi_vault_manual, "AtomaVault", atoma)
+    manager.get_redemption_delay_over.return_value = None
+    multi_vault_manual.atoma_unlocked(strategy_file=Path("unused.py"))
+    assert "unlocked" in capsys.readouterr().out
+
+    # 4. Locked Atoma shares exit with the status the script waits on
+    manager.get_redemption_delay_over.return_value = datetime.datetime(2030, 1, 1)
+    with pytest.raises(click.exceptions.Exit) as exit_info:
+        multi_vault_manual.atoma_unlocked(strategy_file=Path("unused.py"))
+    assert exit_info.value.exit_code == 3
+    assert "locked until" in capsys.readouterr().out

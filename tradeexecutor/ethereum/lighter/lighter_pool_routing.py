@@ -114,8 +114,7 @@ DEFAULT_LIGHTER_POOL_POLL_SECONDS = 5.0
 
 #: Wait after a pool buy before its shares can be burned: Lighter's public-pool
 #: lockup plus a margin for clock skew. Measured from the executor's own
-#: execution time of the buy, not Lighter's ``entry_timestamp``, whose units
-#: upstream has not verified on a funded account.
+#: execution time of the buy, so a resumed sell needs no Lighter read to wait.
 LIGHTER_POOL_EXIT_LOCKUP = LIGHTER_POOL_LOCKUP + datetime.timedelta(seconds=30)
 
 

@@ -56,9 +56,10 @@ from tradeexecutor.testing.lighter_simulation import ANVIL_DEPLOYER_PRIVATE_KEY,
 
 logger = logging.getLogger(__name__)
 
-#: Arbitrum fork block with the reviewed Atoma implementation, shared with
-#: ``tests/erc_4626/test_atoma_async_cli.py``. The midnight block predates it.
-ARBITRUM_ATOMA_FORK_BLOCK = 519_150_162
+#: Arbitrum fork block after Atoma's 2026-10-29 fee-split upgrade, so the
+#: simulation exercises the implementation live vaults use. Shared with
+#: eth-defi's Atoma tests, whose warmed RPC cache covers it.
+ARBITRUM_ATOMA_FORK_BLOCK = 520_900_000
 
 #: Simulation description file inside the simulation directory.
 SIMULATION_FILE = "simulation.json"
