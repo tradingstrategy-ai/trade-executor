@@ -426,4 +426,4 @@ def test_lighter_routing_uses_explicit_cli_configuration(
     )
 
     # 3. Verify immutable router configuration retains the supplied timeout.
-    assert router.config.withdrawal_timeout == 1800
+    assert router.key_management.withdrawal_timeout == 1800
