@@ -390,6 +390,9 @@ class _FakePair:
     def is_hyperliquid_vault(self) -> bool:
         return self._hypercore
 
+    def is_lighter_pool(self) -> bool:
+        return False
+
 
 class _FakeUniverse:
     """Minimal universe stub exposing only what the preflight check reads."""

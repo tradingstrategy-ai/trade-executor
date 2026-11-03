@@ -25,7 +25,10 @@ It covers external vault positions, including Lagoon, Ostium and Atoma.
 separately covers the strategy's own investor flows and NAV publication.
 
 For the Ethereum Lighter account activation and public NAV wiring, see
-[Lagoon Lighter deployment](./lagoon-lighter-deployment.md).
+[Lagoon Lighter deployment](./lagoon-lighter-deployment.md). An Arbitrum vault
+trading Lighter pools, Atoma and Upshift is covered by its
+[Lighter pool section](./lagoon-lighter-deployment.md#arbitrum-hub-with-lighter-public-pools)
+and the [multi-vault tutorial](../scripts/lagoon/manual-multi-vault-cli.sh).
 
 For operator setup and external-account accounting, see
 [Lighter exchange account integration](../tradeexecutor/exchange_account/README-Lighter.md).

@@ -104,6 +104,35 @@ DELAYED_VAULT_REDEMPTION_FEATURES = ASYNC_VAULT_FEATURES | {
 }
 
 
+#: Address prefix of synthetic Lighter public-pool identities on dataset chain 9998.
+LIGHTER_POOL_ADDRESS_PREFIX = "lighter-pool-"
+
+
+def normalise_custody_chain_id(chain_id: int) -> int:
+    """Map a synthetic native-vault dataset chain to the EVM chain that holds its custody.
+
+    Hypercore vaults (dataset chain 9999) are reached through the HyperEVM
+    Safe on 999. Lighter public pools (dataset chain 9998) are reached
+    through the Ethereum Safe on chain 1; their API signatures use Lighter's
+    separate signing chain 304, which is never an RPC chain. Every other
+    chain id is returned unchanged.
+
+    Use this for deployment, signing and RPC selection. For CCTP funding use
+    :py:meth:`TradingPairIdentifier.get_funding_chain_id`, which maps only
+    Lighter pools and so keeps Hypercore funding behaviour unchanged.
+
+    :param chain_id:
+        Dataset or EVM chain id.
+    :return:
+        EVM chain id holding the assets.
+    """
+    if chain_id == ChainId.hypercore.value:
+        return ChainId.hyperliquid.value
+    if chain_id == ChainId.lighter.value:
+        return ChainId.ethereum.value
+    return chain_id
+
+
 def _normalise_erc_4626_features(features) -> set[ERC4626Feature] | None:
     """Normalise persisted vault feature metadata to enum values."""
     if features is None:
@@ -1432,6 +1461,46 @@ class TradingPairIdentifier:
         does not carry vault_protocol metadata for vault-exported pairs.
         """
         return self.is_vault() and self.chain_id == ChainId.hypercore.value
+
+    def is_lighter_pool(self) -> bool:
+        """Check if this is a Lighter public-pool vault pair.
+
+        Lighter pools live on synthetic dataset chain 9998 with
+        ``lighter-pool-<account index>`` identities. They are executed by
+        :py:class:`~tradeexecutor.ethereum.lighter.lighter_pool_routing.LighterPoolRouting`
+        through the Ethereum satellite Safe, not by the generic ERC-4626 router.
+        """
+        return (
+            self.is_vault()
+            and self.chain_id == ChainId.lighter.value
+            and self.pool_address is not None
+            and self.pool_address.startswith(LIGHTER_POOL_ADDRESS_PREFIX)
+        )
+
+    def get_lighter_pool_index(self) -> int:
+        """Return the Lighter public-pool account index of a pool pair.
+
+        :return:
+            Integer pool index parsed from ``lighter-pool-<index>``.
+        """
+        assert self.is_lighter_pool(), f"Not a Lighter pool pair: {self}"
+        index = self.pool_address.removeprefix(LIGHTER_POOL_ADDRESS_PREFIX)
+        assert index.isdigit(), f"Malformed Lighter pool identity: {self.pool_address}"
+        return int(index)
+
+    def get_funding_chain_id(self) -> int:
+        """Return the chain whose CCTP bridge position funds trades on this pair.
+
+        Lighter pools are funded from the Ethereum satellite. Other pairs,
+        including Hypercore vaults, keep their own chain id so their existing
+        funding behaviour is unchanged.
+
+        :return:
+            Chain id used to look up the bridge position.
+        """
+        if self.is_lighter_pool():
+            return ChainId.ethereum.value
+        return self.chain_id
 
     def is_freqtrade(self) -> bool:
         return self.kind.is_freqtrade()

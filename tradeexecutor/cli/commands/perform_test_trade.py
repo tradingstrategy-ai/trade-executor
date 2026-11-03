@@ -305,6 +305,9 @@ def perform_test_trade(
     # than after an irreversible cross-chain CCTP bridge.
     check_universe_contracts_resolve(web3config, universe, execution_model)
 
+    if any(p.is_lighter_pool() for p in universe.iterate_pairs()) and lighter_routing_config is None and asset_management_mode == AssetManagementMode.lagoon:
+        # Refuse before any trade: a pool exit cannot be signed without the master's key.
+        raise ValueError("Lighter pool trades need --lighter-operator-record-file or LIGHTER_OPERATOR_RECORD_FILE. Nothing was moved.")
     if has_lighter_exchange_account_pairs(universe) and lighter_routing_config is None:
         # Refuse before any trade: without the master's signer the withdrawal would fail after the deposit moved funds.
         raise ValueError("A Lighter test trade needs the master's operator record: set LIGHTER_OPERATOR_RECORD_FILE")

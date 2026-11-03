@@ -24,6 +24,7 @@ from eth_defi.vault.base import VaultSpec
 from eth_defi.velvet import VelvetVault
 from tradeexecutor.ethereum.lagoon.execution import LagoonExecution
 from tradeexecutor.ethereum.lighter.lighter_routing import LighterRoutingConfig
+from tradeexecutor.state.identifier import normalise_custody_chain_id
 from tradeexecutor.exchange_account.lighter_operator import load_lighter_operator_record, load_lighter_sub_account_operator_records
 from tradeexecutor.ethereum.lagoon.vault import (
     LagoonVaultSyncModel,
@@ -1383,6 +1384,10 @@ def check_universe_chains_have_rpc(
     if ChainId.hypercore in missing and ChainId.hyperliquid in configured_chains:
         missing.discard(ChainId.hypercore)
 
+    # Lighter pools (9998) are reached through the Ethereum RPC.
+    if ChainId.lighter in missing and ChainId.ethereum in configured_chains:
+        missing.discard(ChainId.lighter)
+
     if missing:
         missing_names = ", ".join(
             f"{c.get_name()} ({get_rpc_env_var_name(c)})"
@@ -1546,6 +1551,12 @@ def check_universe_contracts_resolve(
         # need no CCTP satellite. The CCTP planner skips them for the same reason,
         # so they must neither require a satellite module nor be get_code()-checked.
         if pair.is_hyperliquid_vault():
+            continue
+        # Lighter pools (synthetic chain 9998) are API holdings of the
+        # Ethereum Safe's Lighter account: they need the Ethereum satellite,
+        # but have no contract to resolve.
+        if pair.is_lighter_pool():
+            tradeable_chains.add(normalise_custody_chain_id(pair.chain_id))
             continue
         tradeable_chains.add(pair.chain_id)
 

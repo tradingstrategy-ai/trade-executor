@@ -871,10 +871,6 @@ class TradingPosition(GenericPosition):
             if t.is_vault_settlement_in_flight() and t.is_buy()
         )
 
-    def get_current_price(self) -> USDollarAmount:
-        """Get the price of the base asset based on the latest valuation."""
-        return self.last_token_price
-
     def get_opening_price(self) -> USDollarPrice:
         """Get the price when the position was opened.
 

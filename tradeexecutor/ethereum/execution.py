@@ -777,10 +777,12 @@ class EthereumExecution(ExecutionModel):
             # uncertainty marker, not refund possibly moved Safe capital.
             self.sync_state_before_broadcast()
 
-            if trade.is_internal_account_transfer():
+            if trade.is_internal_account_transfer() or trade.pair.is_lighter_pool():
                 # A transfer between exchange accounts is executed off-chain by
                 # setup_trades() and has no Ethereum transaction to broadcast or
-                # receipt to read. Settle it directly from exchange evidence.
+                # receipt to read. A Lighter pool trade broadcasts its own saved
+                # Safe transactions between API phases in setup_trades().
+                # Settle both directly from the saved evidence.
                 routing_model.settle_trade(self.web3, state, trade, receipts={})
             else:
                 self._execute_trade_batch(

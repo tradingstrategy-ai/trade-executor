@@ -501,8 +501,11 @@ trade-executor perform-test-trade --pair '(arbitrum, 0xVAULT)' --amount 1 --buy-
 trade-executor perform-test-trade --pair '(arbitrum, 0xVAULT)' --close-only --no-test-short
 ```
 
-`--close-only` accepts one home-chain vault pair with synchronous deposits.
-Redemptions may be instant or queued; the manager's capabilities select the path.
+`--close-only` accepts one home-chain vault pair with synchronous deposits, or
+a satellite vault position reached over CCTP, including a Lighter pool
+(`--pair '(lighter, lighter-pool-<index>)'`). A pending satellite exit is
+resumed, never requested again. Redemptions may be instant or queued; the
+manager's capabilities select the path.
 It refuses ordinary strategy holdings, other unresolved trades and custody
 balances that differ from the test position. It does not need reserve cash or a
 new deposit quote. Protocol capacity

@@ -83,18 +83,19 @@ def _create_lighter_routing_config(
     :param transfer_timeout:
         CLI timeout for a transfer between accounts to appear in history.
     :return:
-        Lighter routing settings, or ``None`` when the strategy does not use them.
+        Lighter routing settings, or ``None`` without an operator record.
+        A supplied record also signs Lighter pool trades, independently of
+        cash management.
     """
     if asset_management_mode != AssetManagementMode.lagoon:
         return None
-    if not strategy_parameters.get("lighter_cash_management", False):
-        return None
-
     if operator_record_file is None:
-        raise ValueError(
-            "--lighter-operator-record-file or LIGHTER_OPERATOR_RECORD_FILE is required "
-            "when automatic Lighter cash management is enabled"
-        )
+        if strategy_parameters.get("lighter_cash_management", False):
+            raise ValueError(
+                "--lighter-operator-record-file or LIGHTER_OPERATOR_RECORD_FILE is required "
+                "when automatic Lighter cash management is enabled"
+            )
+        return None
 
     return create_lighter_routing_config(operator_record_file, sub_account_operator_record_files, withdrawal_timeout, transfer_timeout)
 
@@ -650,10 +651,10 @@ def start(
         assert routing_model is None, f"Got: {routing_model}"
 
     if isinstance(sync_model, LagoonVaultSyncModel):
-        lighter_cash_management = lighter_routing_config is not None
-        sync_model.defer_redemption_without_reserve_liquidity = bool(
-            lighter_cash_management
-        )
+        # The strategy's cash policy, not signer availability, selects this:
+        # a pool strategy also supplies the operator record.
+        lighter_cash_management = bool((mod.parameters or {}).get("lighter_cash_management", False))
+        sync_model.defer_redemption_without_reserve_liquidity = lighter_cash_management
         sync_model.abort_lagoon_settlement_on_frozen_positions = abort_lagoon_settlement_on_frozen_positions
     elif abort_lagoon_settlement_on_frozen_positions:
         logger.warning(

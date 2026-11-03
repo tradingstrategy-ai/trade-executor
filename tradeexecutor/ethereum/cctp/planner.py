@@ -331,7 +331,8 @@ def inject_cctp_bridge_trades(
     primary_buys = Decimal(0)
 
     for trade in trades:
-        trade_chain_id = trade.pair.chain_id
+        # A Lighter pool (dataset chain 9998) is funded from the Ethereum bridge.
+        trade_chain_id = trade.pair.get_funding_chain_id()
         value = trade.planned_reserve if trade.planned_reserve else Decimal(str(trade.get_planned_value()))
         value = abs(value)
         async_vault_sell_waiting = _is_async_vault_sell_waiting_for_settlement(state, trade)

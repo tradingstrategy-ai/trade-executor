@@ -25,6 +25,7 @@ orders are submitted by a separate execution tool, not by trade-executor.
 | Sub-accounts with their own API keys | `lagoon-deploy-vault` with `STRATEGY_FILE` declaring `Parameters.lighter_sub_accounts` |
 | Automatic master to sub-account funding and rebalancing | `start` with a multi-account strategy |
 | Perpetual order execution inside trade-executor | No; use a separate execution tool |
+| Public-pool investment from a non-Ethereum hub | Vault pairs routed by `LighterPoolRouting`; see [Arbitrum hub with Lighter public pools](../../docs/lagoon-lighter-deployment.md#arbitrum-hub-with-lighter-public-pools). Pool value is never added to account equity |
 
 ## Value and custody model
 

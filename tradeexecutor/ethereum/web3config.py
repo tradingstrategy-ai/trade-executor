@@ -16,6 +16,7 @@ from eth_defi.provider.multi_provider import (
 from tradingstrategy.chain import ChainId
 from web3 import Web3
 
+from tradeexecutor.state.identifier import normalise_custody_chain_id
 from tradeexecutor.monkeypatch.web3 import construct_sign_and_send_raw_middleware
 from tradeexecutor.utils.url import get_url_domain
 
@@ -70,11 +71,11 @@ def get_chain_slug(chain_id: ChainId) -> str:
 def get_rpc_env_var_name(chain_id: ChainId) -> str:
     """Get the expected ``JSON_RPC_*`` environment variable name for a chain.
 
-    Hypercore shares the same RPC as Hyperliquid, so it maps to
-    ``JSON_RPC_HYPERLIQUID``.
+    Synthetic native-vault chains use their custody chain's RPC: Hypercore
+    maps to ``JSON_RPC_HYPERLIQUID`` and Lighter public pools to
+    ``JSON_RPC_ETHEREUM``. See :py:func:`~tradeexecutor.state.identifier.normalise_custody_chain_id`.
     """
-    if chain_id == ChainId.hypercore:
-        chain_id = ChainId.hyperliquid
+    chain_id = ChainId(normalise_custody_chain_id(chain_id.value))
     return f"JSON_RPC_{get_chain_slug(chain_id).upper()}"
 
 
@@ -450,11 +451,14 @@ class Web3Config:
     def get_connection(self, chain_id: ChainId) -> Optional[Web3]:
         """Get a connection to a specific network.
 
-        Hypercore (9999) shares the same RPC as Hyperliquid (999),
-        so fall back transparently when no dedicated connection exists.
+        Synthetic native-vault chains fall back to their custody chain when
+        no dedicated connection exists: Hypercore (9999) to HyperEVM (999)
+        and Lighter pools (9998) to Ethereum (1).
         """
-        if chain_id not in self.connections and chain_id == ChainId.hypercore:
-            return self.connections[ChainId.hyperliquid]
+        if chain_id not in self.connections:
+            custody_chain_id = ChainId(normalise_custody_chain_id(chain_id.value))
+            if custody_chain_id != chain_id:
+                return self.connections[custody_chain_id]
         return self.connections[chain_id]
 
     def get_default(self) -> Web3:

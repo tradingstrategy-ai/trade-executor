@@ -23,6 +23,8 @@ from tradeexecutor.ethereum.lighter.lighter_routing import (
     LighterRoutingConfig,
 )
 from tradeexecutor.ethereum.vault.vault_routing import VaultRouting
+from tradeexecutor.ethereum.lighter.lighter_pool_routing import LighterPoolRouting
+from tradeexecutor.ethereum.lighter.lighter_pool_valuation import LighterPoolPricing, LighterPoolValuator
 from tradeexecutor.exchange_account.lighter import (
     create_executor_lighter_session,
     create_lighter_account_value_func,
@@ -817,6 +819,44 @@ def create_lighter_adapter(
     )
 
 
+def create_lighter_pool_adapter(
+    routing_id: ProtocolRoutingId,
+    routing_config: LighterRoutingConfig | None = None,
+    session: LighterSession | None = None,
+) -> ProtocolRoutingConfig:
+    """Create the Lighter public-pool router, live pricing and valuation.
+
+    Pools are executed through the Ethereum satellite Safe and the Lighter
+    API; they never use the generic ERC-4626 adapter. See
+    :py:mod:`tradeexecutor.ethereum.lighter.lighter_pool_routing`.
+
+    :param routing_id:
+        Generic-router identifier ``lighter_pool``.
+    :param routing_config:
+        CLI-parsed operator record and withdrawal timeout. Required for
+        execution; pricing and valuation work without it.
+    :param session:
+        Optional Lighter API session shared by pricing, valuation and routing.
+    :return:
+        Pool routing, pricing and valuation models.
+    """
+    assert routing_id.router_name == "lighter_pool"
+    pricing_model = LighterPoolPricing(session)
+    operator = routing_config.operator_record if routing_config is not None else None
+    valuation_model = LighterPoolValuator(pricing_model, account_index=operator.account_index if operator else None)
+    routing_model = LighterPoolRouting(
+        LIGHTER_USDC_ETHEREUM,
+        config=routing_config,
+        session=session,
+    )
+    return ProtocolRoutingConfig(
+        routing_id=routing_id,
+        routing_model=routing_model,
+        pricing_model=pricing_model,
+        valuation_model=valuation_model,
+    )
+
+
 def create_cctp_bridge_adapter(
     web3config: "Web3Config",
     routing_id: ProtocolRoutingId,
@@ -1163,6 +1203,11 @@ class EthereumPairConfigurator(PairConfigurator):
                 web3=self.web3,
                 routing_config=self.lighter_routing_config,
                 session=self.lighter_session,
+            )
+        elif routing_id.router_name == "lighter_pool":
+            return create_lighter_pool_adapter(
+                routing_id,
+                routing_config=self.lighter_routing_config,
             )
         elif routing_id.router_name == "cctp-bridge":
             # Resolve primary custody address from the execution model's
