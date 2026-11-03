@@ -23,7 +23,7 @@ from tradingstrategy.timebucket import TimeBucket
 from . import shared_options
 from .app import app
 from ..bootstrap import prepare_executor_id, prepare_cache_and_token_cache, create_web3_config, create_state_store, \
-    create_execution_and_sync_model, create_lighter_routing_config, resolve_deployment_file, log_multichain_deployment_information, update_strategy_file_deployment_info, refresh_lagoon_guard_migration_state, create_metadata, create_approval_model, create_client, configure_default_chain
+    create_execution_and_sync_model, create_lighter_key_management, resolve_deployment_file, log_multichain_deployment_information, update_strategy_file_deployment_info, refresh_lagoon_guard_migration_state, create_metadata, create_approval_model, create_client, configure_default_chain
 from ...exchange_account.derive import DeriveNetwork
 from ..log import setup_logging, setup_discord_logging, setup_logstash_logging, setup_file_logging, setup_telegram_logging, setup_sentry_logging
 from ..loop import ExecutionLoop
@@ -32,7 +32,7 @@ from ..slippage import configure_max_slippage_tolerance
 from ..version_info import VersionInfo
 from ..watchdog import stop_watchdog
 from ...ethereum.enzyme.vault import EnzymeVaultSyncModel
-from ...ethereum.lighter.lighter_routing import LighterRoutingConfig
+from ...ethereum.lighter.lighter_routing import LighterKeyManagement
 from ...ethereum.lagoon.vault import LagoonVaultSyncModel
 from ...ethereum.velvet.execution import VelvetExecution
 from ...ethereum.velvet.vault import VelvetVaultSyncModel
@@ -60,20 +60,27 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-def _create_lighter_routing_config(
+def _create_lighter_key_management(
     asset_management_mode: AssetManagementMode,
     strategy_parameters: dict[str, object],
     operator_record_file: Path | None,
     sub_account_operator_record_files: str | None,
     withdrawal_timeout: int,
     transfer_timeout: int,
-) -> LighterRoutingConfig | None:
-    """Build automatic Lighter transfer settings from parsed CLI inputs.
+) -> LighterKeyManagement | None:
+    """Load the Lighter API keys the executor signs with, from parsed CLI inputs.
+
+    The keys live in owner-only operator records written at deployment. They
+    sign the master account's secure withdrawals, transfers between the
+    Safe's Lighter accounts and public-pool mints, burns and withdrawals.
+    Safe-to-Lighter deposits need no key, so a strategy that deposits
+    automatically but cannot sign the way back would strand its cash: that
+    is why automatic cash management refuses to start without the record.
 
     :param asset_management_mode:
         Execution mode selected by the CLI.
     :param strategy_parameters:
-        Strategy module parameters that enable automatic cash management.
+        Strategy module parameters; ``lighter_cash_management`` enables the automatic Safe/Lighter transfers.
     :param operator_record_file:
         Owner-only operator record parsed by the CLI.
     :param sub_account_operator_record_files:
@@ -83,9 +90,7 @@ def _create_lighter_routing_config(
     :param transfer_timeout:
         CLI timeout for a transfer between accounts to appear in history.
     :return:
-        Lighter routing settings, or ``None`` without an operator record.
-        A supplied record also signs Lighter pool trades, independently of
-        cash management.
+        The loaded keys and wait settings, or ``None`` without an operator record.
     """
     if asset_management_mode != AssetManagementMode.lagoon:
         return None
@@ -93,11 +98,12 @@ def _create_lighter_routing_config(
         if strategy_parameters.get("lighter_cash_management", False):
             raise ValueError(
                 "--lighter-operator-record-file or LIGHTER_OPERATOR_RECORD_FILE is required "
-                "when automatic Lighter cash management is enabled"
+                "when Parameters.lighter_cash_management is enabled: the executor would deposit "
+                "Safe cash into Lighter but could not sign the withdrawals and transfers back"
             )
         return None
 
-    return create_lighter_routing_config(operator_record_file, sub_account_operator_record_files, withdrawal_timeout, transfer_timeout)
+    return create_lighter_key_management(operator_record_file, sub_account_operator_record_files, withdrawal_timeout, transfer_timeout)
 
 
 def should_save_failed_execution(error: BaseException) -> bool:
@@ -375,7 +381,7 @@ def start(
         deployment_file = resolve_deployment_file(id, state_file)
         log_multichain_deployment_information(deployment_file)
 
-        lighter_routing_config = _create_lighter_routing_config(
+        lighter_key_management = _create_lighter_key_management(
             asset_management_mode=asset_management_mode,
             strategy_parameters=mod.parameters or {},
             operator_record_file=lighter_operator_record_file,
@@ -401,7 +407,7 @@ def start(
             # Auto-discover satellite modules from the deployment artifact next to
             # the state file.
             deployment_file=deployment_file,
-            lighter_routing_config=lighter_routing_config,
+            lighter_key_management=lighter_key_management,
         )
 
         # TODO: Unit test hack

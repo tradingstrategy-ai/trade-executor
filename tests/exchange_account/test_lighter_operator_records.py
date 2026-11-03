@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from tradeexecutor.ethereum.lighter.lighter_routing import LighterRoutingConfig
+from tradeexecutor.ethereum.lighter.lighter_routing import LighterKeyManagement
 from tradeexecutor.exchange_account.lighter_operator import load_lighter_operator_record, load_lighter_sub_account_operator_records
 
 #: Master account index of the example deployment.
@@ -73,11 +73,11 @@ def test_lighter_operator_records_for_master_and_sub_accounts(tmp_path: Path) ->
     assert load_lighter_sub_account_operator_records(None) == {}
 
     # 3. Check the routing config returns the master, a sub-account or nothing.
-    config = LighterRoutingConfig(operator_record=master, sub_account_operator_records=subs)
+    config = LighterKeyManagement(operator_record=master, sub_account_operator_records=subs)
     assert config.get_operator_record(MASTER_INDEX) is master
     assert config.get_operator_record(SUB_INDICES[1]) is subs[SUB_INDICES[1]]
     assert config.get_operator_record(999) is None
-    assert LighterRoutingConfig().get_operator_record(MASTER_INDEX) is None
+    assert LighterKeyManagement().get_operator_record(MASTER_INDEX) is None
 
     # 4. Reject a duplicate sub-account record and an incomplete hand-over file.
     with pytest.raises(ValueError, match="more than one operator record"):

@@ -356,7 +356,7 @@ def _resolve_lighter_pool_trade(
     :param trade:
         ``vault_settlement_pending`` pool trade.
     :param execution_model:
-        Live execution model carrying ``lighter_routing_config`` and satellite vaults.
+        Live execution model carrying ``lighter_key_management`` and satellite vaults.
     :param web3config:
         Multichain connections; the pool custody chain is Ethereum.
     :param resolved:
@@ -365,7 +365,7 @@ def _resolve_lighter_pool_trade(
     ethereum = ChainId.ethereum
     web3 = web3config.get_connection(ethereum) if web3config is not None else execution_model.web3
     tx_builder = _get_chain_aware_tx_builder(execution_model, web3, ethereum.value)
-    router = LighterPoolRouting(config=getattr(execution_model, "lighter_routing_config", None))
+    router = LighterPoolRouting(key_management=getattr(execution_model, "lighter_key_management", None))
     router.set_pre_broadcast_state_sync_callback(getattr(execution_model, "sync_state_before_broadcast", None))
     if router.resume_pending_trade(state, trade, tx_builder):
         resolved.append(trade)

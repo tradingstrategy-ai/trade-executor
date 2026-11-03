@@ -108,7 +108,7 @@ Keep the dataset’s existing representational share-decimal convention initiall
 
 Extend both `default_match_router()` and `default_supported_routers()` with router id `lighter_pool`. Today all non-Hypercore vaults select `"vault"` (`tradeexecutor/strategy/generic/default_protocols.py:44`), and supported-router discovery separately classifies exchange metadata (`:166`). Discover pool routing from pair semantics and avoid also constructing a generic ERC-4626 adapter for a pool-only exchange.
 
-Add `create_lighter_pool_adapter()` and its `EthereumPairConfigurator.create_config()` branch. Resolve Ethereum Web3, satellite custody, pool pricing/valuation and existing `LighterRoutingConfig` directly. Generic vault construction is unsuitable (`tradeexecutor/ethereum/ethereum_protocol_adapters.py:429`). Do not relax `_auto_discover_lighter()`’s Ethereum-home account-valuation checks to make pools pass; those checks belong to exchange-account support (`:1000`, `:1022`, `:1031`).
+Add `create_lighter_pool_adapter()` and its `EthereumPairConfigurator.create_config()` branch. Resolve Ethereum Web3, satellite custody, pool pricing/valuation and existing `LighterKeyManagement` directly. Generic vault construction is unsuitable (`tradeexecutor/ethereum/ethereum_protocol_adapters.py:429`). Do not relax `_auto_discover_lighter()`’s Ethereum-home account-valuation checks to make pools pass; those checks belong to exchange-account support (`:1000`, `:1022`, `:1031`).
 
 Introduce one small custody-chain normalisation function beside identifier semantics, with the two explicit mappings 9999→999 and 9998→1. Reuse it at existing boundaries; do not add a chain registry. Extend:
 
@@ -317,9 +317,9 @@ Do not copy Hypercore’s post-trade equity revaluation hook into `StrategyRunne
 
 **Files:** `tradeexecutor/cli/commands/{start,perform_test_trade}.py`, `tradeexecutor/cli/{testtrade,vault_test_trade}.py`, `tradeexecutor/cli/loop.py`, `tradeexecutor/strategy/execution_model.py`, `tradeexecutor/ethereum/vault/settlement_retry.py`.
 
-Load pool credentials through existing `create_lighter_routing_config()` (`tradeexecutor/cli/bootstrap.py:205`).
+Load pool credentials through existing `create_lighter_key_management()` (`tradeexecutor/cli/bootstrap.py:205`).
 
-`start._create_lighter_routing_config()` currently returns no configuration unless `Parameters.lighter_cash_management` is enabled (`tradeexecutor/cli/commands/start.py:90`). Allow an explicitly supplied operator record to configure pool execution without enabling account cash policy. Preserve the existing missing-record refusal for cash-management strategies.
+`start._create_lighter_key_management()` currently returns no configuration unless `Parameters.lighter_cash_management` is enabled (`tradeexecutor/cli/commands/start.py:90`). Allow an explicitly supplied operator record to configure pool execution without enabling account cash policy. Preserve the existing missing-record refusal for cash-management strategies.
 
 Do not use “routing config exists” as the cash-management predicate after this change: `start` currently does so for Lagoon redemption behaviour (`tradeexecutor/cli/commands/start.py:652`). Keep actual strategy cash-policy selection separate from signer availability. Refuse a pool universe without its master signer before moving funds; the public test command currently makes this check only for exchange-account pairs (`tradeexecutor/cli/commands/perform_test_trade.py:308`).
 

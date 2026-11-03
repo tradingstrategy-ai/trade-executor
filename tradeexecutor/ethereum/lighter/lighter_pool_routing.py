@@ -87,7 +87,7 @@ from tradeexecutor.ethereum.lighter.lighter_routing import (
     LIGHTER_APPROVAL_GAS_LIMIT,
     LIGHTER_DEPOSIT_GAS_LIMIT,
     LIGHTER_WITHDRAWAL_CLAIM_GAS_LIMIT,
-    LighterRoutingConfig,
+    LighterKeyManagement,
 )
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.exchange_account.lighter_operator import LighterOperatorRecord
@@ -191,8 +191,8 @@ class LighterPoolRouting(RoutingModel):
 
     :param reserve_token_address:
         Ethereum native USDC.
-    :param config:
-        CLI-parsed operator record and withdrawal timeout.
+    :param key_management:
+        CLI-parsed Lighter API keys and wait settings.
     :param session:
         Lighter API session shared with pricing.
     :param lighter_contract:
@@ -211,7 +211,7 @@ class LighterPoolRouting(RoutingModel):
         self,
         reserve_token_address: str = LIGHTER_USDC_ETHEREUM,
         *,
-        config: LighterRoutingConfig | None = None,
+        key_management: LighterKeyManagement | None = None,
         session: LighterSession | None = None,
         lighter_contract: str = LIGHTER_L1_CONTRACT,
         deposit_timeout: float = DEFAULT_LIGHTER_DEPOSIT_TIMEOUT_SECONDS,
@@ -220,7 +220,7 @@ class LighterPoolRouting(RoutingModel):
         poll_interval: float = DEFAULT_LIGHTER_POOL_POLL_SECONDS,
     ):
         super().__init__({}, reserve_token_address.lower())
-        self.config = config or LighterRoutingConfig()
+        self.key_management = key_management or LighterKeyManagement()
         self.session = session
         self.lighter_contract = Web3.to_checksum_address(lighter_contract)
         self.deposit_timeout = deposit_timeout
@@ -312,7 +312,7 @@ class LighterPoolRouting(RoutingModel):
         :return:
             Execution dependencies.
         """
-        operator = self.config.operator_record
+        operator = self.key_management.operator_record
         if operator is None:
             raise RuntimeError("Lighter pool execution requires the operator record passed with --lighter-operator-record-file")
         web3 = tx_builder.web3
@@ -583,7 +583,7 @@ class LighterPoolRouting(RoutingModel):
                 ctx.operator.account_index,
                 data["withdrawal_id"],
                 signer.create_auth_token,
-                timeout=self.config.withdrawal_timeout,
+                timeout=self.key_management.withdrawal_timeout,
                 poll_interval=max(self.poll_interval, 1.0),
             )
             data["claimable_usdc"] = str(Decimal(str(row["amount"])))

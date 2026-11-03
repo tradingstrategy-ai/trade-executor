@@ -23,7 +23,7 @@ from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
 from eth_defi.vault.base import VaultSpec
 from eth_defi.velvet import VelvetVault
 from tradeexecutor.ethereum.lagoon.execution import LagoonExecution
-from tradeexecutor.ethereum.lighter.lighter_routing import LighterRoutingConfig
+from tradeexecutor.ethereum.lighter.lighter_routing import LighterKeyManagement
 from tradeexecutor.state.identifier import normalise_custody_chain_id
 from tradeexecutor.exchange_account.lighter_operator import load_lighter_operator_record, load_lighter_sub_account_operator_records
 from tradeexecutor.ethereum.lagoon.vault import (
@@ -203,13 +203,13 @@ def create_web3_config(
     return web3config
 
 
-def create_lighter_routing_config(
+def create_lighter_key_management(
     operator_record_file: Path,
     sub_account_operator_record_files: str | None,
     withdrawal_timeout: int,
     transfer_timeout: int,
-) -> LighterRoutingConfig:
-    """Load the Lighter signers a command was given into routing settings.
+) -> LighterKeyManagement:
+    """Load the Lighter API keys a command was given, with its wait settings.
 
     :param operator_record_file:
         Owner-only master operator record.
@@ -220,9 +220,9 @@ def create_lighter_routing_config(
     :param transfer_timeout:
         Seconds to wait for a transfer between accounts to appear in history.
     :return:
-        Lighter routing settings.
+        The loaded keys and wait settings.
     """
-    return LighterRoutingConfig(
+    return LighterKeyManagement(
         operator_record=load_lighter_operator_record(operator_record_file),
         sub_account_operator_records=load_lighter_sub_account_operator_records(sub_account_operator_record_files),
         withdrawal_timeout=withdrawal_timeout,
@@ -240,7 +240,7 @@ def create_execution_model(
     sync_model: SyncModel,
     min_gas_balance: Optional[Decimal],
     mainnet_fork=False,
-    lighter_routing_config: LighterRoutingConfig | None = None,
+    lighter_key_management: LighterKeyManagement | None = None,
 ):
     """Set up the code transaction building logic.
 
@@ -263,7 +263,7 @@ def create_execution_model(
             max_slippage=max_slippage,
             min_balance_threshold=min_gas_balance,
             mainnet_fork=mainnet_fork,
-            lighter_routing_config=lighter_routing_config,
+            lighter_key_management=lighter_key_management,
         )
         valuation_model_factory = GenericValuationModelFactory()
         pricing_model_factory = EthereumGenericPricingFactory(sync_model.web3)
@@ -279,7 +279,7 @@ def create_execution_model(
             max_slippage=max_slippage,
             min_balance_threshold=min_gas_balance,
             mainnet_fork=mainnet_fork,
-            lighter_routing_config=lighter_routing_config,
+            lighter_key_management=lighter_key_management,
         )
         valuation_model_factory = GenericValuationModelFactory()
         pricing_model_factory = EthereumGenericPricingFactory(sync_model.web3)
@@ -707,7 +707,7 @@ def create_execution_and_sync_model(
     unit_testing: bool = False,
     token_cache: "TokenDiskCache | None" = None,
     deployment_file: "Path | None" = None,
-    lighter_routing_config: LighterRoutingConfig | None = None,
+    lighter_key_management: LighterKeyManagement | None = None,
 ) -> Tuple[ExecutionModel, SyncModel, ValuationModelFactory, PricingModelFactory]:
     """Set up the wallet sync and execution mode for the command line client."""
 
@@ -767,7 +767,7 @@ def create_execution_and_sync_model(
                 min_gas_balance=min_gas_balance,
                 mainnet_fork=web3config.is_mainnet_fork(),
                 sync_model=sync_model,
-                lighter_routing_config=lighter_routing_config,
+                lighter_key_management=lighter_key_management,
             )
         )
 
