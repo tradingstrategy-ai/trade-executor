@@ -43,6 +43,7 @@ from ...strategy.generic.generic_pricing_model import GenericPricing
 from ...strategy.run_state import RunState
 from ...strategy.strategy_module import read_strategy_module, StrategyModuleInformation
 from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
+from ...strategy.valuation_update import update_position_valuations
 from ...utils.timer import timed_task
 from tradeexecutor.cli.commands import shared_options
 from eth_defi.compat import native_datetime_utc_now
@@ -334,6 +335,26 @@ def perform_test_trade(
     runner = run_description.runner
     routing_state, pricing_model, valuation_method = runner.setup_routing(universe)
 
+    def revalue_positions() -> None:
+        """Refresh position values before a test trade posts NAV, in ``lagoon-settle``'s order.
+
+        Saved vault claims complete first: valuation refuses a consumed ticket
+        whose receipt has not been accounted for, which would block its recovery.
+        """
+        if sync_model.has_async_deposits():
+            execution_model.resolve_pending_vault_settlements(state=state, ts=native_datetime_utc_now())
+            sync_state()
+            update_position_valuations(
+                timestamp=native_datetime_utc_now(),
+                state=state,
+                universe=universe,
+                execution_context=execution_context,
+                routing_state=routing_state,
+                valuation_model=valuation_method,
+                long_short_metrics_latest=None,
+                skip_statistics=True,
+            )
+
     if simulate:
         logger.info("Simulating test trades")
     else:
@@ -392,6 +413,7 @@ def perform_test_trade(
                     amount=Decimal(str(amount)),
                     web3config=web3config,
                     sync_state_callback=sync_state,
+                    revalue_positions=revalue_positions,
                     test_trade_checks=True,
                 )
         elif all_pairs:
@@ -422,6 +444,7 @@ def perform_test_trade(
                     amount=Decimal(str(amount)),
                     web3config=web3config,
                     sync_state_callback=sync_state,
+                    revalue_positions=revalue_positions,
                     test_trade_checks=True,
                 )
         else:
@@ -447,6 +470,7 @@ def perform_test_trade(
                 web3config=web3config,
                 close_only=close_only,
                 sync_state_callback=sync_state,
+                revalue_positions=revalue_positions,
                 test_trade_checks=True,
             )
     except OutOfBalance as e:

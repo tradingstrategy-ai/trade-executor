@@ -243,7 +243,7 @@ and Lighter account 766589:
 | Step | Observed result |
 |---|---|
 | Deployment with coordinated activation | 20 minutes |
-| pmalt round trip | 5.999515 USDC minted 8,093 raw shares; the burn released 6.000178 USDC |
+| pmalt round trip | 5.999515 USDC minted 8,093 raw shares; the burn released 5.999693 USDC. With 0.000485 USDC left in the account, 6.000178 USDC was withdrawn |
 | Secure withdrawal | 44 minutes from request to claim |
 | CCTP, each direction | about 15–20 minutes |
 | Upshift Core USDC round trip | 5 USDC in, 4.999999 USDC out |

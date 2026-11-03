@@ -207,9 +207,9 @@ def test_lighter_pool_operation_resume_never_resubmits() -> None:
 def test_multi_vault_tutorial_resume_checks(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture) -> None:
     """A resumed live tutorial reads the vault state before it needs money or a lock.
 
-    Both cases stopped a funded run on 2026-11-03 or would have: simulation
-    does not reach them. The chain is mocked because each case needs a vault
-    state that a fork only reaches after days of epochs.
+    The first check stopped the funded run of 2026-11-03, and the unlocked case
+    would have stopped its Atoma exit. The chain is mocked to reach these
+    vault states directly: an interrupted subscription and both lock states.
 
     1. A pending subscription needs no money in an empty investor wallet
     2. A new subscription without the money fails before the approval

@@ -1270,6 +1270,7 @@ def make_test_trade(
     update_statistics_after_trade: bool = True,
     sync_state_callback: Callable[[], None] | None = None,
     test_trade_checks: bool = False,
+    revalue_positions: Callable[[], None] | None = None,
 ):
     """Perform a test trade.
 
@@ -1283,6 +1284,11 @@ def make_test_trade(
 
     :param close_only:
         Only close an existing position. Raises if no open position exists.
+
+    :param revalue_positions:
+        Refresh position valuations before the treasury sync. Posting NAV
+        refuses a stale position, and a close-only run can come days after
+        the open, as with an Atoma share lock.
     """
     assert not (buy_only and close_only), "Cannot set both buy_only and close_only"
 
@@ -1394,6 +1400,9 @@ def make_test_trade(
 
     logger.info("Sync model is %s", sync_model)
     logger.info("Trading university reserve asset is %s", universe.get_reserve_asset())
+
+    if revalue_positions is not None:
+        revalue_positions()
 
     # Sync any incoming stablecoin transfers
     # that have not been synced yet

@@ -61,17 +61,21 @@
 # Targets: --targets lighter,atoma,upshift (the default) selects which
 # positions steps 3-5 open and close in this invocation. Steps 6-7 run only
 # once every target is done, so the ones with no lock can finish first:
-# Lighter (5-minute mint lockup, ~25-minute withdrawal) and Upshift (no lock)
-# in one sitting, Atoma (shares lock until the end of its 3-day epoch, exit
-# settled at the end of the next) days later with --targets atoma.
+# Lighter (5-minute mint lockup, 44-minute withdrawal on 2026-11-03) and
+# Upshift (no lock) in one sitting, Atoma (shares lock until the end of the
+# current 3-day epoch, the exit settles after the end of the next) with
+# separate --targets atoma runs for the deposit, the request and the claim.
 #
 # Start:
 #   source .local-test.env
 #   SIMULATE=true bash scripts/lagoon/manual-multi-vault-cli.sh --deploy --subscribe
-# Live, in two sittings:
+# Live, over several days:
 #   export MULTI_VAULT_TEST_PRIVATE_KEY=...  # keep in your shell; never pass as an argument
-#   bash scripts/lagoon/manual-multi-vault-cli.sh --deploy --subscribe --targets lighter,upshift
+#   bash scripts/lagoon/manual-multi-vault-cli.sh --deploy --subscribe
 #   source <run directory>/env.sh && bash scripts/lagoon/manual-multi-vault-cli.sh --targets atoma
+# The first run finishes Lighter and Upshift and deposits into Atoma. Repeat
+# the second command after the lock for the request, and after the settlement
+# for the claim and the investor redemption.
 # Continue after an interruption or a wait:
 #   source <run directory>/env.sh
 #   bash scripts/lagoon/manual-multi-vault-cli.sh [--targets ...]

@@ -690,6 +690,12 @@ Example:
 Do not run tests. Inspect the code and tell me what focused tests should be run.
 ```
 
+### The review stops without a verdict
+
+Check the JSONL stream before retrying. `turn.failed` carries the reason, such as a usage limit, and only a final `turn.completed` with a verdict counts as a review.
+
+`pkill -f` matches full command lines, and a Codex or Claude prompt is on its command line. Cleaning up a process by a name that also appears in the prompt kills the review, and possibly your own shell. Kill by PID instead.
+
 ### The agent changes files during a review
 
 Symptoms:

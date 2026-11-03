@@ -60,10 +60,10 @@ FAKE_LIGHTER_FIRST_SUB_ACCOUNT_INDEX = 2**48 - 1000
 _USDC_SCALE = Decimal(10) ** 6
 
 
-#: Liquidity pool (LLP) index reported by the fake system configuration.
 #: Lighter's withdrawal history end cursor, ``{"index":-1,"index2":-1}`` in base64.
 FAKE_LIGHTER_END_CURSOR = "eyJpbmRleCI6LTEsImluZGV4MiI6LTF9"
 
+#: Liquidity pool (LLP) index reported by the fake system configuration.
 FAKE_LIGHTER_LLP_INDEX = 281474976710654
 
 #: Fake transaction types returned by :class:`FakeLighterPoolSigner`.
