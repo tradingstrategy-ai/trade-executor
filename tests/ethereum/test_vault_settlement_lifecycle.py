@@ -612,6 +612,7 @@ def test_lagoon_snapshot_cannot_erase_recent_vault_payout(
 
     # 2. Stub only chain reads; treasury reconciliation and NAV use real state.
     model = object.__new__(lagoon_vault.LagoonVaultSyncModel)
+    model.lighter_pool_account = None
     model.vault = MagicMock()
     model.vault.fetch_total_supply.return_value = Decimal(1)
     model.get_safe_latest_block = MagicMock(return_value=99)

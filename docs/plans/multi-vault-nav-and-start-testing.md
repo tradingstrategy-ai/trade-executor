@@ -201,3 +201,16 @@ instead of writing them off. The existing per-controller redemption getter can
 remain ambiguous when another investor has a queued request; this can require
 another invocation after that queue settles. No historical investor shares were
 repaired and no production or funded transaction was performed.
+
+### CI follow-up, 4 November 2026
+
+The first PR run passed the slow suite and both strategy fork scenarios, but
+the main suite found eight failures. `init` now passes the existing parsed
+`UNIT_TESTING` setting into Web3 configuration, so multichain test nodes can
+use chain ID 31337 while live commands retain chain validation. Minimal test
+models now declare the optional pool account and empty collateral mapping;
+generic-vault mocks explicitly report that they are not Lighter pools. The
+HyperCore pre-broadcast regression also expects the new outcome checkpoint.
+Nine focused cases covering these failures passed locally. A completed
+Claude CLI Opus 5.5 review of the small correction diff found no blocking
+findings.

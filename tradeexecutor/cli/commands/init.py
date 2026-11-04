@@ -90,6 +90,7 @@ def init(
     state_file: Optional[Path] = shared_options.state_file,
     private_key: Optional[str] = shared_options.private_key,
     log_level: str = shared_options.log_level,
+    unit_testing: bool = shared_options.unit_testing,
 
     asset_management_mode: AssetManagementMode = shared_options.asset_management_mode,
     vault_address: Optional[str] = shared_options.vault_address,
@@ -115,6 +116,7 @@ def init(
 
     web3config = create_web3_config(
         gas_price_method=None,
+        unit_testing=unit_testing,
         **rpc_kwargs,
     )
 

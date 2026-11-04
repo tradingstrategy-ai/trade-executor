@@ -462,6 +462,7 @@ def test_cross_chain_bridge_back_uses_actual_redemption_proceeds(
     """
     # 1. Record the custody balance before a vault redemption.
     pair = MagicMock()
+    pair.is_lighter_pool.return_value = False
     pair.chain_id = BASE_CHAIN_ID
     pair.get_funding_chain_id.return_value = BASE_CHAIN_ID
     pair.pool_address = "0x0000000000000000000000000000000000000abc"
@@ -515,6 +516,7 @@ def test_cross_chain_bridge_back_recovers_legacy_settled_redemption(
     """
     # 1. Model a settled redemption from a state version without a balance baseline.
     pair = MagicMock()
+    pair.is_lighter_pool.return_value = False
     pair.chain_id = BASE_CHAIN_ID
     pair.get_funding_chain_id.return_value = BASE_CHAIN_ID
     pair.pool_address = "0x0000000000000000000000000000000000000abc"
