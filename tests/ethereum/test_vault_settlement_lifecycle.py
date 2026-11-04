@@ -612,6 +612,7 @@ def test_lagoon_snapshot_cannot_erase_recent_vault_payout(
 
     # 2. Stub only chain reads; treasury reconciliation and NAV use real state.
     model = object.__new__(lagoon_vault.LagoonVaultSyncModel)
+    model.lighter_pool_account = None
     model.vault = MagicMock()
     model.vault.fetch_total_supply.return_value = Decimal(1)
     model.get_safe_latest_block = MagicMock(return_value=99)
@@ -807,7 +808,9 @@ def test_vault_settlement_retry_claimable(
     assert mock_tx.status is True
     mock_execution_model.tx_builder.sign_transaction.assert_called_once()
     mock_execution_model.sync_state_before_broadcast.assert_called()
-    assert mock_execution_model.sync_state_before_broadcast.call_count == (4 if checkpoint_fails else 2)
+    # The completed outcome is checkpointed before any later account refresh
+    # can fail and prevent the caller's usual end-of-sweep state save.
+    assert mock_execution_model.sync_state_before_broadcast.call_count == (5 if checkpoint_fails else 3)
     assert [call.args for call in mock_web3.eth.send_raw_transaction.call_args_list] == [(HexBytes(mock_tx.signed_bytes),)] * 2
 
 

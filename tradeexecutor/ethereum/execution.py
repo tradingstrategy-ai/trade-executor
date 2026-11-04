@@ -719,6 +719,8 @@ class EthereumExecution(ExecutionModel):
         )
 
         for idx, trade in enumerate(trades, start=1):
+            if trade.get_status() == TradeStatus.expired:
+                continue
             logger.info(
                 "Sequential trade execution %d/%d: preparing trade_id=%s planned_value=%.6f pair=%s",
                 idx,
@@ -793,6 +795,10 @@ class EthereumExecution(ExecutionModel):
                 )
 
             freeze_position_on_failed_trade(ts, state, [trade])
+            # Reporting can refuse an incomplete external-account valuation.
+            # Keep every already-mined outcome durable before reporting or
+            # proceeding to another trade in this sequential batch.
+            self.sync_state_before_broadcast()
             self._log_trade_outcome(trade)
 
             if trade.is_failed():
@@ -803,6 +809,19 @@ class EthereumExecution(ExecutionModel):
                     f"pair={trade.pair.get_ticker()}, revert_reason={trade.get_revert_reason()}, "
                     f"remaining_trade_ids={remaining_trade_ids}"
                 )
+
+            if trade.pair.is_lighter_pool() and trade.is_vault_settlement_in_flight():
+                # One operation owns the dedicated account until it settles.
+                # Other venues may continue, but later pool trades must be
+                # reconsidered by the next decision cycle without funding them.
+                for remaining_trade in trades[idx:]:
+                    if remaining_trade.pair.is_lighter_pool() and remaining_trade.get_status() == TradeStatus.planned:
+                        remaining_trade.mark_expired(native_datetime_utc_now())
+                        position = state.portfolio.open_positions.get(remaining_trade.position_id)
+                        if position is not None and all(t.get_status() == TradeStatus.expired for t in position.trades.values()):
+                            state.portfolio.expired_positions[position.position_id] = position
+                            del state.portfolio.open_positions[position.position_id]
+                self.sync_state_before_broadcast()
 
             if trade.get_status() == TradeStatus.cctp_in_transit:
                 # Expire remaining planned trades and clean up orphan positions

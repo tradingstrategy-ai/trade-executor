@@ -155,8 +155,8 @@ def get_asset_amounts(p: TradingPosition) -> List[Tuple[AssetIdentifier, Decimal
 def get_onchain_assets(pair: TradingPairIdentifier) -> List[AssetIdentifier]:
     """What tokens should be present on-chain for this pair."""
     if pair.is_spot() or pair.is_vault():
-        # Hypercore vault positions are API-tracked, not on-chain
-        if pair.is_hyperliquid_vault():
+        # Hypercore vaults and Lighter pool shares are tracked through APIs.
+        if pair.is_hyperliquid_vault() or pair.is_lighter_pool():
             return []
         return [pair.base]
     elif pair.is_short():

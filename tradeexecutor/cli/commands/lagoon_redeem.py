@@ -2,7 +2,7 @@
 
 Redeems all vault shares held by the asset manager from a Lagoon vault:
 
-1. Checks the asset manager wallet holds vault shares
+1. Resumes existing claims and reads the asset manager's remaining shares
 2. Approves and requests redemption of all shares (Phase 1 - ERC-7540)
 3. Posts new valuation and settles the vault (Phase 2)
 4. Finalises the redemption to claim denomination tokens (Phase 3)
@@ -20,9 +20,11 @@ from eth_defi.erc_4626.vault_protocol.lagoon.testing import redeem_vault_shares
 from eth_defi.lighter.session import create_lighter_session
 from eth_defi.lighter.valuation import fetch_lighter_total_equity
 from eth_defi.provider.receipt import wait_for_transaction_receipt_robust
+from eth_defi.token import USDC_NATIVE_TOKEN, fetch_erc20_details
+from tradingstrategy.chain import ChainId
 from typer import Option
 
-from tradeexecutor.cli.bootstrap import prepare_cache_and_token_cache, prepare_executor_id
+from tradeexecutor.cli.bootstrap import prepare_cache_and_token_cache, prepare_executor_id, read_lighter_pool_account, resolve_deployment_file
 from tradeexecutor.cli.commands import shared_options
 from tradeexecutor.cli.commands.app import app
 from tradeexecutor.cli.commands.lagoon_utils import (
@@ -32,6 +34,9 @@ from tradeexecutor.cli.commands.lagoon_utils import (
 )
 from tradeexecutor.cli.log import setup_logging
 from tradeexecutor.exchange_account.sub_account import get_lighter_account_resolution
+from tradeexecutor.ethereum.lighter.idle_collateral import refresh_lighter_idle_collateral
+from tradeexecutor.exchange_account.lighter import create_executor_lighter_session
+from tradeexecutor.state.trade import TradeStatus
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.strategy_module import read_strategy_module
 
@@ -42,16 +47,38 @@ logger = logging.getLogger(__name__)
 LIGHTER_REDEEM_IGNORE_THRESHOLD_USDC = Decimal(5)
 
 
-def _get_redemption_nav(vault, safe_balance: Decimal, lighter_account_indices: list[int] | None) -> Decimal:
+def _check_drained_pool_state(state: State) -> None:
+    """Refuse a terminal cash-only NAV while holdings or submissions remain.
+
+    Check held quantities as well as equity: a stale zero price cannot establish
+    that a position was exited. Synthetic bridge ledgers use their net equity;
+    historical transfers and allocations need not each net to zero.
+    A submitted trade also remains unresolved
+    before its receipt creates a vault ticket or bridge-in-transit status.
+    Historical failed, repaired and expired trades do not block a drained state.
+    """
+    if any((not p.pair.is_cctp_bridge() and p.get_quantity() != 0) or p.get_equity() >= 0.000001 for p in state.portfolio.get_open_and_frozen_positions()) or any(
+        t.is_vault_settlement_in_flight()
+        or t.get_status() in {TradeStatus.started, TradeStatus.broadcasted, TradeStatus.cctp_in_transit}
+        for t in state.portfolio.get_all_trades()
+    ):
+        raise RuntimeError("Close all positions and reconcile submissions before final redemption")
+
+
+def _get_redemption_nav(vault, safe_balance: Decimal, lighter_account_indices: list[int] | None, *, pool_account_drained: bool = False) -> Decimal:
     """Return the NAV to post for a redemption settlement.
 
-    A Lighter-enabled vault can retain small balances outside its Safe, such
+    A Lighter exchange-account vault can retain small balances outside its Safe, such
     as the activation deposit or sub-account dust below Lighter's withdrawal
     minimum. Lagoon can only pay a redemption from the Safe, so exclude
     Lighter balances that together stay below
     :data:`LIGHTER_REDEEM_IGNORE_THRESHOLD_USDC` from this terminal
-    redemption. Larger external balances must be withdrawn first.
+    redemption. Larger external balances must be withdrawn first. Dedicated
+    pool deployments must instead prove every external position and collateral
+    balance is drained; only then is their terminal NAV the Safe cash balance.
     """
+    if pool_account_drained:
+        return safe_balance
     nav = vault.fetch_nav()
     if not lighter_account_indices:
         return nav
@@ -157,7 +184,7 @@ def _claim_leftover_deposits(vault, hot_wallet, web3):
         logger.info("  Claimed deposit — share balance is now %s %s", share_balance, vault.share_token.symbol)
 
 
-def _claim_leftover_redemptions(vault, hot_wallet, web3, share_token, lighter_account_indices: list[int] | None) -> bool:
+def _claim_leftover_redemptions(vault, hot_wallet, web3, share_token, lighter_account_indices: list[int] | None, *, pool_account_drained: bool = False) -> bool:
     """Claim any leftover redemptions from a previous interrupted run.
 
     Handles two states:
@@ -189,6 +216,11 @@ def _claim_leftover_redemptions(vault, hot_wallet, web3, share_token, lighter_ac
         logger.info("  Claimed previous redemption")
         redemption_claimed = True
 
+    # Some Lagoon versions retain the controller's old request amount after a
+    # claim. Check the global queue even after a restart following that claim.
+    if vault.get_flow_manager().fetch_pending_redemption("latest") == 0:
+        return redemption_claimed
+
     # State B: pending unsettled
     pending_redeem_raw = vault.vault_contract.functions.pendingRedeemRequest(
         0, hot_wallet.address
@@ -200,7 +232,7 @@ def _claim_leftover_redemptions(vault, hot_wallet, web3, share_token, lighter_ac
             pending_human, share_token.symbol,
         )
         safe_balance = vault.denomination_token.fetch_balance_of(vault.safe_address)
-        nav = _get_redemption_nav(vault, safe_balance, lighter_account_indices)
+        nav = _get_redemption_nav(vault, safe_balance, lighter_account_indices, pool_account_drained=pool_account_drained)
         hot_wallet.sync_nonce(web3)
         # Wait for all read RPCs to see valuation before settling
         _broadcast_and_wait(web3, hot_wallet, vault.post_new_valuation(nav))
@@ -260,7 +292,15 @@ def lagoon_redeem(
     mod = read_strategy_module(strategy_file)
     # The state records which Lighter accounts the deployment owns; a single
     # account deployment without that record names its master explicitly.
-    resolved_accounts = get_lighter_account_resolution(State.read_json_file(Path(state_file))) if state_file and Path(state_file).exists() else {}
+    state_file, store = ensure_state_store_exists(id, state_file, simulate=simulate)
+    state = store.load()
+    pool_account = read_lighter_pool_account(resolve_deployment_file(id, state_file))
+    if pool_account is None and (
+        state.portfolio.lighter_idle_collateral
+        or any(p.pair.is_lighter_pool() for p in state.portfolio.get_all_positions())
+    ):
+        raise RuntimeError("Lighter pool redemption requires public satellite account metadata")
+    resolved_accounts = get_lighter_account_resolution(state)
     if resolved_accounts:
         lighter_account_indices = list(resolved_accounts.values())
         if lighter_account_index is not None and lighter_account_index not in lighter_account_indices:
@@ -289,6 +329,24 @@ def lagoon_redeem(
     hot_wallet = context.hot_wallet
     vault = context.vault
 
+    if pool_account is not None:
+        account_index, safe_address = pool_account
+        if safe_address.lower() != vault.safe_address.lower():
+            raise RuntimeError("Lighter satellite metadata belongs to another Safe")
+        # This terminal command posts NAV directly. Require all external
+        # capital back before using Safe cash as NAV; never apply the legacy
+        # exchange-account dust policy to pool collateral or pool shares.
+        with create_executor_lighter_session() as session:
+            refresh_lighter_idle_collateral(state, session, account_index, safe_address)
+        if state.portfolio.get_lighter_idle_collateral_value() >= 0.000001:
+            raise RuntimeError("Return idle Lighter pool collateral through a pool purchase and exit before final redemption")
+        _check_drained_pool_state(state)
+        satellite_usdc = fetch_erc20_details(web3config.get_connection(ChainId.ethereum), USDC_NATIVE_TOKEN[1])
+        if satellite_usdc.fetch_raw_balance_of(safe_address) > 0:
+            raise RuntimeError("Reclaim Ethereum satellite USDC before final redemption")
+        if not simulate:
+            store.sync(state)
+
     # Required for settle_via_trading_strategy_module()
     vault.trading_strategy_module_address = vault_adapter_address
 
@@ -312,13 +370,13 @@ def lagoon_redeem(
         web3,
         share_token,
         lighter_account_indices,
+        pool_account_drained=pool_account is not None,
     )
 
     share_balance = share_token.fetch_balance_of(hot_wallet.address)
     logger.info("  Share balance: %s %s", share_balance, share_token.symbol)
     if share_balance == 0:
-        assert resumed_redemption, "Asset manager has no vault shares to redeem"
-        logger.info("Previous redemption completed; skipping a new redemption request")
+        logger.info("No vault shares remain; skipping a new redemption request (claimed previous redemption: %s)", resumed_redemption)
     else:
         # Phase 1: Request redemption (approve shares + requestRedeem)
         logger.info("Phase 1: Requesting redemption of %s %s shares", share_balance, share_token.symbol)
@@ -333,7 +391,7 @@ def lagoon_redeem(
         # Phase 2: Settle (post valuation + settleDeposit which also settles redeems)
         logger.info("Phase 2: Settling vault")
         safe_balance = denomination_token.fetch_balance_of(vault.safe_address)
-        nav = _get_redemption_nav(vault, safe_balance, lighter_account_indices)
+        nav = _get_redemption_nav(vault, safe_balance, lighter_account_indices, pool_account_drained=pool_account is not None)
         logger.info("  Redemption settlement NAV: %s %s", nav, denomination_token.symbol)
 
         hot_wallet.sync_nonce(web3)
@@ -365,13 +423,12 @@ def lagoon_redeem(
         logger.info("  Vault Safe %s balance: %s", denomination_token.symbol, safe_balance)
         logger.info("  Redeemer shares: %s %s", final_share_balance, share_token.symbol)
     else:
-        state_path, store = ensure_state_store_exists(id, state_file)
         state, reserve_position = sync_reserve_balance_to_state(store, denomination_token, safe_balance)
 
         reserve_value = reserve_position.get_value()
         reserve_symbol = reserve_position.asset.token_symbol
 
-        logger.info("State file updated: %s", state_path)
+        logger.info("State file updated: %s", state_file)
         logger.info("  Reserve balance: %s %s", reserve_value, reserve_symbol)
         logger.info("  Vault Safe %s balance: %s", denomination_token.symbol, safe_balance)
         logger.info("  Redeemer shares: %s %s", final_share_balance, share_token.symbol)

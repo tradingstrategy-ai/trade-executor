@@ -37,12 +37,15 @@ from tradingstrategy.chain import ChainId
 
 from tradeexecutor.ethereum.address_sync_model import AddressSyncModel
 from tradeexecutor.ethereum.lagoon.tx import LagoonTransactionBuilder
+from tradeexecutor.ethereum.lighter.idle_collateral import refresh_lighter_idle_collateral
+from tradeexecutor.exchange_account.lighter import create_executor_lighter_session
 from tradeexecutor.ethereum.vault.settlement_policy import get_vault_settlement_confirmations
 from tradeexecutor.state.balance_update import (BalanceUpdate,
                                                 BalanceUpdateCause,
                                                 BalanceUpdatePositionType)
-from tradeexecutor.state.identifier import AssetIdentifier
+from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.state import State
+from tradeexecutor.state.trade import TradeType
 from tradeexecutor.state.sync import BalanceEventRef
 from tradeexecutor.state.types import (BlockNumber, JSONHexAddress, Percent,
                                        USDollarPrice)
@@ -513,6 +516,9 @@ class LagoonVaultSyncModel(AddressSyncModel):
         self.unit_testing = unit_testing  #
         self.disable_broadcast = disable_broadcast
         self.calculate_valuation_func = calculate_valuation_func
+        self.lighter_pool_account: tuple[int, str] | None = None
+        self.lighter_pool_session = None
+        self.lighter_pool_bridge_pair: TradingPairIdentifier | None = None
         self.defer_redemption_without_reserve_liquidity = defer_redemption_without_reserve_liquidity
         self.abort_lagoon_settlement_on_frozen_positions = abort_lagoon_settlement_on_frozen_positions
         assert vault.trading_strategy_module, "LagoonVault.trading_strategy_module initialisation param not set - needed to run the sync model properly"
@@ -678,6 +684,38 @@ class LagoonVaultSyncModel(AddressSyncModel):
             Block number at which to read on-chain state.
             Forwarded to ``calculate_valuation_func`` when set.
         """
+
+        if self.lighter_pool_account is not None:
+            if self.calculate_valuation_func is not None:
+                raise RuntimeError("Custom NAV callbacks cannot be combined with Lighter pool collateral")
+            if self.lighter_pool_session is None:
+                self.lighter_pool_session = create_executor_lighter_session()
+            account_index, safe_address = self.lighter_pool_account
+            refresh_lighter_idle_collateral(state, self.lighter_pool_session, account_index, safe_address)
+            if self.lighter_pool_bridge_pair is not None and not any(
+                p.pair.is_cctp_bridge() and p.pair.get_destination_chain_id() == 1
+                for p in state.portfolio.get_all_positions()
+            ):
+                # Coordinated activation can leave an unused fee allowance in
+                # the satellite Safe. Import it once into the existing bridge
+                # cash ledger; later balances must reconcile through trades.
+                pair = self.lighter_pool_bridge_pair
+                ethereum = self.web3config.get_connection(ChainId.ethereum)
+                token = fetch_erc20_details(ethereum, pair.base.address)
+                amount = token.fetch_balance_of(safe_address)
+                if amount:
+                    # As in existing missing-position accounting correction,
+                    # book an observed custody balance, not a new CCTP transfer
+                    # or investor subscription. No reserve cash is debited.
+                    now = native_datetime_utc_now()
+                    bridge, correction, _ = state.create_trade(
+                        now, pair, amount, None, 1.0, TradeType.accounting_correction,
+                        pair.quote, 1.0,
+                        notes="Verified satellite cash left by coordinated Lighter activation",
+                    )
+                    correction.mark_success(now, 1.0, amount, amount, 0, None, force=True)
+        elif state.portfolio.lighter_idle_collateral:
+            raise RuntimeError("Lighter collateral exists but its deployment account is not configured")
 
         now = native_datetime_utc_now()
         all_positions = list(state.portfolio.get_open_and_frozen_positions())
@@ -1368,7 +1406,37 @@ class LagoonVaultSyncModel(AddressSyncModel):
             post_valuation=post_valuation,
         )
 
+        if any(t.pair.is_lighter_pool() and t.is_vault_settlement_in_flight() for t in state.portfolio.get_all_trades()):
+            logger.info("Deferring Lagoon NAV and settlement while a Lighter pool operation is pending")
+            self._mark_treasury_sync_completed(
+                treasury_sync=treasury_sync,
+                strategy_cycle_ts=strategy_cycle_ts,
+                block_number=safe_sync_block,
+                pending_deposits=pending_deposits,
+                pending_redemptions=pending_redemptions,
+                share_count=share_count,
+            )
+            return recovered_events
+
         valuation = self.calculate_valuation(state, block_number=safe_sync_block)
+
+        if self.lighter_pool_account is not None and share_count > 0:
+            queued_shares = vault.get_flow_manager().fetch_pending_redemption(safe_sync_block)
+            # The old on-chain price can still omit the activation collateral.
+            # Size the queue against the complete NAV we are about to publish.
+            needed = Decimal(str(valuation)) * queued_shares / share_count
+            token = vault.underlying_token
+            if token.convert_to_raw(needed) > token.convert_to_raw(onchain_balance + pending_deposits):
+                logger.info("Deferring investor redemption until enough satellite and vault capital returns to the hub Safe")
+                self._mark_treasury_sync_completed(
+                    treasury_sync=treasury_sync,
+                    strategy_cycle_ts=strategy_cycle_ts,
+                    block_number=safe_sync_block,
+                    pending_deposits=pending_deposits,
+                    pending_redemptions=needed,
+                    share_count=share_count,
+                )
+                return recovered_events
 
         if not post_valuation:
             logger.warning("LagoonVaultSyncModel.sync_treasury() called with post_valuation=False")

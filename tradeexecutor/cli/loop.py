@@ -429,6 +429,10 @@ class ExecutionLoop:
 
         assert cycle_duration is not None, "CycleDuration is required, got None"
 
+        if state.portfolio.has_incomplete_lighter_valuation():
+            logger.info("Deferring summary refresh while Lighter collateral valuation is incomplete")
+            return
+
         run_state = self.run_state
 
         refresh_run_state(

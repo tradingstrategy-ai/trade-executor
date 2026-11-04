@@ -386,7 +386,7 @@ def calculate_account_corrections(
                 if p.pair.base == ab.asset:
                     price = p.last_token_price
                     price_at = p.last_pricing_at
-                    usd_value = p
+                    usd_value = abs(float(diff) * price)
                     break
 
         elif mapping.is_one_to_one_asset_to_position():

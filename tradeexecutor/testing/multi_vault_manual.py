@@ -19,11 +19,14 @@ It writes no progress files: the next step is derived from the state file.
 """
 
 import calendar
+import datetime
 import logging
 import os
 import sys
 from decimal import Decimal
 from pathlib import Path
+from contextlib import ExitStack
+from unittest import mock
 
 import typer
 from eth_defi.erc_4626.vault_protocol.atoma.vault import AtomaVault
@@ -51,6 +54,7 @@ from tradeexecutor.testing.lighter_manual import LAGOON_DEPOSIT_REQUEST_ID, broa
 from tradeexecutor.testing.multi_vault_simulation import (
     MultiVaultSimulation,
     installed_multi_vault_simulation,
+    multi_vault_simulation_clock,
     start_multi_vault_simulation,
     stop_multi_vault_simulation,
 )
@@ -141,16 +145,29 @@ def simulate_stop(directory: Path = typer.Option(..., envvar="MULTI_VAULT_SIM_DI
 
 
 @app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
-def cli(ctx: typer.Context) -> None:
+def cli(
+    ctx: typer.Context,
+    simulation_time: datetime.datetime | None = typer.Option(None),
+    delay_pool_confirmation: bool = typer.Option(False),
+    fail_account_read: bool = typer.Option(False),
+) -> None:
     """Run one ``trade-executor`` command in this process, simulated when configured."""
     command = get_command(executor_app)
     simulation = get_simulation()
+    if simulation is None and (simulation_time is not None or delay_pool_confirmation or fail_account_read):
+        raise RuntimeError("Simulation controls require running local dual forks")
     code = 0
     try:
         if simulation is None:
             command.main(args=list(ctx.args), standalone_mode=False)
         else:
-            with installed_multi_vault_simulation(simulation):
+            with ExitStack() as stack:
+                stack.enter_context(installed_multi_vault_simulation(simulation))
+                stack.enter_context(multi_vault_simulation_clock(simulation_time))
+                if delay_pool_confirmation:
+                    stack.enter_context(mock.patch("eth_defi.lighter.execution.LighterPoolExecutor.reconcile", side_effect=TimeoutError("Simulated sequencer confirmation delay")))
+                if fail_account_read:
+                    stack.enter_context(mock.patch("tradeexecutor.ethereum.lighter.idle_collateral.fetch_execution_account", side_effect=TimeoutError("Simulated public account read failure")))
                 command.main(args=list(ctx.args), standalone_mode=False)
     except SystemExit as error:
         code = error.code or 0

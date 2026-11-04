@@ -543,12 +543,14 @@ def test_lagoon_nav_adds_pending_settlement_float() -> None:
     # The minimal model isolates pending-settlement arithmetic without
     # constructing a real vault or Web3 connection.
     sync_model = object.__new__(LagoonVaultSyncModel)
+    sync_model.lighter_pool_account = None
     sync_model.valuation_data_freshness = datetime.timedelta(hours=1)
     sync_model.calculate_valuation_func = lambda _state, **_kwargs: 12.5
 
     # 2. Add a non-zero pending settlement value.
     state = SimpleNamespace(
         portfolio=SimpleNamespace(
+            lighter_idle_collateral={},
             get_open_and_frozen_positions=lambda: [],
             get_vault_settlement_pending_value=lambda: 0.5,
         )

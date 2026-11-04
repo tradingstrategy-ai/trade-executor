@@ -83,6 +83,10 @@ def settle_vault(
     # Complete saved vault claims before valuation reads consumed tickets.
     execution_model.resolve_pending_vault_settlements(state=state, ts=ts)
 
+    if state.portfolio.has_incomplete_lighter_valuation():
+        logger.warning("Deferring NAV and investor settlement while a Lighter pool operation is pending")
+        return
+
     # Use unit_testing flag so this code path is easier to check
     if sync_model.has_async_deposits() or unit_testing:
         logger.info("Vault must be revalued before proceeding, using: %s", sync_model.__class__.__name__)

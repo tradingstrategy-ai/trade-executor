@@ -388,8 +388,11 @@ def test_execution_persists_at_risk_marker_before_broadcast() -> None:
         triggered=False,
     )
 
-    # 3. The persisted snapshot supplies the marker after a hard restart.
-    assert checkpointed_markers == [{"hypercore_deposit_capital_at_risk": {"phase": "phase1_broadcast_pending"}}]
+    # 3. Both the pre-broadcast and outcome checkpoints retain the restart marker.
+    assert checkpointed_markers == [
+        {"hypercore_deposit_capital_at_risk": {"phase": "phase1_broadcast_pending"}},
+        {"hypercore_deposit_capital_at_risk": {"phase": "phase1_broadcast_pending"}},
+    ]
 
 
 @pytest.mark.parametrize("already_held", [False, True])

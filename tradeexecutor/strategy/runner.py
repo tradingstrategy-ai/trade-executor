@@ -316,7 +316,10 @@ class StrategyRunner(abc.ABC):
     def revalue_state(self, ts: datetime.datetime, state: State, valuation_model: ValuationModel):
         """Revalue portfolio based on the latest prices."""
         revalue_state(state, ts, valuation_model)
-        logger.info("After revaluation at %s our portfolio value is %f USD", ts, state.portfolio.calculate_total_equity())
+        if state.portfolio.has_incomplete_lighter_valuation():
+            logger.info("Portfolio valuation at %s is incomplete pending Lighter reconciliation", ts)
+        else:
+            logger.info("After revaluation at %s our portfolio value is %f USD", ts, state.portfolio.calculate_total_equity())
 
     def collect_post_execution_data(
             self,
@@ -600,6 +603,16 @@ class StrategyRunner(abc.ABC):
 
         routing_model = self.routing_model
 
+        if isinstance(self.sync_model, LagoonVaultSyncModel) and any(p.is_lighter_pool() for p in universe.iterate_pairs()):
+            if self.sync_model.lighter_pool_account is None:
+                raise RuntimeError("Lighter pool NAV requires public account metadata from the Ethereum satellite deployment")
+            self.sync_model.lighter_pool_bridge_pair = next(
+                (p for p in universe.iterate_pairs() if p.is_cctp_bridge() and p.get_destination_chain_id() == 1),
+                None,
+            )
+            if self.sync_model.lighter_pool_bridge_pair is None:
+                raise RuntimeError("Lighter satellite NAV requires its Ethereum CCTP cash pair")
+
         if routing_model is None:
             # The new style routing initialisation
             logger.info("Lazily initialised the default routing model, as routing model has not been set up earlier")
@@ -843,6 +856,11 @@ class StrategyRunner(abc.ABC):
                     if vault_resolved:
                         logger.info("Resolved %d pending vault settlement(s)", len(vault_resolved))
                 end_block = self.execution_model.get_safe_latest_block()
+
+                if state.portfolio.has_incomplete_lighter_valuation():
+                    logger.info("Deferring strategy decisions until the pending Lighter operation has a complete valuation")
+                    debug_details["treasury_sync_deferred"] = "Pending Lighter collateral valuation"
+                    return debug_details
 
             # Needed for Lagoon.
             # sync_portfolio() posts valuation onchain to
@@ -1095,6 +1113,10 @@ class StrategyRunner(abc.ABC):
                             msg += f"{t} - execution order {t.get_execution_sort_position() + 1}.\n"
                         raise BacktestExecutionFailed(msg) from e
 
+                if state.portfolio.has_incomplete_lighter_valuation():
+                    logger.info("Deferring post-execution reports until the pending Lighter operation has a complete valuation")
+                    return debug_details
+
                 with self.timed_task_context_manager("post_execution"):
                     self.collect_post_execution_data(
                         self.execution_context,
@@ -1144,6 +1166,10 @@ class StrategyRunner(abc.ABC):
         :return:
             List of generated stop loss trades
         """
+
+        if state.portfolio.has_incomplete_lighter_valuation():
+            logger.info("Deferring position triggers until Lighter collateral valuation is complete")
+            return []
 
         if routing_state is None:
             # Dummy executoin model

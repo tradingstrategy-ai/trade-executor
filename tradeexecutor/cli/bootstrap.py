@@ -811,6 +811,8 @@ def create_execution_and_sync_model(
                     )
                 execution_model.satellite_vaults = satellite_vaults
 
+            configure_lighter_pool_nav(sync_model, deployment_file)
+
         return (
             execution_model,
             sync_model,
@@ -839,6 +841,33 @@ def create_execution_and_sync_model(
         raise NotImplementedError(
             f"Unsupported asset management mode: {asset_management_mode} - did you pass ASSET_MANAGEMENT_MODE environment variable?"
         )
+
+
+def read_lighter_pool_account(deployment_file: Path | None) -> tuple[int, str] | None:
+    """Read the public account index and owner from an Ethereum satellite artefact."""
+    if deployment_file is None or not deployment_file.exists():
+        return
+    payload = json.loads(deployment_file.read_text())
+    deployment = (payload.get("deployments") or {}).get("ethereum") or {}
+    setup = deployment.get("lighter_account_setup")
+    if not deployment.get("is_satellite") or not setup:
+        return
+    return int(setup["account_index"]), deployment["safe_address"]
+
+
+def configure_lighter_pool_nav(sync_model: LagoonVaultSyncModel, deployment_file: Path | None) -> None:
+    """Configure public pool-account NAV without loading private operator keys.
+
+    Ethereum-home exchange-account strategies retain their existing valuation
+    path; pool custody metadata must identify the hub's Safe.
+    """
+    account = read_lighter_pool_account(deployment_file)
+    if account is None:
+        return
+    _, safe = account
+    if safe.lower() != sync_model.vault.safe_address.lower():
+        raise ValueError("Lighter satellite metadata belongs to another Safe")
+    sync_model.lighter_pool_account = account
 
 
 def create_approval_model(approval_type: ApprovalType) -> ApprovalModel:

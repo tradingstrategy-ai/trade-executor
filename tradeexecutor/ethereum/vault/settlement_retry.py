@@ -42,6 +42,8 @@ from web3.contract.contract import ContractFunction
 from web3.types import TxReceipt
 
 from tradeexecutor.ethereum.lighter.lighter_pool_routing import LighterPoolRouting
+from tradeexecutor.ethereum.lighter.idle_collateral import refresh_lighter_idle_collateral
+from tradeexecutor.exchange_account.lighter import create_executor_lighter_session
 from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder, TransactionBuilder
 from tradeexecutor.ethereum.vault.settlement_estimate import refresh_vault_settlement_estimate
 from tradeexecutor.ethereum.vault.settlement_policy import get_vault_settlement_confirmations, validate_single_redemption_ticket
@@ -296,6 +298,7 @@ def check_and_resolve_vault_settlements(
                 pending_trades.append(trade)
 
     if not pending_trades:
+        _refresh_reconciled_lighter_collateral(state)
         return resolved
 
     logger.info(
@@ -322,24 +325,50 @@ def check_and_resolve_vault_settlements(
             redemption_owners.add(identity)
             validate_single_redemption_ticket(data)
 
-    for trade in pending_trades:
-        try:
-            if trade.pair.is_lighter_pool():
-                # Pool phases are resumed by their own router, not by an
-                # ERC-4626 deposit manager ticket.
-                _resolve_lighter_pool_trade(state, trade, execution_model, web3config, resolved)
-                continue
-            _resolve_single_vault_trade(state, trade, execution_model, web3config, resolved)
-        except (AssertionError, VaultRequestInvariantViolation):
-            # An accounting invariant is not temporary settlement unavailability.
-            raise
-        except Exception as e:
-            logger.warning(
-                "Failed to resolve vault settlement for trade #%d: %s",
-                trade.trade_id, e,
-            )
-
+    initial_statuses = [trade.get_status() for trade in pending_trades]
+    try:
+        for trade in pending_trades:
+            try:
+                if trade.pair.is_lighter_pool():
+                    # Pool phases are resumed by their own router, not by an
+                    # ERC-4626 deposit manager ticket.
+                    _resolve_lighter_pool_trade(state, trade, execution_model, web3config, resolved)
+                    continue
+                _resolve_single_vault_trade(state, trade, execution_model, web3config, resolved)
+            except (AssertionError, VaultRequestInvariantViolation):
+                # An accounting invariant is not temporary settlement unavailability.
+                raise
+            except Exception as e:
+                logger.warning(
+                    "Failed to resolve vault settlement for trade #%d: %s",
+                    trade.trade_id, e,
+                )
+    finally:
+        # Preserve every resolved outcome, including a failure/reclaim, even
+        # if a later trade raises an invariant or the account refresh fails.
+        if any(trade.get_status() != status for trade, status in zip(pending_trades, initial_statuses)):
+            checkpoint = getattr(execution_model, "sync_state_before_broadcast", None)
+            if checkpoint is not None:
+                checkpoint()
+    _refresh_reconciled_lighter_collateral(state)
     return resolved
+
+
+def _refresh_reconciled_lighter_collateral(state: State) -> None:
+    """Retry invalid observations before startup/statistics can read NAV.
+
+    A transient public read can fail after a trade has been booked or repaired.
+    Such a state has no remaining settlement request to drive another refresh.
+    Reuse this sweep even when its pending-trade list is empty.
+    """
+    observations = [o for o in state.portfolio.lighter_idle_collateral.values() if not o.valid]
+    if not observations:
+        return
+    if any(t.pair.is_lighter_pool() and t.is_vault_settlement_in_flight() for t in state.portfolio.get_all_trades()):
+        return
+    session = create_executor_lighter_session()
+    for observation in observations:
+        refresh_lighter_idle_collateral(state, session, observation.account_index, observation.safe_address)
 
 
 def _resolve_lighter_pool_trade(

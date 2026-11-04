@@ -24,6 +24,8 @@ from typing import Optional
 from typer import Option
 
 from eth_defi.hotwallet import HotWallet
+from tradeexecutor.ethereum.lighter.idle_collateral import refresh_lighter_idle_collateral
+from tradeexecutor.exchange_account.lighter import create_executor_lighter_session
 
 from .app import app
 from ..bootstrap import (
@@ -32,10 +34,13 @@ from ..bootstrap import (
     create_sync_model,
     create_state_store,
     resolve_deployment_file,
+    configure_lighter_pool_nav,
+    configure_default_chain,
 )
 from ..log import setup_logging
 from ...exchange_account.sub_account import read_lighter_account_resolution, store_lighter_account_resolution
 from ...strategy.execution_model import AssetManagementMode
+from ...strategy.strategy_module import read_strategy_module
 from . import shared_options
 
 
@@ -85,6 +90,7 @@ def init(
     state_file: Optional[Path] = shared_options.state_file,
     private_key: Optional[str] = shared_options.private_key,
     log_level: str = shared_options.log_level,
+    unit_testing: bool = shared_options.unit_testing,
 
     asset_management_mode: AssetManagementMode = shared_options.asset_management_mode,
     vault_address: Optional[str] = shared_options.vault_address,
@@ -110,13 +116,16 @@ def init(
 
     web3config = create_web3_config(
         gas_price_method=None,
+        unit_testing=unit_testing,
         **rpc_kwargs,
     )
 
     assert web3config, "No RPC endpoints given. A working JSON-RPC connection is needed for check-wallet"
 
     # Set default chain, allowing multiple connections for multichain strategies
-    if len(web3config.connections) == 1:
+    if len(web3config.connections) > 1 and strategy_file is not None:
+        configure_default_chain(web3config, read_strategy_module(strategy_file))
+    elif len(web3config.connections) == 1:
         web3config.choose_single_chain()
     else:
         default_chain_id = next(iter(web3config.connections.keys()))
@@ -185,6 +194,13 @@ def init(
     if asset_management_mode == AssetManagementMode.lagoon:
         deployment_file = resolve_deployment_file(id, state_file)
         if deployment_file.exists():
+            configure_lighter_pool_nav(sync_model, deployment_file)
+            if sync_model.lighter_pool_account is not None:
+                # Initial state has no reserves yet; observe external cash
+                # without attempting Lagoon treasury settlement.
+                refresh_lighter_idle_collateral(
+                    state, create_executor_lighter_session(), *sync_model.lighter_pool_account,
+                )
             resolution = read_lighter_account_resolution(json.loads(deployment_file.read_text()), vault_address)
             if resolution:
                 store_lighter_account_resolution(state, resolution)

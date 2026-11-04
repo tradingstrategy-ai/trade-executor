@@ -22,6 +22,8 @@ command, as :py:mod:`tradeexecutor.testing.multi_vault_manual` does.
 """
 
 import json
+import calendar
+import datetime
 import logging
 import os
 import signal
@@ -37,12 +39,13 @@ from pathlib import Path
 from unittest import mock
 
 from eth_account import Account
+from eth_defi.compat import native_datetime_utc_now
 from hexbytes import HexBytes
 from eth_defi.cctp.attestation import CCTPAttestation
 from eth_defi.cctp.constants import CHAIN_ID_TO_CCTP_DOMAIN
 from eth_defi.cctp.testing import forge_attestation, replace_attester_on_fork
 from eth_defi.cctp.transfer import get_message_transmitter_v2
-from eth_defi.provider.anvil import fork_network_anvil, fund_erc20_on_anvil
+from eth_defi.provider.anvil import fork_network_anvil, fund_erc20_on_anvil, is_anvil
 from eth_defi.provider.multi_provider import create_multi_provider_web3
 from eth_defi.testing.fork_blocks import ETHEREUM_MIDNIGHT_BLOCK
 from eth_defi.token import USDC_NATIVE_TOKEN, fetch_erc20_details
@@ -276,6 +279,7 @@ def installed_multi_vault_simulation(simulation: MultiVaultSimulation) -> Iterat
     :return:
         The loaded fake core.
     """
+    assert all(is_anvil(simulation.get_web3(chain)) for chain in (1, 42161)), "Simulation requires Anvil on both custody chains"
     core = FakeLighterCore.load(simulation.get_web3(1), simulation.fake_lighter_file)
 
     def forge(source_domain: int, transaction_hash: str, **kwargs) -> CCTPAttestation:
@@ -303,6 +307,26 @@ def installed_multi_vault_simulation(simulation: MultiVaultSimulation) -> Iterat
             yield core
         finally:
             core.save(simulation.fake_lighter_file)
+
+
+@contextmanager
+def multi_vault_simulation_clock(timestamp: datetime.datetime | None) -> Iterator[None]:
+    """Keep CLI UTC reads and fake venue timestamps on the fork clock.
+
+    Monotonic deadlines remain real. Only the simulation wrapper uses this;
+    production commands gain no clock configuration or environment reads.
+    """
+    with ExitStack() as stack:
+        if timestamp is not None:
+            assert timestamp.tzinfo is None
+            epoch = calendar.timegm(timestamp.timetuple())
+            started_at = time.monotonic()
+            original_now = native_datetime_utc_now
+            for module in tuple(sys.modules.values()):
+                if module is not None and getattr(module, "native_datetime_utc_now", None) is original_now:
+                    stack.enter_context(mock.patch.object(module, "native_datetime_utc_now", lambda: timestamp + datetime.timedelta(seconds=time.monotonic() - started_at)))
+            stack.enter_context(mock.patch("time.time", side_effect=lambda: epoch + time.monotonic() - started_at))
+        yield
 
 
 if __name__ == "__main__":

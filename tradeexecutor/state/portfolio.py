@@ -15,6 +15,7 @@ from tradingstrategy.chain import ChainId
 from tradingstrategy.types import PrimaryKey
 from tradeexecutor.state.identifier import TradingPairIdentifier, TradingPairKind, AssetIdentifier, AssetFriendlyId
 from tradeexecutor.state.loan import Loan
+from tradeexecutor.state.lighter import LighterIdleCollateral
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.trade import TradeType, TradeFlag
@@ -91,8 +92,8 @@ def _snap_buy_reserve_to_available_if_token_dust(
         shortfall,
         funding_asset.token_symbol,
     )
-    trade.planned_reserve = available
-    trade.planned_quantity = available / Decimal(str(trade.planned_price))
+    trade.planned_reserve = available + Decimal(trade.other_data.get("lighter_idle_allocated", "0"))
+    trade.planned_quantity = trade.planned_reserve / Decimal(str(trade.planned_price))
     return available
 
 
@@ -196,6 +197,50 @@ class Portfolio:
     #: preflight. Stored for diagnostics, excluded from holdings and valuation.
     #:
     expired_positions: Dict[int, TradingPosition] = field(default_factory=dict)
+
+    #: Uninvested Lighter USDC; included in NAV, never in spendable Safe cash.
+    lighter_idle_collateral: dict[str, LighterIdleCollateral] = field(default_factory=dict)
+
+    def has_incomplete_lighter_valuation(self) -> bool:
+        """Whether pool operations or failed reads prevent publishing a NAV."""
+        return any(not observation.valid for observation in self.lighter_idle_collateral.values())
+
+    def get_lighter_idle_collateral_value(self) -> float:
+        """Return observed idle value, refusing an incomplete valuation."""
+        if self.has_incomplete_lighter_valuation():
+            raise RuntimeError("Lighter idle collateral valuation is incomplete; reconcile any pending pool operation and refresh collateral")
+        return float(sum((o.amount for o in self.lighter_idle_collateral.values()), Decimal(0)))
+
+    def get_lighter_buy_funding(self, trade: TradeExecution) -> Decimal:
+        """Safe-funded portion of a pool buy whose total cost includes idle USDC."""
+        return trade.get_planned_reserve() - Decimal(trade.other_data.get("lighter_idle_allocated", "0"))
+
+    def plan_lighter_idle_funding(self, trades: list[TradeExecution]) -> None:
+        """Reserve idle USDC for pool budgets before CCTP sizes Safe funding.
+
+        A pool account is dedicated to one executor. Multiple accounts require
+        explicit pool/account associations rather than guessing an owner.
+        """
+        buys = [t for t in trades if t.pair.is_lighter_pool() and t.is_buy()]
+        for trade in buys:
+            # Strategy sizing may carry an exact Decimal(float). Set the total
+            # budget to executable token units before splitting funding sources.
+            token = trade.reserve_currency
+            trade.planned_reserve = token.convert_to_decimal(token.convert_to_raw_amount(trade.planned_reserve))
+            trade.planned_quantity = trade.planned_reserve / Decimal(str(trade.planned_price))
+        if not buys or not self.lighter_idle_collateral:
+            return
+        assert len(self.lighter_idle_collateral) == 1, "Pool funding requires one dedicated Lighter account"
+        key, observation = next(iter(self.lighter_idle_collateral.items()))
+        assert observation.valid, "Refresh Lighter collateral before planning pool buys"
+        # A preceding sell sweeps this account's idle cash into its payout.
+        # Do not promise the same cash to a later buy before that exit settles.
+        available = Decimal(0) if any(t.pair.is_lighter_pool() and t.is_sell() for t in trades) else observation.amount
+        for trade in buys:
+            amount = min(available, trade.planned_reserve)
+            trade.other_data["lighter_idle_account"] = key
+            trade.other_data["lighter_idle_allocated"] = str(amount)
+            available -= amount
 
     def __repr__(self):
         reserve_asset, _ = self.get_default_reserve_asset()
@@ -786,7 +831,7 @@ class Portfolio:
         """
         # Any trading positions we have one
         # spot_values = sum([p.get_equity() for p in self.open_positions.values() if not p.is_leverage()])
-        return self.get_position_equity_and_loan_nav() + self.get_cash() + self.get_in_transit_value() + self.get_vault_settlement_pending_value()
+        return self.get_position_equity_and_loan_nav() + self.get_cash() + self.get_in_transit_value() + self.get_vault_settlement_pending_value() + self.get_lighter_idle_collateral_value()
 
     get_total_equity = calculate_total_equity
 
@@ -840,6 +885,11 @@ class Portfolio:
             chain = ChainId(r.asset.chain_id)
             result[chain] = result.get(chain, 0) + r.get_value()
 
+        self.get_lighter_idle_collateral_value()  # Refuse invalid observations in chain totals too.
+        for observation in self.lighter_idle_collateral.values():
+            chain = ChainId(observation.custody_chain_id)
+            result[chain] = result.get(chain, 0) + float(observation.amount)
+
         # Open position equity grouped by pair chain
         for p in self.open_positions.values():
             if p.is_loan_based():
@@ -878,7 +928,7 @@ class Portfolio:
         TODO: Net asset value calculation does not account for fees
         paid to close a short position.
         """
-        return self.get_position_equity_and_loan_nav(include_interest) + self.get_frozen_position_equity() + self.get_cash() + self.get_vault_settlement_pending_value()
+        return self.get_position_equity_and_loan_nav(include_interest) + self.get_frozen_position_equity() + self.get_cash() + self.get_vault_settlement_pending_value() + self.get_lighter_idle_collateral_value()
 
     def get_unrealised_profit_usd(self) -> USDollarAmount:
         """Get the profit of currently open positions.
@@ -1123,7 +1173,7 @@ class Portfolio:
         if trade.is_spot():
             assert trade.is_buy()
 
-        reserve = trade.get_planned_reserve()
+        reserve = self.get_lighter_buy_funding(trade) if trade.pair.is_lighter_pool() else trade.get_planned_reserve()
         try:
             position = self.get_reserve_position(trade.reserve_currency)
             available = position.quantity
@@ -1131,7 +1181,7 @@ class Portfolio:
             raise RuntimeError(f"Reserve missing for {trade.reserve_currency}") from e
 
         # Sanity check on price calculatins
-        if trade.is_spot():
+        if trade.is_spot() and not trade.pair.is_lighter_pool():
             assert abs(float(reserve) - trade.get_planned_value()) < 0.01, f"Trade {trade}: Planned value {trade.get_planned_value()}, but wants to allocate reserve currency for {reserve}"
 
         if available < reserve:
@@ -1232,7 +1282,7 @@ class Portfolio:
         :raises NotEnoughMoney:
             If the bridge position does not have enough capital.
         """
-        reserve = trade.get_planned_reserve()
+        reserve = self.get_lighter_buy_funding(trade) if trade.pair.is_lighter_pool() else trade.get_planned_reserve()
         bridge_chain_id = trade.pair.get_funding_chain_id()
         bridge_position = self.get_bridge_position_for_chain(bridge_chain_id)
 

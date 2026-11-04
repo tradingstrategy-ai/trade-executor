@@ -37,6 +37,7 @@ logger = logging.getLogger(__name__)
 #: (no ERC-20 ``balanceOf`` available).
 _OFFCHAIN_CHAIN_IDS = frozenset({
     ChainId.hypercore.value,  # 9999 — native Hyperliquid vaults
+    ChainId.lighter.value,  # 9998 — public pool shares, checked through the API
 })
 
 

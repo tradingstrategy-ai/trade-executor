@@ -211,14 +211,37 @@ is saved on the trade before submission; the normal settlement sweep resumes
 a pending trade after a crash or an expired wait, and a second pool trade is
 refused while one is unresolved. A crash before the first checkpoint leaves
 a started trade with nothing moved, for `repair`. The account is dedicated
-to the executor: a buy invests all available collateral, including the
-activation USDC on the first buy, and a sell withdraws all of it.
+to the executor. A buy's amount is its total investment budget: it consumes
+accounted idle collateral first and deposits only the shortfall from the Safe.
+For example, a 5 USDC buy with the 1 USDC activation balance needs 4 USDC from
+the Safe. A sell withdraws all collateral, separating returned idle cash from
+the pool's realised profit.
 
 Pool positions are valued at quantity × USDC per raw share from current pool
 state, net of the operator's estimated fee on positive profit; during a
 pending exit the burned shares are valued at the collateral they released.
 Account equity is never added to that value, because whether Lighter's
 account equity includes pool holdings is unverified.
+Uninvested collateral is recorded separately in the executor's portfolio and
+included in NAV, including before the first purchase. It is not spendable Safe
+cash or available CCTP funding. The public Ethereum satellite deployment
+metadata identifies the account; valuation does not require its private key.
+The treasury refreshes the account and pool holdings together before posting
+NAV. An ownership mismatch, failed read, changing snapshot or unresolved pool
+operation refuses publication rather than using incomplete value. Resume the
+saved operation before retrying settlement. `show-valuation` displays the saved
+idle-collateral observation and its timestamp without making network reads.
+
+The 20 USDC bootstrap normally leaves approximately 18.99 USDC in the hub Safe
+and 1 USDC on Lighter. Any unused bridge-fee allowance remains in the Ethereum
+Safe: the first treasury valuation imports its verified balance into the existing
+bridge cash position as an accounting correction. Only the actual CCTP fee is a
+loss. The no-fee simulation therefore reconciles to 18.99 + 0.01 + 1 = 20 USDC.
+Do not also book the activation USDC as bridge cash. Pool purchase
+cost includes the consumed idle collateral, so investing it does not create
+profit. If no pool holding remains but idle collateral is needed to fund an
+investor redemption, settlement defers while trading continues: recover it through the pool
+purchase/exit lifecycle. Idle dust is measured, not automatically written off.
 `check-accounts` and `correct-accounts` support one chain only; reconcile a
 multichain vault with `check-wallet`, the state and the NAV.
 
@@ -255,14 +278,36 @@ Plan on these when operating such a vault:
   ends with an empty page that repeats the end cursor, not with an empty cursor.
 - If `lagoon-settle` fails with a Hypersync `RuntimeError: inner receiver`, unset
   `HYPERSYNC_API_KEY` to use the RPC log reader and resume.
-- The 1 USDC activation deposit sits in the Lighter account outside NAV until a
-  pool buy invests it. The first subscription of this run settled at a vault
-  value of 18.99 USDC for 20 shares, so subscribe only after that buy on a vault
-  with outside investors.
+- In the 3 November run, the 1 USDC activation deposit was outside NAV until a
+  pool buy invested it. The first subscription settled at a vault value of
+  18.99 USDC for 20 shares. The idle-collateral accounting above corrects this
+  for new settlements; it does not repair shares already issued by that run.
 - Atoma upgrades its proxies often, and eth-defi refuses an unreviewed
   implementation for exits as well as deposits. Check the implementation before
   opening a position; see
   [eth-defi issue 1721](https://github.com/tradingstrategy-ai/web3-ethereum-defi/issues/1721).
+
+The process-level strategy-cycle tests are in
+[`test_multi_vault_start_e2e.py`](../tests/lagoon/test_multi_vault_start_e2e.py).
+They invoke the registered `start` command with normal durable state on the
+existing dual forks, including provider refusal and restart after a submitted
+mint. The simulation wrapper advances UTC with monotonic elapsed time from the
+fork clock; it does not add production clock controls. These tests establish
+simulated execution and accounting, not live sequencer or operator availability.
+Pending pool operations defer portfolio decisions, NAV publication and statistics
+until the existing settlement sweep resolves them. They do not terminate `start`.
+This also defers stop-loss triggers on other positions until portfolio valuation
+is complete. A pending pool order expires later planned pool orders in the same
+batch without allocating their capital; orders on other venues may continue.
+Expired top-ups do not block later account valuation.
+
+`lagoon-redeem` is a terminal operation for pool deployments: it requires the
+executor state and public satellite metadata, refreshes the account, and refuses
+remaining pool collateral, positions, pending operations or satellite cash. Close
+the positions and use `reclaim-satellites` for residual satellite USDC first.
+The command then uses actual hub Safe cash as NAV, without the legacy
+exchange-account dust exclusion. A completed claim with an empty global queue
+does not trigger another settlement, including after a restart.
 
 ## Pair a compatible strategy module
 
