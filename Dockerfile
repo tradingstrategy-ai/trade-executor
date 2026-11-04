@@ -48,6 +48,10 @@ COPY deps/trading-strategy/pyproject.toml deps/trading-strategy/README.md deps/t
 COPY deps/trading-strategy/tradingstrategy deps/trading-strategy/tradingstrategy
 COPY deps/web3-ethereum-defi/pyproject.toml deps/web3-ethereum-defi/README.md deps/web3-ethereum-defi/
 COPY deps/web3-ethereum-defi/eth_defi deps/web3-ethereum-defi/eth_defi
+# eth-defi's pyproject.toml lists migration/ as a second package since its vault
+# database migrations landed. Poetry refuses to build the path dependency when a
+# listed package is missing, so copy it even though the executor never imports it.
+COPY deps/web3-ethereum-defi/migration deps/web3-ethereum-defi/migration
 
 # Use a BuildKit cache mount for the Poetry download/build cache. The cache
 # lives in a persistent BuildKit volume, not in the image layer, so:
