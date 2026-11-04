@@ -790,6 +790,14 @@ class State:
 
         # Allocate reserve capital for this trade.
         # Reserve capital cannot be double spent until the trades are executed.
+        if trade.pair.is_lighter_pool() and trade.is_buy():
+            if "lighter_idle_allocated" not in trade.other_data:
+                self.portfolio.plan_lighter_idle_funding([trade])
+            key = trade.other_data.get("lighter_idle_account")
+            if key is not None:
+                observation = self.portfolio.lighter_idle_collateral[key]
+                amount = Decimal(trade.other_data["lighter_idle_allocated"])
+                assert observation.valid and observation.amount >= amount
         if trade.is_internal_account_transfer():
             # Funded from another exchange account, not from reserves.
             pass
@@ -828,6 +836,9 @@ class State:
                 self.portfolio.move_capital_from_reserves_to_spot_trade(trade, underflow_check=underflow_check)
         else:
             raise NotImplementedError()
+
+        if trade.pair.is_lighter_pool() and trade.is_buy() and trade.other_data.get("lighter_idle_account"):
+            observation.amount -= amount
 
         trade.started_at = ts
 
@@ -1247,6 +1258,8 @@ class State:
             allocated = trade.reserve_currency_allocated
             if allocated is None:
                 allocated = trade.bridge_currency_allocated
+            if trade.pair.is_lighter_pool() and allocated is not None:
+                allocated += Decimal(trade.other_data.get("lighter_idle_allocated", "0"))
             assert allocated == trade.planned_reserve, (
                 f"Cannot mark vault buy trade #{trade.trade_id} settlement pending without allocated capital. "
                 f"planned_reserve={trade.planned_reserve}, "

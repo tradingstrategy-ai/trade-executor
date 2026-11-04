@@ -88,12 +88,25 @@ and [integration workflow](../../deps/web3-ethereum-defi/.claude/docs/vault-inte
 4. **Persist through existing state.** Reuse `TradeExecution`, its request
    ticket, `BlockchainTransaction`, the state store and pre-broadcast callback.
    Reuse the mined-request parser, pending-value and completed-payout hooks.
+   Checkpoint completed outcomes before reporting or external-account refreshes
+   can raise. An invalid Lighter collateral observation can outlive its pending
+   trade: retry it through the shared sweep even when no ticket remains.
    Run the shared live sweep before valuation and treasury sync in startup,
    ticks, scheduled statistics refresh and manual settlement. Do not
    infer generic executor behaviour from protocol ticket keys, add compatibility fallbacks
    for an unpublished intermediate implementation, or write another lifecycle
    copy during pricing. Additional persistence systems require the permission
    described in [state persistence](../../docs/state-persistence.md).
+   Dedicated Lighter pool idle collateral lives in `Portfolio.lighter_idle_collateral`,
+   outside spendable Safe cash. The shared Lagoon treasury refreshes it using
+   public deployment metadata before NAV publication, including before the first
+   pool purchase. Pool buy amounts include the idle contribution; deposit only
+   the shortfall, and do not sign zero-value transactions for idle-only buys.
+   Round the total budget to USDC units before splitting the funding sources.
+   Pending pool operations defer decisions, NAV publication and statistics while
+   the daemon continues running its settlement sweep. A queued investor exit
+   with insufficient hub cash must defer settlement without blocking the trades
+   that recover satellite capital.
 5. **Separate timing decisions.** Manager capabilities choose actual instant
    or queued execution. Existing pair classification controls expected cash
    available for allocation and satellite bridging; the same classification

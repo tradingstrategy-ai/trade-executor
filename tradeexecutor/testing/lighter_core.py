@@ -480,6 +480,7 @@ class FakeLighterCore:
         # valuation never adds the two, so the choice cannot double count.
         return {
             "account_index": index,
+            "l1_address": self.owner,
             "collateral": str(equity.collateral),
             "available_balance": str(equity.available_balance),
             "total_asset_value": str(equity.total_asset_value),
@@ -709,6 +710,10 @@ class FakeLighterCore:
             (f"{activation}.fetch_lighter_api_key", self.fetch_lighter_api_key),
             (f"{activation}.wait_for_lighter_api_key", self.wait_for_lighter_api_key),
             (f"{pool_routing}.create_lighter_pool_session", self.create_api_session),
+            ("tradeexecutor.ethereum.lagoon.vault.create_executor_lighter_session", self.create_api_session),
+            ("tradeexecutor.cli.commands.init.create_executor_lighter_session", self.create_api_session),
+            ("tradeexecutor.cli.commands.lagoon_redeem.create_executor_lighter_session", self.create_api_session),
+            ("tradeexecutor.ethereum.vault.settlement_retry.create_executor_lighter_session", self.create_api_session),
             ("tradeexecutor.ethereum.lighter.lighter_pool_valuation.create_lighter_pool_session", self.create_api_session),
             (f"{pool_routing}.create_lighter_pool_signer", self.create_pool_signer),
             (f"{pool_routing}.wait_for_transaction_receipt_robust", self.wait_for_transaction_receipt_robust),

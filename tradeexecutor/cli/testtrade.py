@@ -290,6 +290,10 @@ def _get_satellite_bridge_back_amount(
         raise BridgeProceedsUnavailable(
             "bridge_proceeds_unavailable: vault redemption has no executed USDC proceeds"
         )
+    if pair.is_lighter_pool():
+        # The exact same claim also returns idle collateral. It is custody
+        # cash (not pool profit), but must come home before investor redemption.
+        analysed_proceeds += Decimal(redemption_trade.other_data.get("lighter_pool", {}).get("idle_swept", "0"))
 
     balance_after = token.fetch_balance_of(custody_address)
     if (
@@ -616,6 +620,13 @@ def _make_cross_chain_test_trade(
 
         expected_vault_id = f"{pair.chain_id}-{pair.pool_address}"
         bridge_position = state.portfolio.get_bridge_position_for_chain(dest_chain_id)
+        idle_pool_cash = Decimal(0)
+        bridge_amount = amount
+        if pair.is_lighter_pool():
+            state.portfolio.get_lighter_idle_collateral_value()  # Require valid observations.
+            idle_pool_cash = min(amount, sum((o.amount for o in state.portfolio.lighter_idle_collateral.values()), Decimal(0)))
+            available = bridge_position.get_available_bridge_capital() if bridge_position else Decimal(0)
+            bridge_amount = max(Decimal(0), amount - idle_pool_cash - available)
         bridge_attempt = bridge_position.other_data.get("vault_test_attempt", {}) if bridge_position else {}
         resume_bridge_out = (
             bridge_position is not None
@@ -631,11 +642,11 @@ def _make_cross_chain_test_trade(
                 key=lambda trade: trade.trade_id,
                 default=None,
             )
-        else:
+        elif bridge_amount > 0:
             # Step 1: Bridge USDC to satellite chain
-            logger.info("Cross-chain step 1: bridge %s USDC to %s via CCTP", amount, chain_name)
+            logger.info("Cross-chain step 1: bridge %s USDC to %s via CCTP", bridge_amount, chain_name)
             bridge_trades = position_manager.open_cctp_bridge_position(
-                bridge_pair, float(amount), notes=notes, flags=trade_flags,
+                bridge_pair, float(bridge_amount), notes=notes, flags=trade_flags,
             )
             execution_model.execute_trades(ts, state, bridge_trades, routing_model, routing_state)
             bridge_buy_trade = bridge_trades[0]
@@ -650,6 +661,10 @@ def _make_cross_chain_test_trade(
                     web3config, routing_model, bridge_pair,
                     dest_chain_id, hot_wallet.address, bridge_buy_trade,
                 )
+        else:
+            bridge_buy_trade = None
+            if bridge_position is None:
+                state.portfolio.open_new_position(ts, bridge_pair, 1.0, state.portfolio.get_default_reserve_asset()[0], 1.0)
 
         # Step 2: Open position on satellite chain
         logger.info("Cross-chain step 2: open %s on %s", pair.get_ticker(), chain_name)
@@ -661,7 +676,9 @@ def _make_cross_chain_test_trade(
         bridge_position = state.portfolio.get_bridge_position_for_chain(dest_chain_id)
         assert bridge_position is not None, f"No bridge position available for {chain_name} after bridge settlement"
         available_bridge_capital = bridge_position.get_available_bridge_capital()
-        if bridge_buy_trade is not None and bridge_buy_trade.executed_quantity:
+        if pair.is_lighter_pool():
+            deposited_amount = min(amount, available_bridge_capital + idle_pool_cash)
+        elif bridge_buy_trade is not None and bridge_buy_trade.executed_quantity:
             deposited_amount = min(abs(bridge_buy_trade.executed_quantity), available_bridge_capital)
         else:
             deposited_amount = available_bridge_capital

@@ -284,6 +284,10 @@ def update_statistics(
         Only available when `update_statistics()` is run
         at the end of live trading cycle.
     """
+    if portfolio.has_incomplete_lighter_valuation():
+        logger.info("Deferring statistics while Lighter collateral valuation is incomplete")
+        return
+
     logger.info(
         "update_statistics(), real-time clock at %s, strategy cycle at %s",
         clock,

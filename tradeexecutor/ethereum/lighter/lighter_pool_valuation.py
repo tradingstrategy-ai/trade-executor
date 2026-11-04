@@ -223,13 +223,16 @@ class LighterPoolValuator(ValuationModel):
         self.pricing_model = pricing_model
         self.account_index = account_index
 
-    def get_net_value(self, position: TradingPosition, pool: LighterPoolState) -> Decimal:
+    def get_net_value(self, position: TradingPosition, pool: LighterPoolState, account_snapshot: dict | None = None) -> Decimal:
         """Value the position's shares and any released exit collateral once.
 
         :param position:
             Pool position.
         :param pool:
             Current pool observation.
+        :param account_snapshot:
+            Public account observation shared with idle-collateral valuation.
+            When omitted, read the account through the pricing session.
         :return:
             Net USDC value.
         """
@@ -251,14 +254,16 @@ class LighterPoolValuator(ValuationModel):
         gross = held * pool.share_value
         fee = Decimal(0)
         if self.account_index is not None and held > 0:
-            account, _ = fetch_execution_account(self.pricing_model.get_session(), self.account_index)
+            account = account_snapshot
+            if account is None:
+                account, _ = fetch_execution_account(self.pricing_model.get_session(), self.account_index)
             rows = [row for row in account["shares"] if int(row["public_pool_index"]) == pool.pool_index and int(row["shares_amount"]) > 0]
             if rows:
                 principal = Decimal(str(rows[0]["principal_amount"])) * held / Decimal(int(rows[0]["shares_amount"]))
                 fee = max(gross - principal, Decimal(0)) * pool.operator_fee
         return released + gross - fee
 
-    def __call__(self, ts: datetime.datetime, position: TradingPosition) -> ValuationUpdate:
+    def __call__(self, ts: datetime.datetime, position: TradingPosition, *, account_snapshot: dict | None = None) -> ValuationUpdate:
         assert position.pair.is_lighter_pool(), f"Not a Lighter pool position: {position}"
         # Record wall-clock time: Lagoon NAV freshness compares against now.
         valued_at = native_datetime_utc_now()
@@ -266,7 +271,7 @@ class LighterPoolValuator(ValuationModel):
         old_price = position.last_token_price
         old_value = position.get_value()
         quantity = Decimal(position.get_quantity())
-        new_price = float(self.get_net_value(position, pool) / quantity) if quantity else float(pool.share_value)
+        new_price = float(self.get_net_value(position, pool, account_snapshot) / quantity) if quantity else float(pool.share_value)
         new_value = position.revalue_base_asset(valued_at, new_price)
         position.last_pricing_at = valued_at
         evt = ValuationUpdate(

@@ -183,7 +183,7 @@ def decide_trades(input: StrategyInput) -> list[TradeExecution]:
         previous = [p for p in portfolio.get_all_positions() if p.pair == pair]
         if position is None:
             if not previous:
-                trades.extend(pm.open_spot(pair, value=input.parameters.allocations[target]))
+                trades.extend(pm.open_spot(pair, value=float(input.parameters.allocations[target])))
             continue
         if position.is_test() or position.has_pending_vault_settlement() or position.has_unexecuted_trades():
             continue

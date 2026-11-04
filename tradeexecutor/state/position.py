@@ -512,7 +512,7 @@ class TradingPosition(GenericPosition):
 
     def is_spot(self) -> bool:
         """Is this a spot market position."""
-        if self.pair.is_exchange_account():
+        if self.pair.is_exchange_account() or self.pair.is_cctp_bridge():
             return False
         assert len(self.trades) + len(self.pending_trades) > 0, "Cannot determine if position is long or short because there are no trades"
         return self.get_first_trade().is_spot()
@@ -542,6 +542,8 @@ class TradingPosition(GenericPosition):
         - This includes holding vault shares
         - This includes exchange account positions
         """
+        if self.pair.is_cctp_bridge():
+            return False
         assert len(self.trades) + len(self.pending_trades) > 0, "Cannot determine if position is long or short because there are no trades"
         return self.pair.is_spot() or self.pair.is_long() or self.pair.is_vault() or self.pair.is_exchange_account()
 
@@ -2387,6 +2389,8 @@ class TradingPosition(GenericPosition):
             If the 50% aloocation position made 1% profit returns 1.005.
         """
 
+        if self.pair.is_cctp_bridge():
+            return 0.0
         if self.is_credit_supply():
             # Credit position profitability is avg interest %
             return self.estimate_gained_interest()
@@ -2764,8 +2768,8 @@ class TradingPosition(GenericPosition):
             if available > 0:
                 yield self.pair.base, available
         elif self.is_spot():
-            # Hypercore vault positions are API-tracked, not on-chain.
-            if self.pair.is_hyperliquid_vault():
+            # Hypercore vaults and Lighter pool shares are tracked through APIs.
+            if self.pair.is_hyperliquid_vault() or self.pair.is_lighter_pool():
                 return
             held_quantity = self.get_quantity()
             if self.is_vault():

@@ -314,7 +314,8 @@ def inject_cctp_bridge_trades(
 
     :return:
         Augmented trade list with bridge trades injected.
-        Original trades are not modified.
+        Lighter buys have their budgets rounded to token units and idle funding
+        recorded on the trade. An idle-only buy also opens its bridge cash ledger.
     """
 
     # Pre-fetch bridge pairs from the universe so we only iterate once.
@@ -330,11 +331,19 @@ def inject_cctp_bridge_trades(
     primary_sells = Decimal(0)
     primary_buys = Decimal(0)
 
+    state.portfolio.plan_lighter_idle_funding(trades)
     for trade in trades:
         # A Lighter pool (dataset chain 9998) is funded from the Ethereum bridge.
         trade_chain_id = trade.pair.get_funding_chain_id()
         value = trade.planned_reserve if trade.planned_reserve else Decimal(str(trade.get_planned_value()))
         value = abs(value)
+        if trade.pair.is_lighter_pool() and trade.is_buy():
+            value -= Decimal(trade.other_data.get("lighter_idle_allocated", "0"))
+            if value == 0 and trade_chain_id != primary_chain_id and state.portfolio.get_bridge_position_for_chain(trade_chain_id) is None:
+                # An idle-only purchase needs no CCTP transfer, but its later
+                # payout still belongs to the Ethereum satellite cash ledger.
+                bridge_pair = bridge_pairs[trade_chain_id]
+                state.portfolio.open_new_position(ts, bridge_pair, 1.0, reserve_asset, 1.0)
         async_vault_sell_waiting = _is_async_vault_sell_waiting_for_settlement(state, trade)
 
         if trade_chain_id == primary_chain_id:

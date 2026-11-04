@@ -1442,9 +1442,9 @@ class TradeExecution:
         if self.is_buy():
             if self.get_status() in (TradeStatus.started, TradeStatus.broadcasted):
                 if self.reserve_currency_allocated is not None:
-                    return self.reserve_currency_allocated
+                    return self.reserve_currency_allocated + Decimal(self.other_data.get("lighter_idle_allocated", "0"))
                 if self.bridge_currency_allocated is not None:
-                    return self.bridge_currency_allocated
+                    return self.bridge_currency_allocated + Decimal(self.other_data.get("lighter_idle_allocated", "0"))
 
         return Decimal(0)
 

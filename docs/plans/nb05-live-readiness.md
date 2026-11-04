@@ -134,7 +134,7 @@ These remain full-readiness work but do not block the validated subset.
 
 | Milestone | Required outcome |
 | --- | --- |
-| Lighter public pools | Implemented and simulated in [the Arbitrum multi-vault plan](arbitrum-multi-vault-live-plan.md): upstream pool executor, separate dataset/custody/signing chains, Ethereum-satellite activation from Arbitrum, executor-state persistence. Remaining: a funded sequencer round trip and pool/account NAV observation. |
+| Lighter public pools | Implemented in [the Arbitrum multi-vault plan](arbitrum-multi-vault-live-plan.md); a funded pmalt round trip completed on 3 November. [Idle-collateral NAV and strategy-cycle testing](multi-vault-nav-and-start-testing.md) cover the remaining bootstrap dilution and `start` validation work. Inclusion in NB05 still requires deliberate strategy selection and deployment-specific evidence. |
 | GMX liquidity | Implement selected GM liquidity request/execution and Guard permissions through upstream adapters/existing paths; perpetual-account support is insufficient evidence. |
 | Symbiotic | Identify deployed withdrawal mechanism first; add manager, queue ownership and partial payouts only where required; prove restart, remaining entitlement and final payout accounting. |
 | Additional deployments | Extend assessment/evidence incrementally and enable only when concrete gaps are resolved. |

@@ -44,7 +44,13 @@ def show_valuation(
     print(f"Displaying valuation for state {state.name}")
     print(f"State last updated: {state.last_updated_at}")
 
-    print(f"Portfolio last value: {state.portfolio.get_total_equity()} USD")
+    for observation in state.portfolio.lighter_idle_collateral.values():
+        print(f"Lighter account {observation.account_index}: idle {observation.amount} USDC, observed {observation.observed_at}, valid={observation.valid}")
+
+    if any(not o.valid for o in state.portfolio.lighter_idle_collateral.values()):
+        print("Portfolio valuation incomplete: reconcile any pending Lighter operation and refresh its collateral")
+    else:
+        print(f"Portfolio last value: {state.portfolio.get_total_equity()} USD")
     print(f"Valued at: {state.sync.treasury.last_updated_at}")
 
     print("Open positions")

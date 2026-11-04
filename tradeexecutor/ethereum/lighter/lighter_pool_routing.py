@@ -34,9 +34,9 @@ one is unresolved raise
 which the sweep propagates instead of retrying.
 
 The Safe-owned Lighter master account is dedicated to this executor: one
-writer per account and API key. A buy invests all available collateral,
-which includes the activation collateral left by deployment on the first buy;
-a sell withdraws all available collateral. See
+writer per account and API key. A buy spends its total investment budget,
+using accounted idle collateral before depositing the shortfall from the Safe;
+a sell withdraws all available collateral, separating idle cash from pool PnL. See
 ``docs/plans/arbitrum-multi-vault-live-plan.md`` and
 ``deps/web3-ethereum-defi/docs/README-lighter-core-execution.md``.
 """
@@ -82,6 +82,7 @@ from tradeexecutor.ethereum.lighter.lighter_pool import (
     create_lighter_pool_signer,
 )
 from tradeexecutor.ethereum.lighter.lighter_pool_valuation import check_lighter_pool_deposit
+from tradeexecutor.ethereum.lighter.idle_collateral import refresh_lighter_idle_collateral
 from tradeexecutor.ethereum.lighter.lighter_routing import (
     DEFAULT_LIGHTER_DEPOSIT_TIMEOUT_SECONDS,
     LIGHTER_APPROVAL_GAS_LIMIT,
@@ -380,6 +381,8 @@ class LighterPoolRouting(RoutingModel):
                 # unresolved operation must not be touched by another trade.
                 raise VaultRequestInvariantViolation(f"Lighter pool trade #{trade.trade_id} cannot start while trades {competing} on account {ctx.operator.account_index} are unresolved")
         signer = create_lighter_pool_signer(ctx.operator)
+        for observation in state.portfolio.lighter_idle_collateral.values():
+            observation.valid = False
         try:
             if trade.is_buy():
                 self._advance_buy(state, trade, ctx, data, signer)
@@ -416,10 +419,10 @@ class LighterPoolRouting(RoutingModel):
         trade.vault_settlement_pending_at = None
         if trade.is_buy():
             executed_quantity = Decimal(data["executed_shares"])
-            executed_reserve = Decimal(trade.planned_reserve)
+            executed_reserve = Decimal(data.get("invested_usdc", str(trade.planned_reserve)))
         else:
             executed_quantity = -Decimal(data["burned_shares"])
-            executed_reserve = Decimal(data["claimed_usdc"])
+            executed_reserve = Decimal(data["claimed_usdc"]) - Decimal(data.get("idle_swept", "0"))
         assert executed_quantity != 0 and executed_reserve > 0
         state.mark_trade_success(
             now,
@@ -430,6 +433,16 @@ class LighterPoolRouting(RoutingModel):
             lp_fees=0,
             native_token_price=0,
         )
+        idle_swept = Decimal(data.get("idle_swept", "0"))
+        if trade.is_sell() and idle_swept:
+            bridge = state.portfolio.get_bridge_position_for_chain(1)
+            if bridge is not None:
+                bridge.adjust_bridge_capital_allocated(-idle_swept)
+            else:
+                state.portfolio.adjust_reserves(trade.reserve_currency, idle_swept, "Returned Lighter idle collateral")
+        # Completion and cash reclassification share the normal state checkpoint.
+        refresh_lighter_idle_collateral(state, self.get_session(), data["account_index"], data["safe_address"])
+        self.checkpoint_state()
         logger.info(
             "Lighter pool trade #%d complete: %s shares for %s USDC",
             trade.trade_id,
@@ -467,26 +480,31 @@ class LighterPoolRouting(RoutingModel):
         pool_index = data["pool_index"]
         if data["phase"] == LighterPoolPhase.started:
             account, equity = fetch_execution_account(ctx.session, ctx.operator.account_index)
+            idle_allocated = Decimal(trade.other_data.get("lighter_idle_allocated", "0"))
+            if equity.available_balance < idle_allocated:
+                raise VaultRequestInvariantViolation("Lighter collateral changed after buy funding was allocated")
             data["collateral_before"] = str(equity.collateral)
             data["shares_before"] = str(_get_held_shares(account, pool_index))
-            amount_raw = ctx.usdc.convert_to_raw(Decimal(trade.planned_reserve))
-            asset_index = ctx.zk.functions.USDC_ASSET_INDEX().call()
-            approve = ctx.tx_builder.sign_transaction(
-                ctx.usdc.contract,
-                ctx.usdc.contract.functions.approve(self.lighter_contract, amount_raw),
-                gas_limit=LIGHTER_APPROVAL_GAS_LIMIT,
-                asset_deltas=[],
-                notes=trade.notes,
-            )
-            deposit = ctx.tx_builder.sign_transaction(
-                ctx.zk,
-                ctx.zk.functions.deposit(ctx.safe_address, asset_index, 0, amount_raw),
-                gas_limit=LIGHTER_DEPOSIT_GAS_LIMIT,
-                asset_deltas=[],
-                notes=trade.notes,
-            )
-            trade.set_blockchain_transactions([approve, deposit])
-            data["deposit_usdc"] = str(trade.planned_reserve)
+            funding = state.portfolio.get_lighter_buy_funding(trade)
+            amount_raw = ctx.usdc.convert_to_raw(funding)
+            if amount_raw:
+                asset_index = ctx.zk.functions.USDC_ASSET_INDEX().call()
+                approve = ctx.tx_builder.sign_transaction(
+                    ctx.usdc.contract,
+                    ctx.usdc.contract.functions.approve(self.lighter_contract, amount_raw),
+                    gas_limit=LIGHTER_APPROVAL_GAS_LIMIT,
+                    asset_deltas=[],
+                    notes=trade.notes,
+                )
+                deposit = ctx.tx_builder.sign_transaction(
+                    ctx.zk,
+                    ctx.zk.functions.deposit(ctx.safe_address, asset_index, 0, amount_raw),
+                    gas_limit=LIGHTER_DEPOSIT_GAS_LIMIT,
+                    asset_deltas=[],
+                    notes=trade.notes,
+                )
+                trade.set_blockchain_transactions([approve, deposit])
+            data["deposit_usdc"] = str(ctx.usdc.convert_to_decimals(amount_raw))
             data["phase"] = LighterPoolPhase.deposit_signed.value
             # The first checkpoint marks the trade pending and saves the
             # signed transactions before any broadcast.
@@ -511,15 +529,15 @@ class LighterPoolRouting(RoutingModel):
         if data["phase"] == LighterPoolPhase.collateral_credited:
 
             def prepare(executor: LighterPoolExecutor) -> LighterOperation:
-                # A dedicated account invests all available collateral, which
-                # includes the activation collateral on the first buy.
                 _, equity = fetch_execution_account(ctx.session, ctx.operator.account_index)
-                return prepare_pool_deposit(executor, pool_index, equity.available_balance)
+                return prepare_pool_deposit(executor, pool_index, min(trade.planned_reserve, equity.available_balance))
 
             operation = self._run_operation(ctx, data, "mint", signer, prepare)
             expected = int(data["shares_before"]) + operation.amount
             wait_for_pool_shares(ctx.session, ctx.operator.account_index, pool_index, expected, timeout=self.operation_timeout)
             data["executed_shares"] = str(operation.amount)
+            _, equity = fetch_execution_account(ctx.session, ctx.operator.account_index)
+            data["invested_usdc"] = str(Decimal(data["collateral_before"]) + Decimal(data["deposit_usdc"]) - equity.collateral)
             data["phase"] = LighterPoolPhase.complete.value
 
     # ----- Sell -----
@@ -543,6 +561,7 @@ class LighterPoolRouting(RoutingModel):
                 self._wait_for_pool_lockup(state, trade)
                 _, equity = fetch_execution_account(ctx.session, ctx.operator.account_index)
                 data["collateral_before_burn"] = str(equity.available_balance)
+                data["idle_swept"] = str(equity.collateral)
 
             def prepare(executor: LighterPoolExecutor) -> LighterOperation:
                 if data["full_exit"]:

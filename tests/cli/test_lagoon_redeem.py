@@ -1,6 +1,7 @@
 """CLI coverage for lagoon-redeem pre-flight deposit and redemption claiming."""
 
 from decimal import Decimal
+import datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -9,16 +10,59 @@ from tradeexecutor.cli.commands.lagoon_redeem import (
     _claim_leftover_deposits,
     _claim_leftover_redemptions,
     _get_redemption_nav,
+    _check_drained_pool_state,
 )
+from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
+from tradeexecutor.state.state import State
+from tradeexecutor.state.trade import TradeStatus, TradeType
+
+
+@pytest.mark.parametrize("status", [TradeStatus.started, TradeStatus.broadcasted])
+def test_pool_redemption_refuses_unbooked_submissions(status: TradeStatus) -> None:
+    """Terminal redemption cannot treat an unbooked submission as an empty portfolio.
+
+    1. Create a non-pool buy with zero held shares and no saved capital allocation.
+    2. Refuse its unresolved status even though recorded equity is zero.
+    3. Permit terminal failed history, but refuse a successful holding with a zero price.
+
+    Missing allocation represents incomplete historical bookkeeping; no venue
+    is mocked because this check must refuse before any external transaction.
+    """
+    # 1. Create a non-pool buy with zero held shares and no saved capital allocation.
+    state = State()
+    ts = datetime.datetime(2026, 11, 4)
+    usdc = AssetIdentifier(1, "0x" + "11" * 20, "USDC", 6)
+    share = AssetIdentifier(1, "0x" + "22" * 20, "SHARE", 18)
+    pair = TradingPairIdentifier(share, usdc, "0x" + "33" * 20, "0x" + "44" * 20)
+    position, trade, _ = state.create_trade(ts, pair, Decimal(1), None, 1.0, TradeType.rebalance, usdc, 1.0)
+    trade.started_at = ts
+    if status == TradeStatus.broadcasted:
+        trade.broadcasted_at = ts
+
+    # 2. Refuse its unresolved status even though recorded equity is zero.
+    assert position.get_quantity() == 0 and position.get_equity() == 0
+    with pytest.raises(RuntimeError, match="reconcile submissions"):
+        _check_drained_pool_state(state)
+
+    # 3. Permit terminal failed history, but refuse a successful holding with a zero price.
+    trade.mark_failed(ts)
+    _check_drained_pool_state(state)
+    trade.failed_at = None
+    trade.mark_success(ts, 1.0, Decimal(1), Decimal(1), 0, None, force=True)
+    position.last_token_price = 0.0
+    assert position.get_equity() == 0
+    with pytest.raises(RuntimeError, match="Close all positions"):
+        _check_drained_pool_state(state)
 
 
 @pytest.mark.timeout(30)
 def test_claim_leftover_redemptions() -> None:
     """Pre-flight handles both settled-unclaimed and pending-unsettled leftover redemptions.
 
-    1. Call with maxRedeem() > 0 (state A): verify finalise_redeem with explicit raw_amount, no settlement.
+    1. Claim settled shares, then ignore an obsolete request when the global queue is empty.
     2. Call with maxRedeem() == 0 and pendingRedeemRequest() > 0 (state B): verify settle + poll + finalise.
-    3. Call with both == 0: verify no transactions broadcast.
+    3. Resume after an already completed claim: ignore its obsolete request and broadcast nothing.
+    4. Derive a drained pool deployment's terminal NAV from actual Safe cash.
     """
     tx_hash = b"\x00" * 32
 
@@ -28,6 +72,7 @@ def test_claim_leftover_redemptions() -> None:
         vault.post_new_valuation.return_value = "mock_post_val"
         vault.settle_via_trading_strategy_module.return_value = "mock_settle"
         vault.fetch_nav.return_value = Decimal("10000")
+        vault.get_flow_manager.return_value.fetch_pending_redemption.return_value = Decimal(0)
         hot_wallet = MagicMock()
         hot_wallet.address = "0xABCD"
         hot_wallet.transact_and_broadcast_with_contract.return_value = tx_hash
@@ -37,11 +82,12 @@ def test_claim_leftover_redemptions() -> None:
         share_token.convert_to_decimals.return_value = Decimal("500")
         return vault, hot_wallet, web3, share_token
 
-    # 1. State A: settled but unclaimed — finalise immediately, no settlement
+    # 1. Claim settled shares, then ignore an obsolete request when the global queue is empty.
     vault, hot_wallet, web3, share_token = make_mocks()
     settled_raw = 500_000_000
     vault.vault_contract.functions.maxRedeem.return_value.call.return_value = settled_raw
-    vault.vault_contract.functions.pendingRedeemRequest.return_value.call.return_value = 0
+    vault.vault_contract.functions.pendingRedeemRequest.return_value.call.return_value = settled_raw
+    vault.get_flow_manager.return_value.fetch_pending_redemption.return_value = Decimal(0)
 
     with patch("tradeexecutor.cli.commands.lagoon_redeem._broadcast_and_wait"):
         assert _claim_leftover_redemptions(vault, hot_wallet, web3, share_token, None)
@@ -59,6 +105,7 @@ def test_claim_leftover_redemptions() -> None:
         pending_raw,  # second poll attempt
     ]
     vault.vault_contract.functions.pendingRedeemRequest.return_value.call.return_value = pending_raw
+    vault.get_flow_manager.return_value.fetch_pending_redemption.return_value = Decimal(750)
 
     with (
         patch("tradeexecutor.cli.commands.lagoon_redeem._broadcast_and_wait"),
@@ -71,15 +118,20 @@ def test_claim_leftover_redemptions() -> None:
     vault.settle_via_trading_strategy_module.assert_called_once()
     vault.finalise_redeem.assert_called_once_with("0xABCD", raw_amount=pending_raw)
 
-    # 3. No-op: both 0 — no transactions
+    # 3. Resume after an already completed claim: ignore its obsolete request and broadcast nothing.
     vault, hot_wallet, web3, share_token = make_mocks()
     vault.vault_contract.functions.maxRedeem.return_value.call.return_value = 0
-    vault.vault_contract.functions.pendingRedeemRequest.return_value.call.return_value = 0
+    vault.vault_contract.functions.pendingRedeemRequest.return_value.call.return_value = settled_raw
 
     assert not _claim_leftover_redemptions(vault, hot_wallet, web3, share_token, None)
 
     vault.finalise_redeem.assert_not_called()
     hot_wallet.transact_and_broadcast_with_contract.assert_not_called()
+
+    # 4. A verified drained pool uses actual Safe cash, never the exchange-account
+    # dust rule or a previous on-chain NAV. The fork test covers the preflight.
+    assert _get_redemption_nav(vault, Decimal("19.99"), [127], pool_account_drained=True) == Decimal("19.99")
+    vault.fetch_nav.assert_not_called()
 
 
 @pytest.mark.timeout(30)

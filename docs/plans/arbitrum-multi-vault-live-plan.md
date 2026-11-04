@@ -171,7 +171,7 @@ Upstream subscribes 20 USDC, bridges activation capital and leaves accounted col
 **Decision:** keep this to existing mechanisms and one explicit residual.
 
 - `init` imports the 20 USDC bootstrap subscription through the existing Lagoon treasury event scan from the pre-deployment block, as the single-chain Lighter path already books its 1 USDC activation (`manual-lighter-subaccounts-cli.sh` step 3). The hub reserve then reads 19 USDC minus the actual bridge fee.
-- The activation collateral already sits in the deployment artefact (`LighterAccountSetup.collateral`, written by `_write_lighter_private_record()`). Until the first pool buy, it is a documented bootstrap residual: `check-wallet` reports it, `check-accounts` expects it, and NAV excludes it. Do not add a state field, an exchange-account position or pending-trade accounting for it.
+- Superseded on 4 November by [idle-collateral NAV accounting](multi-vault-nav-and-start-testing.md): the original plan excluded the activation collateral from NAV until the first pool buy and prohibited a new state field. The approved follow-up records public account observations on `Portfolio` and includes idle collateral before subscriptions.
 - The first pool buy consumes it: size the L1 deposit as the trade amount minus the uninvested collateral read live from the account, and record the full amount as the trade's executed reserve. After that the residual is zero and NAV conserves.
 - Refuse NAV publication while a pool trade is mid-phase, through the existing pending-settlement accounting; no extra attribution rule is needed.
 
@@ -614,12 +614,18 @@ Deviations from the sections above, found during implementation:
 
 - The first subscription after deployment is not `lagoon-first-deposit`, which refuses a vault that already holds the 20 USDC bootstrap. The script uses the ordinary investor request, `lagoon-settle` and claim, as the Lighter sub-account tutorial does.
 - `check-accounts` and `correct-accounts` accept one chain only (`Web3Config.choose_single_chain()`), as for every multichain vault. The script reconciles with the state audit, `check-wallet` and the NAV; extending the account checks to satellites is follow-up work.
-- The activation USDC is minted into the pool on the first buy, because the account is dedicated and a buy invests all available collateral. Until then it is outside NAV.
+- Historical result, superseded on 4 November by [idle-collateral NAV accounting](multi-vault-nav-and-start-testing.md): the activation USDC was outside NAV until the first buy invested all available collateral. Buys now consume idle cash within their total budget.
 - Not implemented: the exit-classification change in `has_delayed_vault_redemption()` (pools already classify as delayed through their protocol slug) and a `start`-driven test of the strategy's `decide_trades()`; the strategy declares its primary chain and the CCTP planner groups pool funding under Ethereum, but the script exercises the public test-trade commands only.
 - After the independent review on 3 November 2026: the trade is marked pending at its first checkpoint, a second pool trade is refused while one is unresolved, invariant failures raise `VaultRequestInvariantViolation`, pending exits are valued at released collateral and held shares net of the estimated operator fee, satellite `--close-only` applies the test-ownership checks, bridge reopening and the tutorial's phase selection follow the funding chain, a fresh sequencer rejection also halts, and burned shares are valued at the pool price until their released collateral is observed.
 - Cleanup done: both "safe to delete now" items; from "merge during this plan", the custody mapping, the satellite metadata suppression, the private-record writer and the satellite close-only gate. Not done: moving `LighterRouting` call construction into shared helpers (the pool router builds its own approve, deposit and claim calls), the stale plan corrections and the archive items.
 
 ## Validation and acceptance
+
+Follow-up: [idle-collateral NAV and strategy-cycle testing](multi-vault-nav-and-start-testing.md)
+supersedes the bootstrap-NAV omission and missing `start` coverage recorded in
+the dated implementation status above. It accounts for activation collateral
+and unused satellite fee allowance through executor state and the existing
+bridge ledger, and adds process-level dual-fork strategy tests.
 
 Completion requires all of the following:
 
@@ -669,7 +675,7 @@ Do not push changes, publish a PR or perform production maintenance automaticall
 | Who owns and manages the test Safes? | Use a dedicated test signer as owner/primary manager following the existing manual scripts. Use a separately reviewed owner arrangement for production. |
 | Is the upstream key-bearing activation report acceptable as the pre-registration key backup? | Yes: it is the multichain equivalent of the existing `--lighter-key-backup-dir` convention. Keep it mode 0600 inside the private run directory and delete it after the operator record is written. Revisit only if a funded run shows recovery needs more. |
 | May the simulated sequencer keep its venue state in a file between shell steps? | Decided: yes, under `/tmp/multi-vault-sim-<run id>/` with the fork metadata, never in the `~/.tradingstrategy` run directory. It is test-only venue state, the counterpart of Anvil's chain state, and never read by the executor. Recorded because `docs/state-persistence.md` requires explicit permission for any file that could be mistaken for executor state. |
-| How is the 1 USDC activation collateral carried before the first pool buy? | As a documented bootstrap residual read from the deployment artefact and the live account, excluded from NAV and consumed by the first pool deposit. No state field. |
+| How is the 1 USDC activation collateral carried before the first pool buy? | Superseded on 4 November: [the approved follow-up](multi-vault-nav-and-start-testing.md) records it in the portfolio and includes it in NAV before the first purchase. |
 | Which Arbitrum block should the full rehearsal use? | Use reviewed Atoma block `519_150_162`; retain shared midnight blocks for unchanged custody/CCTP coverage. Do not advance global constants merely to make this test pass. |
 | How should live waits be operated? | Exit with saved pending state and a resume command. Use repeated invocations or the normal daemon; do not keep the shell waiting indefinitely for an external operator. |
 | What should happen to an unattributable withdrawal or material residual? | Halt and retain value/evidence. Do not choose a history row heuristically, write off shares automatically or add capital to force completion. |
