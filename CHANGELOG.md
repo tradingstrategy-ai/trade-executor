@@ -2,6 +2,7 @@
 
 ## 0.2
 
+- Copy eth-defi's `migration` package into the Docker build so the image builds again with the current `deps/web3-ethereum-defi` pin; the v1474 tag has no image (2026-11-04).
 - Retry the guarded Lagoon settlement simulation with exponential backoff for 10 minutes when it reports no matching posted NAV, which a lagging RPC node can cause, and log the read provider on each retry. A failure after the budget still stops the executor (2026-11-04).
 - Trade Lighter public pools from a non-Ethereum Lagoon hub: pool pairs route through the new `LighterPoolRouting` on the Ethereum satellite Safe with persisted mint, burn, secure-withdrawal and claim phases, `lagoon-deploy-vault --generate-lighter-api-key` activates the satellite's Lighter account from an Arbitrum hub, and `scripts/lagoon/manual-multi-vault-cli.sh` opens and closes a Lighter pool, Atoma and Upshift position live or on simulated forks (2026-11-03).
 - Honour positive Upshift redemption-delay estimates in backtests and check admission before parking deposits in all YieldManager strategies, while retaining withdrawals from excluded venues. NB05 preserves historical admission and inherited HYPE++ windows and models NEMO's delay on redemptions only (2026-11-02).
