@@ -214,3 +214,9 @@ HyperCore pre-broadcast regression also expects the new outcome checkpoint.
 Nine focused cases covering these failures passed locally. A completed
 Claude CLI Opus 5.5 review of the small correction diff found no blocking
 findings.
+
+The next CI run reached the later warm-RPC group and found the same omitted
+optional field in the ERC-7540 lifecycle fixture. That fixture now declares
+the absent pool account explicitly; all five tests in its fork module passed
+locally in 28.24 seconds. The remaining constructor-bypassing Lagoon fixtures
+were checked for the same omission.

@@ -432,6 +432,7 @@ def test_lagoon_erc_7540_async_deposit_redeem_lifecycle(
     # 2. Lagoon NAV calculation must still include committed deposit capital,
     #    even though the pending vault position has no shares yet.
     lagoon_sync_model = object.__new__(LagoonVaultSyncModel)
+    lagoon_sync_model.lighter_pool_account = None
     lagoon_sync_model.valuation_data_freshness = datetime.timedelta(hours=4)
     lagoon_sync_model.calculate_valuation_func = None
     assert lagoon_sync_model.calculate_valuation(state) == pytest.approx(starting_equity, abs=1.0)
