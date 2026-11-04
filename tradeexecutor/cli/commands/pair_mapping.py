@@ -3,7 +3,7 @@ import re
 from tradingstrategy.chain import ChainId
 from tradingstrategy.pair import DEXPair
 
-from tradeexecutor.state.identifier import TradingPairIdentifier
+from tradeexecutor.state.identifier import LIGHTER_POOL_ADDRESS_PREFIX, TradingPairIdentifier
 
 
 def parse_pair_data(s: str) -> list[str] | tuple:
@@ -34,7 +34,8 @@ def parse_pair_data(s: str) -> list[str] | tuple:
             # Short format: (chain_id, exchange_slug)
             chain_id = getattr(ChainId, elements[0].split('.')[-1])
             address = elements[1].strip('"')
-            assert address.startswith('0x'), f"Not an address: {address}"
+            # Lighter public pools have synthetic lighter-pool-<index> identities.
+            assert address.startswith('0x') or address.startswith(LIGHTER_POOL_ADDRESS_PREFIX), f"Not an address: {address}"
             return [chain_id, address]
 
         # Process elements

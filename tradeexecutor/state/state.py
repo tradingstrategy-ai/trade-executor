@@ -807,7 +807,7 @@ class State:
             # Vault trades (e.g. Hypercore vault deposits) may be on a satellite
             # chain funded via a CCTP bridge position
             if trade.is_buy():
-                bridge_position = self.portfolio.get_bridge_position_for_chain(trade.pair.chain_id)
+                bridge_position = self.portfolio.get_bridge_position_for_chain(trade.pair.get_funding_chain_id())
                 if bridge_position is not None:
                     self.portfolio.move_capital_from_bridge_to_spot_trade(trade, underflow_check=underflow_check)
                 else:
@@ -815,7 +815,7 @@ class State:
         elif trade.is_spot():
             if trade.is_buy():
                 # Check if this trade is on a satellite chain (funded by bridge position)
-                bridge_position = self.portfolio.get_bridge_position_for_chain(trade.pair.chain_id)
+                bridge_position = self.portfolio.get_bridge_position_for_chain(trade.pair.get_funding_chain_id())
                 if bridge_position is not None:
                     self.portfolio.move_capital_from_bridge_to_spot_trade(trade, underflow_check=underflow_check)
                 else:
@@ -1043,10 +1043,10 @@ class State:
         elif (trade.is_spot() or trade.is_vault()) and trade.is_sell() and executed_reserve != 0:
             # For satellite chain trades, return capital to bridge position
             # A validated total-loss vault claim has no capital to return.
-            bridge_position = self.portfolio.get_bridge_position_for_chain(trade.pair.chain_id)
+            bridge_position = self.portfolio.get_bridge_position_for_chain(trade.pair.get_funding_chain_id())
             if bridge_position is None and trade.pair.quote != trade.reserve_currency:
                 bridge_position = self.portfolio.reopen_closed_bridge_position_for_chain(
-                    trade.pair.chain_id,
+                    trade.pair.get_funding_chain_id(),
                     executed_at,
                 )
             if bridge_position is not None:
@@ -1191,7 +1191,7 @@ class State:
                     f"Trade failed, allocated reserve was not used:\n{trade}"
                 )
             elif trade.bridge_currency_allocated is not None:
-                bridge_position = self.portfolio.get_bridge_position_for_chain(trade.pair.chain_id)
+                bridge_position = self.portfolio.get_bridge_position_for_chain(trade.pair.get_funding_chain_id())
                 assert bridge_position is not None, f"No bridge position for failed bridge-funded trade {trade}"
                 bridge_position.adjust_bridge_capital_allocated(-trade.bridge_currency_allocated)
 

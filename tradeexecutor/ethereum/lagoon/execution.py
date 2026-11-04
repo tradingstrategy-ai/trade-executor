@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from eth_defi.erc_4626.vault_protocol.lagoon.vault import AutomatedSafe, LagoonVault
 from eth_defi.velvet import VelvetVault
 from tradeexecutor.ethereum.ethereum_protocol_adapters import EthereumPairConfigurator
-from tradeexecutor.ethereum.lighter.lighter_routing import LighterRoutingConfig
+from tradeexecutor.ethereum.lighter.lighter_routing import LighterKeyManagement
 from tradeexecutor.ethereum.execution import EthereumExecution
 from tradeexecutor.ethereum.velvet.velvet_enso_routing import VelvetEnsoRouting, VelvetEnsoRoutingState
 from tradeexecutor.state.state import State
@@ -38,7 +38,7 @@ class LagoonExecution(EthereumExecution):
         self,
         vault: LagoonVault,
         satellite_vaults: dict | None = None,
-        lighter_routing_config: LighterRoutingConfig | None = None,
+        lighter_key_management: LighterKeyManagement | None = None,
         **kwargs,
     ):
         assert isinstance(vault, LagoonVault)
@@ -48,7 +48,7 @@ class LagoonExecution(EthereumExecution):
         #: Used for multichain Lagoon deployments where satellite chains
         #: have a Safe + TradingStrategyModuleV0 guard but no vault contract.
         self.satellite_vaults = satellite_vaults or {}
-        self.lighter_routing_config = lighter_routing_config
+        self.lighter_key_management = lighter_key_management
         self.hypercore_market_data_source: "HypercoreVaultMarketDataSource | None" = None
 
     @staticmethod
@@ -91,7 +91,7 @@ class LagoonExecution(EthereumExecution):
             self.web3,
             strategy_universe,
             execution_model=self,
-            lighter_routing_config=self.lighter_routing_config,
+            lighter_key_management=self.lighter_key_management,
         )
 
         # TODO: Create a proper place fot his

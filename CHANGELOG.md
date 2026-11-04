@@ -2,6 +2,7 @@
 
 ## 0.2
 
+- Trade Lighter public pools from a non-Ethereum Lagoon hub: pool pairs route through the new `LighterPoolRouting` on the Ethereum satellite Safe with persisted mint, burn, secure-withdrawal and claim phases, `lagoon-deploy-vault --generate-lighter-api-key` activates the satellite's Lighter account from an Arbitrum hub, and `scripts/lagoon/manual-multi-vault-cli.sh` opens and closes a Lighter pool, Atoma and Upshift position live or on simulated forks (2026-11-03).
 - Honour positive Upshift redemption-delay estimates in backtests and check admission before parking deposits in all YieldManager strategies, while retaining withdrawals from excluded venues. NB05 preserves historical admission and inherited HYPE++ windows and models NEMO's delay on redemptions only (2026-11-02).
 - Automatically deduct externalised vault management and performance fees on backtest withdrawals, including Hyperliquid and Lighter vaults, with net valuation and pending-withdrawal recovery. Correct directional settlement classification for Gains, Ember, Accountable and Plutus variants (2026-11-02).
 - Resolve pending vault claims once before live valuation and treasury sync, save startup claims across protocols, and centralise Atoma exceptions within the shared execution framework (2026-11-01).

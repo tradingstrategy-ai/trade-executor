@@ -23,7 +23,7 @@ from tradingstrategy.chain import ChainId
 from .app import app
 from .pair_mapping import parse_pair_data
 from ..bootstrap import prepare_executor_id, prepare_cache_and_token_cache, create_web3_config, create_state_store, \
-    create_execution_and_sync_model, create_lighter_routing_config, resolve_deployment_file, create_client, configure_default_chain, \
+    create_execution_and_sync_model, create_lighter_key_management, resolve_deployment_file, create_client, configure_default_chain, \
     check_universe_chains_have_rpc, check_universe_chains_have_gas, \
     check_universe_contracts_resolve
 from ..log import setup_logging
@@ -43,6 +43,7 @@ from ...strategy.generic.generic_pricing_model import GenericPricing
 from ...strategy.run_state import RunState
 from ...strategy.strategy_module import read_strategy_module, StrategyModuleInformation
 from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
+from ...strategy.valuation_update import update_position_valuations
 from ...utils.timer import timed_task
 from tradeexecutor.cli.commands import shared_options
 from eth_defi.compat import native_datetime_utc_now
@@ -205,8 +206,8 @@ def perform_test_trade(
     max_slippage = configure_max_slippage_tolerance(max_slippage, mod)
 
     # A Lighter test trade needs the master's signer whether or not the strategy manages its cash automatically.
-    lighter_routing_config = (
-        create_lighter_routing_config(lighter_operator_record_file, lighter_sub_account_operator_record_files, lighter_withdrawal_timeout, lighter_transfer_timeout)
+    lighter_key_management = (
+        create_lighter_key_management(lighter_operator_record_file, lighter_sub_account_operator_record_files, lighter_withdrawal_timeout, lighter_transfer_timeout)
         if asset_management_mode == AssetManagementMode.lagoon and lighter_operator_record_file is not None
         else None
     )
@@ -227,7 +228,7 @@ def perform_test_trade(
         # next to the state file by lagoon-deploy-vault. Derive from state_file so
         # a custom STATE_FILE location is honoured (matches the deploy side).
         deployment_file=resolve_deployment_file(id, state_file),
-        lighter_routing_config=lighter_routing_config,
+        lighter_key_management=lighter_key_management,
     )
 
     client, routing_model = create_client(
@@ -305,18 +306,21 @@ def perform_test_trade(
     # than after an irreversible cross-chain CCTP bridge.
     check_universe_contracts_resolve(web3config, universe, execution_model)
 
-    if has_lighter_exchange_account_pairs(universe) and lighter_routing_config is None:
+    if any(p.is_lighter_pool() for p in universe.iterate_pairs()) and lighter_key_management is None and asset_management_mode == AssetManagementMode.lagoon:
+        # Refuse before any trade: a pool exit cannot be signed without the master's key.
+        raise ValueError("Lighter pool trades need --lighter-operator-record-file or LIGHTER_OPERATOR_RECORD_FILE. Nothing was moved.")
+    if has_lighter_exchange_account_pairs(universe) and lighter_key_management is None:
         # Refuse before any trade: without the master's signer the withdrawal would fail after the deposit moved funds.
         raise ValueError("A Lighter test trade needs the master's operator record: set LIGHTER_OPERATOR_RECORD_FILE")
 
     if lighter_transfer:
-        if lighter_routing_config is None:
+        if lighter_key_management is None:
             raise ValueError("A Lighter transfer test trade needs the master's operator record: set LIGHTER_OPERATOR_RECORD_FILE")
         # Check every signer before the first leg: the routing layer checks
         # only each transfer's own sender, after earlier legs moved funds.
         source, destination = lighter_transfer_accounts
         signers = get_lighter_transfer_signer_accounts(universe, source, destination, buy_only)
-        missing = [account for account, index in signers.items() if lighter_routing_config.get_operator_record(index) is None]
+        missing = [account for account, index in signers.items() if lighter_key_management.get_operator_record(index) is None]
         if missing:
             raise ValueError(
                 f"The executor holds no signer for Lighter account(s) {missing}; pass their hand-over records with "
@@ -330,6 +334,26 @@ def perform_test_trade(
 
     runner = run_description.runner
     routing_state, pricing_model, valuation_method = runner.setup_routing(universe)
+
+    def revalue_positions() -> None:
+        """Refresh position values before a test trade posts NAV, in ``lagoon-settle``'s order.
+
+        Saved vault claims complete first: valuation refuses a consumed ticket
+        whose receipt has not been accounted for, which would block its recovery.
+        """
+        if sync_model.has_async_deposits():
+            execution_model.resolve_pending_vault_settlements(state=state, ts=native_datetime_utc_now())
+            sync_state()
+            update_position_valuations(
+                timestamp=native_datetime_utc_now(),
+                state=state,
+                universe=universe,
+                execution_context=execution_context,
+                routing_state=routing_state,
+                valuation_model=valuation_method,
+                long_short_metrics_latest=None,
+                skip_statistics=True,
+            )
 
     if simulate:
         logger.info("Simulating test trades")
@@ -389,6 +413,7 @@ def perform_test_trade(
                     amount=Decimal(str(amount)),
                     web3config=web3config,
                     sync_state_callback=sync_state,
+                    revalue_positions=revalue_positions,
                     test_trade_checks=True,
                 )
         elif all_pairs:
@@ -419,6 +444,7 @@ def perform_test_trade(
                     amount=Decimal(str(amount)),
                     web3config=web3config,
                     sync_state_callback=sync_state,
+                    revalue_positions=revalue_positions,
                     test_trade_checks=True,
                 )
         else:
@@ -444,6 +470,7 @@ def perform_test_trade(
                 web3config=web3config,
                 close_only=close_only,
                 sync_state_callback=sync_state,
+                revalue_positions=revalue_positions,
                 test_trade_checks=True,
             )
     except OutOfBalance as e:

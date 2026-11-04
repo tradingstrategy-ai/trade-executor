@@ -9,7 +9,7 @@ from eth_defi.token import USDC_NATIVE_TOKEN
 from pytest_mock import MockerFixture
 
 from tradeexecutor.ethereum.rebroadcast import rebroadcast_all
-from tradeexecutor.ethereum.lighter.lighter_routing import LighterRouting, LighterRoutingConfig
+from tradeexecutor.ethereum.lighter.lighter_routing import LighterRouting, LighterKeyManagement
 from tradeexecutor.exchange_account.lighter import create_lighter_exchange_account_pair
 from tradeexecutor.exchange_account.lighter_operator import LighterOperatorRecord
 from tradeexecutor.exchange_account.state import (
@@ -352,7 +352,7 @@ def test_lighter_withdrawal_keeps_trade_started_until_safe_claim(
     router = LighterRouting(
         reserve_asset.address,
         # The withdrawal signer must sign for the trade's account.
-        config=LighterRoutingConfig(operator_record=mocker.Mock(account_index=position.pair.get_exchange_account_id())),
+        key_management=LighterKeyManagement(operator_record=mocker.Mock(account_index=position.pair.get_exchange_account_id())),
         session=mocker.Mock(),
     )
     routing_state = SimpleNamespace(
@@ -406,7 +406,7 @@ def test_lighter_routing_uses_explicit_cli_configuration(
         api_key_index=4,
         api_private_key="0x" + "11" * 32,
     )
-    config = LighterRoutingConfig(
+    config = LighterKeyManagement(
         operator_record=operator_record,
         withdrawal_timeout=1800,
     )
@@ -414,7 +414,7 @@ def test_lighter_routing_uses_explicit_cli_configuration(
     # 2. Create the production Lighter router with the explicit configuration.
     router = LighterRouting(
         USDC_NATIVE_TOKEN[1],
-        config=config,
+        key_management=config,
         session=mocker.Mock(),
     )
     routing_state = router.create_routing_state(
@@ -426,4 +426,4 @@ def test_lighter_routing_uses_explicit_cli_configuration(
     )
 
     # 3. Verify immutable router configuration retains the supplied timeout.
-    assert router.config.withdrawal_timeout == 1800
+    assert router.key_management.withdrawal_timeout == 1800

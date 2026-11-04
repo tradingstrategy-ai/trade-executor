@@ -36,10 +36,12 @@ from eth_defi.vault.deposit_redeem import (
     VaultRequestInvariantViolation,
 )
 from hexbytes import HexBytes
+from tradingstrategy.chain import ChainId
 from web3 import Web3
 from web3.contract.contract import ContractFunction
 from web3.types import TxReceipt
 
+from tradeexecutor.ethereum.lighter.lighter_pool_routing import LighterPoolRouting
 from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder, TransactionBuilder
 from tradeexecutor.ethereum.vault.settlement_estimate import refresh_vault_settlement_estimate
 from tradeexecutor.ethereum.vault.settlement_policy import get_vault_settlement_confirmations, validate_single_redemption_ticket
@@ -322,6 +324,11 @@ def check_and_resolve_vault_settlements(
 
     for trade in pending_trades:
         try:
+            if trade.pair.is_lighter_pool():
+                # Pool phases are resumed by their own router, not by an
+                # ERC-4626 deposit manager ticket.
+                _resolve_lighter_pool_trade(state, trade, execution_model, web3config, resolved)
+                continue
             _resolve_single_vault_trade(state, trade, execution_model, web3config, resolved)
         except (AssertionError, VaultRequestInvariantViolation):
             # An accounting invariant is not temporary settlement unavailability.
@@ -333,6 +340,35 @@ def check_and_resolve_vault_settlements(
             )
 
     return resolved
+
+
+def _resolve_lighter_pool_trade(
+    state: State,
+    trade: TradeExecution,
+    execution_model,
+    web3config,
+    resolved: list[TradeExecution],
+) -> None:
+    """Resume a pending Lighter pool trade through the Ethereum satellite Safe.
+
+    :param state:
+        Strategy state.
+    :param trade:
+        ``vault_settlement_pending`` pool trade.
+    :param execution_model:
+        Live execution model carrying ``lighter_key_management`` and satellite vaults.
+    :param web3config:
+        Multichain connections; the pool custody chain is Ethereum.
+    :param resolved:
+        Appended with the trade when it completes.
+    """
+    ethereum = ChainId.ethereum
+    web3 = web3config.get_connection(ethereum) if web3config is not None else execution_model.web3
+    tx_builder = _get_chain_aware_tx_builder(execution_model, web3, ethereum.value)
+    router = LighterPoolRouting(key_management=getattr(execution_model, "lighter_key_management", None))
+    router.set_pre_broadcast_state_sync_callback(getattr(execution_model, "sync_state_before_broadcast", None))
+    if router.resume_pending_trade(state, trade, tx_builder):
+        resolved.append(trade)
 
 
 def _ensure_legacy_pending_deposit_capital_allocated(state: State, trade: TradeExecution) -> None:
@@ -348,7 +384,7 @@ def _ensure_legacy_pending_deposit_capital_allocated(state: State, trade: TradeE
 
     planned_reserve = trade.planned_reserve
 
-    bridge_position = state.portfolio.get_bridge_position_for_chain(trade.pair.chain_id)
+    bridge_position = state.portfolio.get_bridge_position_for_chain(trade.pair.get_funding_chain_id())
     if bridge_position is not None:
         allocated = trade.bridge_currency_allocated
         if allocated == planned_reserve:
@@ -403,7 +439,7 @@ def _refund_partial_deposit_to_funding_source(
     assert refund_amount > 0, f"Refund amount must be positive, got {refund_amount}"
 
     if trade.bridge_currency_allocated is not None:
-        bridge_position = state.portfolio.get_bridge_position_for_chain(trade.pair.chain_id)
+        bridge_position = state.portfolio.get_bridge_position_for_chain(trade.pair.get_funding_chain_id())
         assert bridge_position is not None, f"No bridge position for bridge-funded vault trade #{trade.trade_id}"
         bridge_position.adjust_bridge_capital_allocated(-refund_amount)
         trade.bridge_currency_allocated -= refund_amount
@@ -437,7 +473,6 @@ def _resolve_single_vault_trade(
 ):
     """Attempt to resolve a single vault settlement pending trade."""
 
-    from tradingstrategy.chain import ChainId
 
     # Read metadata
     vault_chain_id = trade.other_data.get("vault_chain_id")

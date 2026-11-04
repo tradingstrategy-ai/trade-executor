@@ -32,7 +32,7 @@ def is_synchronous_deposit_vault_test(pricing_model: PricingModel, pair: Trading
     return manager.has_synchronous_deposit()
 
 
-def get_test_position(state: State, pair: TradingPairIdentifier, *, allow_pending_redemption: bool = False) -> TradingPosition | None:
+def get_test_position(state: State, pair: TradingPairIdentifier, *, allow_pending_redemption: bool = False, allow_pending_deposit: bool = False) -> TradingPosition | None:
     """Refuse ordinary or externally modified holdings before a test touches them."""
     positions = [p for p in state.portfolio.get_open_and_frozen_positions() if p.pair == pair]
     if len(positions) > 1:
@@ -44,7 +44,8 @@ def get_test_position(state: State, pair: TradingPairIdentifier, *, allow_pendin
         raise RuntimeError(f"Refusing to trade non-test or externally modified position #{position.position_id}")
     if position.is_frozen() or any(
         not t.is_success() and not (
-            allow_pending_redemption and t.is_sell() and t.get_status() == TradeStatus.vault_settlement_pending
+            t.get_status() == TradeStatus.vault_settlement_pending
+            and ((allow_pending_redemption and t.is_sell()) or (allow_pending_deposit and t.is_buy()))
         )
         for t in position.trades.values()
     ):

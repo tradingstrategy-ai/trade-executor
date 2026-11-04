@@ -2226,10 +2226,7 @@ def create_pair_universe_from_code(chain_id: ChainId, pairs: List[TradingPairIde
         assert p.internal_id not in used_ids, f"Duplicate internal id {p}: {p.internal_id}"
 
         if p.is_vault():
-            if p.is_hyperliquid_vault():
-                dex_type = ExchangeType.erc_4626_vault
-            else:
-                dex_type = ExchangeType.erc_4626_vault
+            dex_type = ExchangeType.erc_4626_vault
         elif p.is_exchange_account():
             # Each external-account protocol with its own exchange type keeps it; others are typed as Derive.
             protocol = p.get_exchange_account_protocol()

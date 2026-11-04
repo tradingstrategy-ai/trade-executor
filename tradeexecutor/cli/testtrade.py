@@ -178,6 +178,23 @@ def _materialise_bridge_on_anvil(
     fund_erc20_on_anvil(dest_web3, usdc_address, recipient, total_raw)
 
 
+def _is_cctp_received(bridge_trade) -> bool:
+    """Did a confirmed ``receiveMessage`` deliver this bridge transfer on its destination?
+
+    Anvil runs without forged attestations skip the receive and need USDC
+    materialised; a run with a real receive must not be credited twice.
+
+    :param bridge_trade:
+        Successful CCTP bridge trade.
+    :return:
+        ``True`` when a successful receive transaction is recorded.
+    """
+    return any(
+        tx.function_selector == "receiveMessage" and tx.status
+        for tx in bridge_trade.blockchain_transactions
+    )
+
+
 def _get_cctp_custody_address(
     routing_model: RoutingModel,
     bridge_pair: TradingPairIdentifier,
@@ -213,7 +230,7 @@ def _record_satellite_redemption_balance(
     real mode.  A later balance must never be repurposed as this baseline.
     """
 
-    chain_id = pair.chain_id
+    chain_id = pair.get_funding_chain_id()
     custody_address = _get_cctp_custody_address(
         routing_model,
         bridge_pair,
@@ -255,7 +272,7 @@ def _get_satellite_bridge_back_amount(
     """
 
     expected_vault_id = f"{pair.chain_id}-{pair.pool_address}"
-    chain_id = pair.chain_id
+    chain_id = pair.get_funding_chain_id()
     metadata = bridge_position.other_data.get("vault_test_satellite_redemption", {})
     custody_address = metadata.get("custody_address") or _get_cctp_custody_address(
         routing_model,
@@ -440,7 +457,8 @@ def _make_cross_chain_test_trade(
     # the satellite chain is also a fork (the cross-chain test harness forks both;
     # production forks neither), so this also governs satellite force-settlement.
     on_anvil = is_anvil(web3)
-    dest_chain_id = pair.chain_id
+    # The custody chain: a Lighter pool (dataset chain 9998) uses the Ethereum Safe.
+    dest_chain_id = pair.get_funding_chain_id()
 
     def _settle_satellite_async_trade(trade) -> bool:
         return _resolve_satellite_async_settlement(
@@ -464,7 +482,7 @@ def _make_cross_chain_test_trade(
             (
                 position
                 for position in state.portfolio.closed_positions.values()
-                if position.pair == pair
+                if position.pair == pair and all(t.is_test() for t in position.trades.values())
             ),
             key=lambda position: position.position_id,
             default=None,
@@ -479,6 +497,23 @@ def _make_cross_chain_test_trade(
             raise RuntimeError(
                 f"Close-only mode but no open bridge position for chain {chain_name}."
             )
+
+        # A pending exit from an earlier run is resumed, never requested again.
+        if satellite_position is not None and satellite_position.has_pending_vault_settlement():
+            pending_exit = next(t for t in satellite_position.trades.values() if t.get_status() == TradeStatus.vault_settlement_pending)
+            logger.info("Cross-chain close resumes pending trade #%d on %s", pending_exit.trade_id, chain_name)
+            execution_model.resolve_pending_vault_settlements(state=state, ts=native_datetime_utc_now())
+            if sync_state_callback is not None:
+                sync_state_callback()
+            if pending_exit.get_status() == TradeStatus.vault_settlement_pending:
+                logger.info("Satellite trade #%d remains pending; rerun close-only later. No new request was created.", pending_exit.trade_id)
+                return
+            assert pending_exit.is_success(), f"Resumed satellite trade failed: {pending_exit.get_revert_reason()}"
+            if pending_exit.is_buy():
+                logger.info("Pending satellite deposit #%d completed; rerun close-only to exit.", pending_exit.trade_id)
+                return
+            satellite_position = None
+            closed_satellite_position = state.portfolio.get_position_by_id(pending_exit.position_id)
 
         # Step 1: Close satellite position, unless an earlier async redemption
         # has now settled and only its bridge-back leg remains.
@@ -565,12 +600,13 @@ def _make_cross_chain_test_trade(
         assert bridge_back_trades[0].is_success(), \
             f"Bridge back failed: {bridge_back_trades[0].get_revert_reason()}"
 
-        if on_anvil:
+        if on_anvil and not _is_cctp_received(bridge_back_trades[0]):
             home_chain_id = web3config.default_chain_id.value
             _materialise_bridge_on_anvil(
                 web3config, routing_model, bridge_pair,
                 home_chain_id, hot_wallet.address, bridge_back_trades[0],
             )
+        if on_anvil:
             sync_model.sync_treasury(
                 native_datetime_utc_now(), state, list(universe.reserve_assets),
             )
@@ -608,8 +644,8 @@ def _make_cross_chain_test_trade(
             assert bridge_buy_trade.is_success(), \
                 f"Bridge in failed: {bridge_buy_trade.get_revert_reason()}"
 
-            # Materialise USDC on Anvil fork
-            if on_anvil:
+            # Materialise USDC on Anvil fork, unless a real receiveMessage delivered it
+            if on_anvil and not _is_cctp_received(bridge_buy_trade):
                 _materialise_bridge_on_anvil(
                     web3config, routing_model, bridge_pair,
                     dest_chain_id, hot_wallet.address, bridge_buy_trade,
@@ -743,7 +779,7 @@ def _make_cross_chain_test_trade(
             assert bridge_back_trades[0].is_success(), \
                 f"Bridge back failed: {bridge_back_trades[0].get_revert_reason()}"
 
-            if on_anvil:
+            if on_anvil and not _is_cctp_received(bridge_back_trades[0]):
                 home_chain_id = web3config.default_chain_id.value
                 _materialise_bridge_on_anvil(
                     web3config, routing_model, bridge_pair,
@@ -934,6 +970,15 @@ def _resolve_satellite_async_settlement(
     """
     if trade.get_status() != TradeStatus.vault_settlement_pending:
         return False
+
+    if trade.pair.is_lighter_pool():
+        # A pool phase waits on Lighter, not on a vault operator: resume it
+        # once through the shared sweep and stop if it still waits.
+        execution_model.resolve_pending_vault_settlements(state=state, ts=native_datetime_utc_now())
+        if trade.get_status() != TradeStatus.vault_settlement_pending:
+            return False
+        logger.info("Lighter pool trade #%d still waits in phase %s; rerun perform-test-trade to resume it.", trade.trade_id, trade.other_data.get("lighter_pool_phase"))
+        return True
 
     if on_anvil and force_on_anvil:
         logger.info(
@@ -1225,6 +1270,7 @@ def make_test_trade(
     update_statistics_after_trade: bool = True,
     sync_state_callback: Callable[[], None] | None = None,
     test_trade_checks: bool = False,
+    revalue_positions: Callable[[], None] | None = None,
 ):
     """Perform a test trade.
 
@@ -1238,6 +1284,11 @@ def make_test_trade(
 
     :param close_only:
         Only close an existing position. Raises if no open position exists.
+
+    :param revalue_positions:
+        Refresh position valuations before the treasury sync. Posting NAV
+        refuses a stale position, and a close-only run can come days after
+        the open, as with an Atoma share lock.
     """
     assert not (buy_only and close_only), "Cannot set both buy_only and close_only"
 
@@ -1312,8 +1363,18 @@ def make_test_trade(
 
     if test_trade_checks:
         test_trade_checks = pair is not None and pair.is_vault() and not is_cross_chain and is_synchronous_deposit_vault_test(pricing_model, pair)
-        if close_only and not test_trade_checks:
-            raise ValueError("--close-only supports home-chain vault test positions with synchronous deposits")
+        if close_only and not test_trade_checks and not is_cross_chain:
+            raise ValueError("--close-only supports home-chain vault test positions with synchronous deposits, or satellite vault positions")
+        if close_only and is_cross_chain:
+            # Refuse ordinary or externally modified satellite holdings before
+            # dispatch; a pending satellite deposit or exit is resumed later.
+            test_position = get_test_position(state, pair, allow_pending_redemption=True, allow_pending_deposit=True)
+            closed_tests = [
+                p for p in state.portfolio.closed_positions.values()
+                if p.pair == pair and p.trades and all(t.is_test() for t in p.trades.values())
+            ]
+            if test_position is None and not closed_tests:
+                raise ValueError(f"--close-only found no test position for {pair.get_ticker()} on {ChainId(pair.chain_id).get_name()}")
     if test_trade_checks:
         # Refuse before treasury sync or dispatch to another execution route.
         test_position = get_test_position(state, pair, allow_pending_redemption=close_only)
@@ -1339,6 +1400,9 @@ def make_test_trade(
 
     logger.info("Sync model is %s", sync_model)
     logger.info("Trading university reserve asset is %s", universe.get_reserve_asset())
+
+    if revalue_positions is not None:
+        revalue_positions()
 
     # Sync any incoming stablecoin transfers
     # that have not been synced yet
@@ -1423,7 +1487,8 @@ def make_test_trade(
     # delegate to the cross-chain helper that handles bridge in/out
     if is_cross_chain:
         all_pairs = list(universe.iterate_pairs())
-        bridge_pair = _find_bridge_pair(all_pairs, pair.chain_id)
+        # Lighter pools are funded and held on the Ethereum satellite.
+        bridge_pair = _find_bridge_pair(all_pairs, pair.get_funding_chain_id())
         if bridge_pair is None:
             raise RuntimeError(
                 f"Cross-chain pair detected on {ChainId(pair.chain_id).get_name()} but no CCTP bridge pair found. "

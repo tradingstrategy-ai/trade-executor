@@ -46,6 +46,10 @@ def default_match_router(
             return ProtocolRoutingId(
                 router_name="hypercore_vault",
             )
+        if pair.is_lighter_pool():
+            return ProtocolRoutingId(
+                router_name="lighter_pool",
+            )
         return ProtocolRoutingId(
             router_name="vault",
         )
@@ -133,6 +137,11 @@ def default_supported_routers(strategy_universe: TradingStrategyUniverse) -> Set
     ):
         configs.add(ProtocolRoutingId(router_name="lighter"))
 
+    # Lighter public pools use synthetic chain id 9998 and their own router;
+    # a pool-only exchange must not also construct the generic ERC-4626 adapter.
+    if any(pair.is_lighter_pool() for pair in strategy_universe.iterate_pairs()):
+        configs.add(ProtocolRoutingId(router_name="lighter_pool"))
+
     vaults_done = False
     hypercore_vault_done = False
 
@@ -161,6 +170,8 @@ def default_supported_routers(strategy_universe: TradingStrategyUniverse) -> Set
         if xc.exchange_id in non_dex_exchange_ids:
             continue
         if xc.exchange_id not in exchange_ids_with_pairs:
+            continue
+        if xc.chain_id == ChainId.lighter:
             continue
 
         # Detect Hypercore vaults by exchange type OR by chain_id fallback

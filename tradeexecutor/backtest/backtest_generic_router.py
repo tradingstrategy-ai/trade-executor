@@ -72,7 +72,7 @@ class EthereumBacktestPairConfigurator(PairConfigurator):
                 valuation_model=valuation_model,
             )
 
-        if routing_id.router_name in ("vault", "hypercore_vault", "aave-v3", "1delta"):
+        if routing_id.router_name in ("vault", "hypercore_vault", "lighter_pool", "aave-v3", "1delta"):
             routing_model = BacktestRoutingIgnoredModel(
                 reserve.address,
             )

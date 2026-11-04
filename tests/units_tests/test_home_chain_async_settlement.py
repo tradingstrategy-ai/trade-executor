@@ -441,8 +441,8 @@ def test_make_test_trade_close_pending_on_mainnet_does_not_crash(monkeypatch) ->
     2. Build an open position whose close returns a pending sell trade
        (is_success False, revert reason None — faithful to production).
     3. Run make_test_trade() in close-only mode.
-    4. Verify it returns without raising, executed the close, and never asserted
-       the sell trade's success.
+    4. Verify it returns without raising, executed the close, revalued positions
+       before the treasury sync and never asserted the sell trade's success.
     """
     # 1. Mock a real chain (is_anvil False) and forbid forced settlement on it.
     monkeypatch.setattr(testtrade, "is_anvil", lambda web3: False)
@@ -493,6 +493,13 @@ def test_make_test_trade_close_pending_on_mainnet_does_not_crash(monkeypatch) ->
 
     execution_model = MagicMock()
 
+    # Atoma's share lock puts days between a position's last valuation and its
+    # close, and sync_treasury(post_valuation=True) refuses a stale position.
+    order = MagicMock()
+    order.attach_mock(sync_model.sync_treasury, "sync_treasury")
+    revalue_positions = MagicMock()
+    order.attach_mock(revalue_positions, "revalue_positions")
+
     # 3. Run make_test_trade() in close-only mode.
     result = testtrade.make_test_trade(
         web3=MagicMock(),
@@ -509,11 +516,13 @@ def test_make_test_trade_close_pending_on_mainnet_does_not_crash(monkeypatch) ->
         close_only=True,
         test_short=False,
         web3config=None,
+        revalue_positions=revalue_positions,
     )
 
     # 4. Verify it returns without raising, executed the close, and never asserted
     #    the sell trade's success.
     assert result is None
+    assert [call[0] for call in order.mock_calls][:2] == ["revalue_positions", "sync_treasury"]
     position_manager.close_position.assert_called_once()
     execution_model.execute_trades.assert_called()
     sell_trade.is_success.assert_not_called()

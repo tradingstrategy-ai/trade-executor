@@ -13,6 +13,7 @@ from eth_defi.hotwallet import HotWallet
 from eth_defi.token import fetch_erc20_details
 
 from tradeexecutor.strategy.pandas_trader.create_universe_wrapper import call_create_trading_universe
+from tradeexecutor.state.identifier import normalise_custody_chain_id
 from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
 from . import shared_options
@@ -41,13 +42,9 @@ WALLET_CHECK_SEPARATOR = "-" * 80
 
 def _normalise_wallet_check_chain_id(chain_id: ChainId | int) -> ChainId:
     """Normalise synthetic trading chain ids to the EVM chain used for wallet checks."""
-    if isinstance(chain_id, int):
-        chain_id = ChainId(chain_id)
-
-    if chain_id == ChainId.hypercore:
-        return ChainId.hyperliquid
-
-    return chain_id
+    if isinstance(chain_id, ChainId):
+        chain_id = chain_id.value
+    return ChainId(normalise_custody_chain_id(chain_id))
 
 
 def _collect_wallet_check_pairs(universe) -> list:

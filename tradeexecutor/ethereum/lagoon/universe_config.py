@@ -31,6 +31,7 @@ from eth_defi.erc_4626.vault import ERC4626Vault
 from eth_defi.erc_4626.vault_protocol.lagoon.deployment import (
     DEFAULT_LAGOON_SETTLEMENT_WINDOW, LagoonConfig, LagoonDeploymentParameters)
 from eth_defi.gmx.whitelist import GMXDeployment, fetch_all_gmx_markets
+from eth_defi.lighter.deployment import LighterDeployment
 from eth_defi.uniswap_v3.constants import UNISWAP_V3_DEPLOYMENTS
 from eth_defi.uniswap_v3.deployment import \
     fetch_deployment as fetch_deployment_uni_v3
@@ -40,21 +41,19 @@ from tradingstrategy.chain import ChainId
 from tradingstrategy.exchange import ExchangeType
 from web3 import Web3
 
-from tradeexecutor.state.identifier import TradingPairKind
+from tradeexecutor.state.identifier import TradingPairKind, normalise_custody_chain_id
 from tradeexecutor.strategy.trading_strategy_universe import \
     TradingStrategyUniverse
 
 logger = logging.getLogger(__name__)
 
-HYPERCORE_NATIVE_CHAIN_ID = 9999
-HYPEREVM_CHAIN_ID = ChainId.hyperliquid.value  # 999
-
-
 def normalise_deployment_chain_id(chain_id: int) -> int | None:
-    """Normalise non-deployable or redirected chain ids to deployment chains."""
-    if chain_id == HYPERCORE_NATIVE_CHAIN_ID:
-        return HYPEREVM_CHAIN_ID
-    return chain_id
+    """Normalise synthetic native-vault chain ids to their deployment chains.
+
+    Hypercore (9999) deploys on HyperEVM (999) and Lighter pools (9998) on
+    Ethereum (1). See :py:func:`~tradeexecutor.state.identifier.normalise_custody_chain_id`.
+    """
+    return normalise_custody_chain_id(chain_id)
 
 
 def _collect_chain_ids(universe: TradingStrategyUniverse) -> set[int]:
@@ -123,11 +122,13 @@ def _collect_erc4626_vault_addresses(universe: TradingStrategyUniverse, all_chai
     regardless of the ``anyAsset`` setting, because ``anyAsset`` only bypasses
     token-level checks — not target and approval destination checks.
 
-    Excludes Hyperliquid native vaults which have their own whitelist path.
+    Excludes Hyperliquid native vaults, which have their own whitelist path,
+    and Lighter pools, whose Ethereum custody calls are permitted through
+    :py:attr:`LagoonConfig.lighter_deployment`.
     """
     vaults_per_chain: dict[int, list[str]] = {}
     for pair in universe.iterate_pairs():
-        if pair.is_vault() and not pair.is_hyperliquid_vault():
+        if pair.is_vault() and not pair.is_hyperliquid_vault() and not pair.is_lighter_pool():
             chain_id = normalise_deployment_chain_id(pair.base.chain_id)
             if chain_id is not None and chain_id in all_chain_ids and pair.pool_address:
                 addr = Web3.to_checksum_address(pair.pool_address)
@@ -153,7 +154,9 @@ def _collect_chain_token_addresses(universe: TradingStrategyUniverse, all_chain_
         # example GMX/Lighter account identities), not ERC-20 contracts that
         # the Lagoon guard can approve.  Their quote asset is still a real
         # reserve token and is included below.
-        assets = (pair.quote,) if pair.is_exchange_account() else (pair.base, pair.quote)
+        # Lighter pool shares are synthetic API holdings; only the quote,
+        # Ethereum native USDC re-homed to chain 9998, is a real token.
+        assets = (pair.quote,) if pair.is_exchange_account() or pair.is_lighter_pool() else (pair.base, pair.quote)
         for asset in assets:
             chain_id = normalise_deployment_chain_id(asset.chain_id)
             if chain_id is not None:
@@ -431,6 +434,12 @@ def translate_trading_universe_to_lagoon_config(
             gmx_chain_ids=gmx_chain_ids,
             any_asset=any_asset,
         )
+
+        # Lighter public pools are held by the Ethereum Safe's Lighter account:
+        # permit its native-USDC deposit and claim calls there.
+        if chain_id == ChainId.ethereum.value and any(pair.is_lighter_pool() for pair in universe.iterate_pairs()):
+            config.lighter_deployment = LighterDeployment.create_ethereum()
+            logger.info("Lighter deployment configured for %s", slug)
 
         if whitelist_known_hyperliquid_vaults:
             vault_addrs = hypercore_vaults_per_chain.get(chain_id, [])

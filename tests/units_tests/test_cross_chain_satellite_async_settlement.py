@@ -43,6 +43,8 @@ def _make_trade(status: TradeStatus) -> MagicMock:
     trade = MagicMock()
     trade.trade_id = 14
     trade.get_status.return_value = status
+    # An ERC-4626 satellite vault; Lighter pools resume through their own router.
+    trade.pair.is_lighter_pool.return_value = False
     return trade
 
 
@@ -268,6 +270,7 @@ def test_cross_chain_buy_does_not_crash_when_satellite_open_is_pending(monkeypat
     routing_model = MagicMock()  # has a pair_configurator attribute by default
     pair = MagicMock()
     pair.chain_id = BASE_CHAIN_ID
+    pair.get_funding_chain_id.return_value = BASE_CHAIN_ID
 
     # 3. Run the cross-chain buy-only test trade.
     state = MagicMock()
@@ -320,6 +323,7 @@ def test_cross_chain_buy_resumes_from_available_bridge_capital_without_trade_his
     vault_address = "0x0000000000000000000000000000000000000001"
     pair = MagicMock()
     pair.chain_id = BASE_CHAIN_ID
+    pair.get_funding_chain_id.return_value = BASE_CHAIN_ID
     pair.pool_address = vault_address
     pair.get_ticker.return_value = "VAULT-USDC"
     bridge_attempt = {
@@ -382,6 +386,7 @@ def test_cross_chain_close_resumes_bridge_back_after_async_redemption_settles(mo
     monkeypatch.setattr(testtrade, "is_anvil", lambda web3: False)
     pair = MagicMock()
     pair.chain_id = BASE_CHAIN_ID
+    pair.get_funding_chain_id.return_value = BASE_CHAIN_ID
     pair.get_ticker.return_value = "VAULT-USDC"
     closed_satellite_position = MagicMock()
     closed_satellite_position.pair = pair
@@ -458,6 +463,7 @@ def test_cross_chain_bridge_back_uses_actual_redemption_proceeds(
     # 1. Record the custody balance before a vault redemption.
     pair = MagicMock()
     pair.chain_id = BASE_CHAIN_ID
+    pair.get_funding_chain_id.return_value = BASE_CHAIN_ID
     pair.pool_address = "0x0000000000000000000000000000000000000abc"
     pair.quote.address = "0x0000000000000000000000000000000000000def"
     bridge_position = MagicMock()
@@ -510,6 +516,7 @@ def test_cross_chain_bridge_back_recovers_legacy_settled_redemption(
     # 1. Model a settled redemption from a state version without a balance baseline.
     pair = MagicMock()
     pair.chain_id = BASE_CHAIN_ID
+    pair.get_funding_chain_id.return_value = BASE_CHAIN_ID
     pair.pool_address = "0x0000000000000000000000000000000000000abc"
     pair.quote.address = "0x0000000000000000000000000000000000000def"
     bridge_position = MagicMock()

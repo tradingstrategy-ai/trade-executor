@@ -9,7 +9,7 @@ import logging
 from tradingstrategy.chain import ChainId
 from web3 import Web3
 
-from tradeexecutor.state.identifier import TradingPairIdentifier
+from tradeexecutor.state.identifier import TradingPairIdentifier, normalise_custody_chain_id
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.generic.pair_configurator import PairConfigurator
@@ -162,30 +162,13 @@ class GenericRouting(RoutingModel):
                 else:
                     trade_chain_id = t.pair.chain_id
 
-                # Hypercore vault pairs carry a synthetic chain_id of 9999
-                # (ChainId.hypercore). This is NOT a real EVM chain — Hyperliquid
-                # has no EVM chain ID, so our data pipeline invented 9999 to
-                # distinguish native Hyperliquid vaults from regular EVM contracts.
-                #
-                # However, the actual EVM transactions (Safe multicalls, USDC
-                # escrow deposits, account activation) happen on HyperEVM,
-                # which IS a real EVM chain with chain_id 999 (ChainId.hyperliquid).
-                #
-                # The satellite_vaults dict is keyed by the real EVM chain ID
-                # (999), because that's what bootstrap.py reads from the
-                # SATELLITE_MODULES env var via ChainId[chain_slug].value.
-                # Similarly, web3config.get_connection() only knows about real
-                # EVM chains — there is no web3 connection for chain 9999.
-                #
-                # So we must translate 9999 → 999 here to:
-                # 1. Find the satellite LagoonVault for HyperEVM
-                # 2. Get the correct web3 connection for signing transactions
-                # 3. Sync the deployer nonce on the right chain
-                #
-                # See also: TradingPairIdentifier.is_hyperliquid_vault() and
-                # create_hypercore_vault_pair() which explain the 9999 convention.
-                if trade_chain_id == ChainId.hypercore.value:
-                    trade_chain_id = ChainId.hyperliquid.value
+                # Native-vault pairs carry synthetic dataset chain ids: 9999 for
+                # Hypercore vaults and 9998 for Lighter public pools. Their EVM
+                # transactions run on the custody chain, HyperEVM (999) and
+                # Ethereum (1), where the satellite Safe, web3 connection and
+                # deployer nonce live. satellite_vaults and web3config only know
+                # real EVM chains. See normalise_custody_chain_id().
+                trade_chain_id = normalise_custody_chain_id(trade_chain_id)
 
                 if trade_chain_id != router_state.tx_builder.chain_id:
                     from eth_defi.hotwallet import HotWallet as EthHotWallet
@@ -294,7 +277,7 @@ class GenericRouting(RoutingModel):
         if trade.pair.is_cctp_bridge() and trade.is_buy():
             trade_chain_id = trade.pair.get_source_chain_id()
         else:
-            trade_chain_id = trade.pair.chain_id
+            trade_chain_id = normalise_custody_chain_id(trade.pair.chain_id)
         if web3config and trade_chain_id != web3.eth.chain_id:
             web3 = web3config.get_connection(ChainId(trade_chain_id))
 

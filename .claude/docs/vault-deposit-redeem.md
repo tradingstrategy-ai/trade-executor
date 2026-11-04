@@ -42,6 +42,7 @@ We support:
 | Ostium V1.5 | Ostium OLP | A settlement id is assigned when the request is made; `tryNewSettlement()` becomes eligible after the vault's on-chain interval |
 | Atoma | Index / RWA on Arbitrum | Deposit is synchronous; `requestWithdrawal(shares)` escrows shares, the operator settles an epoch, and `claimWithdrawal(epoch)` pays net USDC |
 | Hypercore-native | Hyperliquid HLP | Not on-chain ERC-20 flows at all; handled by a separate Hypercore code path and out of scope here |
+| Lighter public pools | pmalt and other `lighter-pool-<index>` pools | API-signed mint, burn and secure withdrawal through the Ethereum Safe's Lighter account; `LighterPoolRouting` saves its phases on the trade and resumes a pending wait through the shared sweep. See [Arbitrum hub with Lighter public pools](../../docs/lagoon-lighter-deployment.md#arbitrum-hub-with-lighter-public-pools) |
 
 The protocol differences are hidden behind one interface: every vault exposes a
 `VaultDepositManager` (eth_defi), and routing simply asks

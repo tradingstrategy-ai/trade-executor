@@ -134,7 +134,7 @@ These remain full-readiness work but do not block the validated subset.
 
 | Milestone | Required outcome |
 | --- | --- |
-| Lighter public pools | Consume upstream pool executor; distinguish dataset/custody/signing chains; support Ethereum-satellite activation from Arbitrum; persist through executor state; prove pool/account NAV and a real sequencer round trip. |
+| Lighter public pools | Implemented and simulated in [the Arbitrum multi-vault plan](arbitrum-multi-vault-live-plan.md): upstream pool executor, separate dataset/custody/signing chains, Ethereum-satellite activation from Arbitrum, executor-state persistence. Remaining: a funded sequencer round trip and pool/account NAV observation. |
 | GMX liquidity | Implement selected GM liquidity request/execution and Guard permissions through upstream adapters/existing paths; perpetual-account support is insufficient evidence. |
 | Symbiotic | Identify deployed withdrawal mechanism first; add manager, queue ownership and partial payouts only where required; prove restart, remaining entitlement and final payout accounting. |
 | Additional deployments | Extend assessment/evidence incrementally and enable only when concrete gaps are resolved. |

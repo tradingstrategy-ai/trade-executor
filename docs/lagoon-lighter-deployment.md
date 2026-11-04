@@ -178,6 +178,92 @@ both out-of-band changes, `correct-accounts` booked them, and every NAV
 `lagoon-settle` posted matched the balances and the books. The deployer got
 all 12 USDC back and the run spent 0.0066 ETH of gas.
 
+## Arbitrum hub with Lighter public pools
+
+A vault whose hub is not Ethereum can hold Lighter public pools through its
+Ethereum satellite Safe. A pool is a vault pair on synthetic dataset chain
+9998 (`lighter-pool-<index>`), created with
+`tradeexecutor.ethereum.lighter.lighter_pool.create_lighter_pool_pair()`.
+Its custody is the Ethereum Safe's Lighter master account (chain 1) and its
+API transactions are signed for Lighter's chain 304. Strategies, funding and
+deployment keep these three identities separate; pools are not
+exchange-account positions.
+
+Deploy from the strategy file with `--generate-lighter-api-key`. With a
+non-Ethereum hub, `lagoon-deploy-vault` runs eth-defi's coordinated activation:
+the deployer subscribes 20 USDC on the hub, 1 USDC is bridged to Ethereum
+over CCTP and deposited to Lighter, and the API key is registered through the
+satellite Safe. The command writes the owner-only operator record beside the
+vault record, with the Ethereum Safe, its module and the hub vault. The
+coordinator's activation report holds the generated key before registration;
+it is kept mode 0600 beside the record and deleted once the record exists.
+The universe needs `JSON_RPC_ETHEREUM`; sub-accounts are not created on this
+path.
+
+Pass the operator record with `LIGHTER_OPERATOR_RECORD_FILE` to `start` and
+`perform-test-trade`. Pool trades run in
+[`lighter_pool_routing.py`](../tradeexecutor/ethereum/lighter/lighter_pool_routing.py):
+a buy deposits USDC from the Safe, waits for the Lighter credit and mints;
+a sell burns, makes a secure withdrawal, waits until it is claimable and
+claims it into the Safe. The trade is marked pending at its first
+checkpoint, before any money moves, and each phase and each signed operation
+is saved on the trade before submission; the normal settlement sweep resumes
+a pending trade after a crash or an expired wait, and a second pool trade is
+refused while one is unresolved. A crash before the first checkpoint leaves
+a started trade with nothing moved, for `repair`. The account is dedicated
+to the executor: a buy invests all available collateral, including the
+activation USDC on the first buy, and a sell withdraws all of it.
+
+Pool positions are valued at quantity × USDC per raw share from current pool
+state, net of the operator's estimated fee on positive profit; during a
+pending exit the burned shares are valued at the collateral they released.
+Account equity is never added to that value, because whether Lighter's
+account equity includes pool holdings is unverified.
+`check-accounts` and `correct-accounts` support one chain only; reconcile a
+multichain vault with `check-wallet`, the state and the NAV.
+
+[`scripts/lagoon/manual-multi-vault-cli.sh`](../scripts/lagoon/manual-multi-vault-cli.sh)
+is the runbook: it deploys an Arbitrum vault and opens and closes a Lighter
+pool, Atoma and Upshift position. `--targets lighter,upshift` finishes the
+two positions without a long lock in one sitting. Atoma takes three runs of
+`--targets atoma`: deposit, request and claim. New shares stay locked until the
+current 72-hour epoch ends, and a withdrawal requested in epoch N can settle only
+after epoch N+1 ends, so the claim becomes possible six to nine days after the
+deposit at the earliest, once Atoma's operator has settled that epoch. The last
+run claims and redeems the investor.
+With `SIMULATE=true` the script runs the same commands on Arbitrum and Ethereum
+forks with the fake Lighter sequencer and forged CCTP attestations. See the
+[implementation plan](plans/arbitrum-multi-vault-live-plan.md) for minimum
+funding.
+
+The first funded run, on 3 November 2026, used vault
+[`0xCF68aF3B…`](https://arbiscan.io/address/0xCF68aF3BDFC38868F473a3177be174bFD9B36e99)
+and Lighter account 766589:
+
+| Step | Observed result |
+|---|---|
+| Deployment with coordinated activation | 20 minutes |
+| pmalt round trip | 5.999515 USDC minted 8,093 raw shares; the burn released 5.999693 USDC. With 0.000485 USDC left in the account, 6.000178 USDC was withdrawn |
+| Secure withdrawal | 44 minutes from request to claim |
+| CCTP, each direction | about 15–20 minutes |
+| Upshift Core USDC round trip | 5 USDC in, 4.999999 USDC out |
+| Atoma Index deposit | 100 USDC minted 89.82658215276 shares, locked for epoch 452 |
+
+Plan on these when operating such a vault:
+
+- Lighter's `entry_timestamp` is in Unix milliseconds, and its withdrawal history
+  ends with an empty page that repeats the end cursor, not with an empty cursor.
+- If `lagoon-settle` fails with a Hypersync `RuntimeError: inner receiver`, unset
+  `HYPERSYNC_API_KEY` to use the RPC log reader and resume.
+- The 1 USDC activation deposit sits in the Lighter account outside NAV until a
+  pool buy invests it. The first subscription of this run settled at a vault
+  value of 18.99 USDC for 20 shares, so subscribe only after that buy on a vault
+  with outside investors.
+- Atoma upgrades its proxies often, and eth-defi refuses an unreviewed
+  implementation for exits as well as deposits. Check the implementation before
+  opening a position; see
+  [eth-defi issue 1721](https://github.com/tradingstrategy-ai/web3-ethereum-defi/issues/1721).
+
 ## Pair a compatible strategy module
 
 Pair the vault with a passive exchange-account strategy. It declares the public

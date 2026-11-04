@@ -1233,7 +1233,7 @@ class Portfolio:
             If the bridge position does not have enough capital.
         """
         reserve = trade.get_planned_reserve()
-        bridge_chain_id = trade.pair.chain_id
+        bridge_chain_id = trade.pair.get_funding_chain_id()
         bridge_position = self.get_bridge_position_for_chain(bridge_chain_id)
 
         if bridge_position is None:
@@ -1273,7 +1273,7 @@ class Portfolio:
         assert trade.is_sell(), f"Can only return capital from sell trades: {trade}"
         assert trade.executed_reserve > 0, f"Trade has no executed reserve: {trade}"
 
-        bridge_chain_id = trade.pair.chain_id
+        bridge_chain_id = trade.pair.get_funding_chain_id()
         bridge_position = self.get_bridge_position_for_chain(bridge_chain_id)
         assert bridge_position is not None, f"No bridge position for chain {bridge_chain_id}"
 

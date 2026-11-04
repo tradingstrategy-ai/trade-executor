@@ -97,6 +97,7 @@ from eth_defi.erc_4626.vault_protocol.lagoon.deployment import (
     DEFAULT_LAGOON_SETTLEMENT_WINDOW, DEFAULT_MANAGEMENT_RATE, DEFAULT_PERFORMANCE_RATE,
     LIGHTER_BOOTSTRAP_SUBSCRIPTION, LagoonDeploymentParameters, LagoonMultichainDeployment, LighterAccountSetup,
     deploy_automated_lagoon_vault, deploy_multichain_lagoon_vault)
+from eth_defi.erc_4626.vault_protocol.lagoon.lighter import LIGHTER_MULTICHAIN_BOOTSTRAP_SUBSCRIPTION, LagoonLighterActivation
 from eth_defi.hotwallet import HotWallet
 from eth_defi.compat import native_datetime_utc_now
 from eth_defi.lighter.api import LIGHTER_MIN_MAINNET_USDC
@@ -428,6 +429,27 @@ class LighterKeyBackup:
         for path in self.saved:
             path.unlink(missing_ok=True)
         logger.info("Deployment records written; deleted %d Lighter API key backups from %s", len(self.saved), self.directory)
+
+
+def _get_lighter_activation_report_path(private_json_path: Path | None, lighter_key_backup: LighterKeyBackup | None) -> Path:
+    """Choose the private location of the coordinator's key-bearing activation report.
+
+    The report holds the generated API key before it is registered, so it is
+    the multichain counterpart of :py:class:`LighterKeyBackup`. Use the backup
+    directory when given, otherwise the operator record's directory.
+
+    :param private_json_path:
+        Validated operator record path.
+    :param lighter_key_backup:
+        Optional ``--lighter-key-backup-dir`` backup.
+    :return:
+        Report path that must not exist yet.
+    """
+    if lighter_key_backup is not None:
+        lighter_key_backup.directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+        return lighter_key_backup.directory / "lighter-activation-report.jsonl"
+    assert private_json_path is not None, "Lighter activation requires a vault record path"
+    return private_json_path.with_name(private_json_path.stem + ".lighter-activation.jsonl")
 
 
 def _write_lighter_private_record(
@@ -1056,11 +1078,9 @@ def _build_multichain_artifact_payload(
         deployment_fields = _remove_private_key_fields(
             _serialise_artifact_value(dep.get_deployment_data())
         )
-        public_lighter_metadata = (
-            None
-            if getattr(dep, "is_satellite", False)
-            else _get_public_lighter_metadata(dep)
-        )
+        # A satellite can own the Lighter account when an Arbitrum hub trades
+        # Lighter pools; export its public account metadata like the hub's.
+        public_lighter_metadata = _get_public_lighter_metadata(dep)
         config_snapshot = _serialise_lagoon_config(chain_configs[slug])
         whitelist_entries = _serialise_whitelist_entries(dep.whitelisted_items)
         guard_migration = None
@@ -2045,10 +2065,19 @@ def _deploy_multichain(
     source_chain_slug = ChainId(source_chain_id).get_slug()
     source_chain_web3 = chain_web3[source_chain_slug]
 
-    if generate_lighter_api_key and source_chain_id != 1:
-        raise ValueError(
-            "Lighter API-key generation requires an Ethereum source Lagoon vault"
-        )
+    # An Ethereum hub activates its own Lighter account. Another hub holding
+    # Lighter pools activates the Ethereum satellite's account through the
+    # upstream coordinator, which bridges the activation capital itself.
+    coordinated_lighter_activation = generate_lighter_api_key and source_chain_id != ChainId.ethereum.value
+    if coordinated_lighter_activation:
+        if not any(pair.is_lighter_pool() for pair in universe.iterate_pairs()):
+            raise ValueError(
+                "Lighter API-key generation from a non-Ethereum hub requires Lighter pools in the strategy universe"
+            )
+        if "ethereum" not in chain_web3:
+            raise ValueError("Lighter pool activation requires JSON_RPC_ETHEREUM for the Ethereum satellite")
+        if (mod.parameters or {}).get("lighter_sub_accounts"):
+            raise ValueError("Coordinated Lighter activation does not create sub-accounts")
 
     multisig_owners, safe_threshold = _resolve_multisig_configuration(
         multisig_owners=multisig_owners,
@@ -2095,7 +2124,12 @@ def _deploy_multichain(
     # Lighter activation is an opt-in source-chain ceremony.  Keep the
     # general universe translator protocol-agnostic and leave satellites
     # disabled.
-    if generate_lighter_api_key:
+    if coordinated_lighter_activation:
+        # translate_trading_universe_to_lagoon_config() already set the
+        # Ethereum satellite's lighter_deployment; the coordinator checks the
+        # 20 USDC hub capital, gas, CCTP and Safe configuration before deploying.
+        lighter_deployer_usdc_balance = None
+    elif generate_lighter_api_key:
         source_config = configs[source_chain_slug]
         # Lighter is Ethereum-only and accepts canonical Ethereum USDC. Set
         # this before the capital preflight; generic multichain deployment
@@ -2145,7 +2179,9 @@ def _deploy_multichain(
         lighter_usdc_address=LIGHTER_USDC_ETHEREUM if generate_lighter_api_key else None,
         lighter_activation_amount=LIGHTER_MIN_MAINNET_USDC if generate_lighter_api_key else None,
         lighter_expected_safe_reserve=(
-            LIGHTER_BOOTSTRAP_SUBSCRIPTION - LIGHTER_MIN_MAINNET_USDC
+            # Coordinated activation subscribes 20 USDC on the hub and bridges
+            # only the activation deposit; the bridge fee is not known yet.
+            (LIGHTER_MULTICHAIN_BOOTSTRAP_SUBSCRIPTION if coordinated_lighter_activation else LIGHTER_BOOTSTRAP_SUBSCRIPTION) - LIGHTER_MIN_MAINNET_USDC
             if generate_lighter_api_key
             else None
         ),
@@ -2182,6 +2218,22 @@ def _deploy_multichain(
             safe_salt_nonce=safe_salt_nonce,
             logger=logger,
         )
+    elif coordinated_lighter_activation:
+        # The upstream report receives the generated key before registration:
+        # it is this deployment's pre-registration key backup, kept private
+        # beside the operator record and deleted once that record is written.
+        activation_report = _get_lighter_activation_report_path(private_json_path, lighter_key_backup)
+        result = deploy_multichain_lagoon_vault(
+            chain_web3=chain_web3,
+            deployer=hot_wallet.account,
+            chain_configs=configs,
+            lighter_activation=LagoonLighterActivation(
+                hub_chain=source_chain_slug,
+                ethereum_chain="ethereum",
+                api_key_index=effective_lighter_api_key_index,
+                report_path=activation_report,
+            ),
+        )
     else:
         result = deploy_multichain_lagoon_vault(
             chain_web3=chain_web3,
@@ -2189,7 +2241,31 @@ def _deploy_multichain(
             chain_configs=configs,
         )
 
-    if generate_lighter_api_key:
+    if coordinated_lighter_activation:
+        ethereum_deployment = result.deployments["ethereum"]
+        lighter_setup = ethereum_deployment.lighter_account_setup
+        if lighter_setup is None or not lighter_setup.private_key:
+            raise RuntimeError("Lighter activation completed without private key material")
+        _write_lighter_private_record(
+            vault_record_file,
+            {
+                "multichain": True,
+                "deployments": {
+                    "ethereum": {
+                        "safe_address": ethereum_deployment.safe_address,
+                        # The Lagoon vault on the hub that owns this satellite Safe.
+                        "vault_address": result.deployments[source_chain_slug].vault.address,
+                        "module_address": ethereum_deployment.trading_strategy_module.address,
+                        "hub_chain": source_chain_slug,
+                        "lighter_account_setup": _get_lighter_private_setup(lighter_setup),
+                    },
+                },
+            },
+            logger,
+        )
+        activation_report.unlink(missing_ok=True)
+        logger.info("Lighter operator record written; deleted the activation key backup %s", activation_report)
+    elif generate_lighter_api_key:
         lighter_setup = result.deployments[source_chain_slug].lighter_account_setup
         if lighter_setup is None or not lighter_setup.private_key:
             raise RuntimeError("Lighter API-key generation completed without private key material")

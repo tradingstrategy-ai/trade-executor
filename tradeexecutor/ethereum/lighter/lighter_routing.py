@@ -70,8 +70,15 @@ DEFAULT_LIGHTER_TRANSFER_TIMEOUT_SECONDS = 5 * 60
 
 
 @dataclass(frozen=True, slots=True)
-class LighterRoutingConfig:
-    """Private settings parsed by the CLI for automatic Lighter transfers."""
+class LighterKeyManagement:
+    """The Lighter API keys the executor signs with, and how long it waits for Lighter.
+
+    Parsed by the CLI from owner-only operator records. The master key signs
+    secure withdrawals, transfers sent from the master and public-pool mints,
+    burns and withdrawals; a sub-account key signs transfers sent from that
+    sub-account. Safe-side deposits and claims are guarded Ethereum
+    transactions and need no key.
+    """
 
     #: Owner-only master API signer for secure withdrawals and transfers sent from the master.
     operator_record: LighterOperatorRecord | None = None
@@ -171,7 +178,7 @@ class LighterRouting(RoutingModel):
         reserve_token_address: str,
         *,
         lighter_contract: str = LIGHTER_L1_CONTRACT,
-        config: LighterRoutingConfig | None = None,
+        key_management: LighterKeyManagement | None = None,
         session: LighterSession | None = None,
     ):
         """Create the Lighter exchange-account router.
@@ -180,14 +187,14 @@ class LighterRouting(RoutingModel):
             USDC reserve token address used by the Safe and Lighter.
         :param lighter_contract:
             Lighter L1 contract receiving Safe deposits and claims.
-        :param config:
-            CLI-parsed private withdrawal configuration.
+        :param key_management:
+            CLI-parsed Lighter API keys and wait settings.
         :param session:
             Optional public Lighter API client, primarily for tests.
         """
         super().__init__({}, reserve_token_address.lower())
         self.lighter_contract = Web3.to_checksum_address(lighter_contract)
-        self.config = config or LighterRoutingConfig()
+        self.key_management = key_management or LighterKeyManagement()
         self.lighter_session = session if session is not None else create_executor_lighter_session()
 
     def create_routing_state(
@@ -394,7 +401,7 @@ class LighterRouting(RoutingModel):
         :return:
             The master account operator record.
         """
-        operator = self.config.operator_record
+        operator = self.key_management.operator_record
         if operator is None:
             raise RuntimeError(
                 "Automatic Lighter transfers require an operator record passed by the CLI"
@@ -434,7 +441,7 @@ class LighterRouting(RoutingModel):
         destination = int(trade.pair.get_exchange_account_id())
         if source == destination:
             raise RuntimeError("Lighter account transfer source and destination must differ")
-        operator = self.config.get_operator_record(source)
+        operator = self.key_management.get_operator_record(source)
         if operator is None:
             raise RuntimeError(
                 f"The executor holds no signer for Lighter account {source}; pass its record with "
@@ -460,7 +467,7 @@ class LighterRouting(RoutingModel):
             self.checkpoint_state()
 
         record = asyncio.run(
-            wait_for_lighter_funding_transfer(operator, str(tx_hash), self.config.transfer_timeout)
+            wait_for_lighter_funding_transfer(operator, str(tx_hash), self.key_management.transfer_timeout)
         )
         trade.other_data.update(get_lighter_funding_evidence(record))
 
@@ -525,7 +532,7 @@ class LighterRouting(RoutingModel):
             owner=vault.safe_address,
             usdc=usdc,
             minimum=Decimal(trade.other_data["lighter_pending_balance_before_usdc"]) + amount,
-            timeout=self.config.withdrawal_timeout,
+            timeout=self.key_management.withdrawal_timeout,
             zk_lighter=self.lighter_contract,
         )
 
@@ -568,7 +575,7 @@ class LighterRouting(RoutingModel):
             wait_for_lighter_withdrawal_claimable(
                 operator,
                 abs(trade.planned_quantity),
-                self.config.withdrawal_timeout,
+                self.key_management.withdrawal_timeout,
                 requested_at,
                 str(request_id),
             )
