@@ -89,6 +89,7 @@ support from a version string or failed feature probe.
 | Queue over remaining window budget | Post NAV, leave queue pending; wait for the window reset or use Safe governance |
 | Legacy v0.5 cooldown active | Post NAV, leave queue pending and retry automatically later |
 | Legacy v0.5 gross flow over cap | Post NAV, leave queue pending and emit an error |
+| Guarded simulation reports `NewTotalAssetsMissing()` or `WrongNewTotalAssets()` | Retry the simulation with exponential backoff for 10 minutes, then settle or stop as for any unexpected revert |
 
 Before a guarded settlement or an empty-queue settlement on an older module,
 the executor simulates the wrapped call. This preserves the Guard's exact
@@ -96,6 +97,16 @@ raw-unit calculation and identifies expected deferrals without spending gas.
 If an empty-queue simulation fails on an unlimited module, the executor logs
 that the posted NAV has not reached `totalAssets()` and does not broadcast
 settlement.
+
+Receipt visibility does not prove that a load-balanced provider serves state from
+the same block, and a revert does not trigger provider failover. A guarded
+simulation that reports one of the two NAV errors above is therefore repeated with
+the executor's Lighter session schedule, a 10-minute budget of 0, 1, 2, 4 ... 120
+second sleeps, and each retry logs the active read provider. Both errors can be genuine, for example after
+a direct Safe settlement, so a retry that never passes still stops the caller. Any
+other result, such as a window-budget breach once the node catches up, takes its
+normal path. The single scheduler worker, including trigger checks, waits during
+these retries.
 An empty settlement has no investor cash flow, but may mint fee shares; the
 executor refreshes the vault share count from the settled block. It does not
 create a funding `BalanceUpdate` for a settlement with no investor events. The

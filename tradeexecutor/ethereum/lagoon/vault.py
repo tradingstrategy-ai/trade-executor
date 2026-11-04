@@ -2,6 +2,7 @@
 
 import datetime
 import logging
+import time
 from dataclasses import dataclass
 from decimal import Decimal
 from pprint import pformat
@@ -25,6 +26,7 @@ from eth_defi.erc_4626.vault_protocol.lagoon.vault import (
 from eth_defi.hotwallet import HotWallet
 from eth_defi.provider.anvil import is_anvil
 from eth_defi.provider.broken_provider import get_almost_latest_block_number, get_block_tip_latency
+from eth_defi.provider.named import get_provider_name
 from eth_defi.provider.receipt import wait_for_transaction_receipt_robust
 from eth_defi.revert_reason import extract_revert_data
 from eth_defi.token import fetch_erc20_details
@@ -107,6 +109,27 @@ LAGOON_LEGACY_SETTLEMENT_LIMIT_EXCEEDED_SELECTOR = Web3.keccak(
 LAGOON_LEGACY_SETTLEMENT_COOLDOWN_ACTIVE_SELECTOR = Web3.keccak(
     text="LagoonSettlementCooldownActive(uint256,uint256)",
 )[:4]
+
+# Lagoon vault errors from settleDeposit() when a node's state predates the NAV
+# post the receipt wait has just confirmed. Receipt visibility does not prove that
+# a load-balanced provider serves state from the same block. A node with no pending
+# NAV returns the first error and one with an older pending NAV returns the second.
+# Both can be genuine, so a retry that never passes still fails the settlement.
+LAGOON_STALE_NAV_SELECTORS = frozenset({
+    Web3.keccak(text="NewTotalAssetsMissing()")[:4],
+    Web3.keccak(text="WrongNewTotalAssets()")[:4],
+})
+
+# Seconds a lagging node gets to see the posted NAV after the first failed
+# simulation. The hyper-ai stop on 2026-11-03 came from one failed simulation 30
+# blocks after its NAV post. A revert is not an HTTP failure, so LoggingRetry cannot
+# drive this, but the schedule matches the executor's Lighter session: 0, 1, 2, 4,
+# 8, 16, 32, 64, 120, 120, 120 and a final 113 seconds.
+LAGOON_STALE_NAV_RETRY_DURATION = 600.0
+# Exponential backoff factor for LAGOON_STALE_NAV_RETRY_DURATION, in seconds.
+LAGOON_STALE_NAV_BACKOFF_FACTOR = 0.5
+# Longest single sleep for LAGOON_STALE_NAV_RETRY_DURATION, in seconds.
+LAGOON_STALE_NAV_BACKOFF_MAX = 120.0
 
 # Paste this into Gnosis Safe Transaction Builder for a direct v0.5 Lagoon
 # settlement. The Safe must call the vault directly, rather than the guarded
@@ -337,6 +360,70 @@ def _transact_anvil_sequentially(
         tx_hashes.append(tx_hash)
 
     return tx_hashes
+
+
+def _simulate_settlement_after_nav_post(
+    web3: Web3,
+    transaction: dict,
+    retry_stale_nav: bool,
+) -> None:
+    """Simulate settlement, giving a lagging node time to see the posted NAV.
+
+    Only :py:data:`LAGOON_STALE_NAV_SELECTORS` are retried, with exponential
+    backoff until :py:data:`LAGOON_STALE_NAV_RETRY_DURATION` has passed since the
+    first failure. Sleeps are shortened so the final attempt starts when that
+    budget runs out. Any other outcome returns to the caller at once, including a
+    GuardV0 limit reported once the node has caught up, so the caller's existing
+    classification still applies. A genuinely consumed or replaced NAV gives the
+    same selectors, so a failure after the budget is raised rather than ignored.
+    The single scheduler worker waits meanwhile.
+
+    :param web3:
+        Connection used for the simulation.
+
+    :param transaction:
+        The wrapped asset-manager settlement call.
+
+    :param retry_stale_nav:
+        Retry the stale NAV selectors. Modules without settlement safety treat
+        a failed simulation as a logged deferral, so they do not need this.
+
+    :raise Exception:
+        The last simulation failure, unchanged.
+    """
+    retries = 0
+    retry_started_at = None
+    while True:
+        try:
+            web3.eth.call(transaction)
+            return
+        except Exception as e:
+            revert_data = extract_revert_data(e)
+            selector = revert_data[:4] if revert_data is not None else None
+            if not retry_stale_nav or selector not in LAGOON_STALE_NAV_SELECTORS:
+                raise
+
+            now = time.monotonic()
+            retry_started_at = now if retry_started_at is None else retry_started_at
+            remaining = LAGOON_STALE_NAV_RETRY_DURATION - (now - retry_started_at)
+            if remaining <= 0:
+                raise
+
+            backoff = LAGOON_STALE_NAV_BACKOFF_FACTOR * 2**retries if retries else 0.0
+            sleep_seconds = min(backoff, LAGOON_STALE_NAV_BACKOFF_MAX, remaining)
+            retries += 1
+            # eth_call goes to the read provider, not any transaction endpoint.
+            get_call_provider = getattr(web3, "get_active_call_provider", lambda: web3.provider)
+            logger.warning(
+                "Lagoon settlement simulation may be reading state from before the NAV post, "
+                "selector=%s, provider=%s, retry %d in %.0f seconds, %.0f seconds left",
+                selector.hex(),
+                get_provider_name(get_call_provider()),
+                retries,
+                sleep_seconds,
+                remaining,
+            )
+            time.sleep(sleep_seconds)
 
 
 class LagoonVaultSyncModel(AddressSyncModel):
@@ -1025,12 +1112,18 @@ class LagoonVaultSyncModel(AddressSyncModel):
             # On Anvil, call_web3 is pinned to the provider that observed the
             # locally mined NAV transaction. Production uses the normal
             # multi-provider connection and retains its failover behaviour.
-            call_web3.eth.call({
-                "from": self.hot_wallet.address,
-                "to": settle_func.address,
-                "data": settle_func._encode_transaction_data(),
-                "gas": DEFAULT_LAGOON_SETTLE_GAS,
-            })
+            # A revert is a valid RPC response and does not trigger failover,
+            # so a lagging node is handled by the retry in this helper.
+            _simulate_settlement_after_nav_post(
+                call_web3,
+                {
+                    "from": self.hot_wallet.address,
+                    "to": settle_func.address,
+                    "data": settle_func._encode_transaction_data(),
+                    "gas": DEFAULT_LAGOON_SETTLE_GAS,
+                },
+                retry_stale_nav=guarded,
+            )
         except Exception as e:
             # Provider envelopes are not uniform. Recover the raw custom-error
             # payload before classifying expected GuardV0 and legacy deferrals.
