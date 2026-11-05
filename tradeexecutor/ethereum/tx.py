@@ -160,13 +160,13 @@ class TransactionBuilder(ABC):
                     reason = fetch_transaction_revert_reason(web3, tx_hash)
 
             tx.set_confirmation_information(
-                now_,
-                receipt["blockNumber"],
-                receipt["blockHash"].hex(),
-                receipt.get("effectiveGasPrice", 0),
-                receipt["gasUsed"],
-                status,
-                reason
+                ts=now_,
+                block_number=receipt["blockNumber"],
+                block_hash=receipt["blockHash"].hex(),
+                realised_gas_units_consumed=receipt["gasUsed"],
+                realised_gas_price=receipt.get("effectiveGasPrice", 0),
+                status=status,
+                revert_reason=reason,
             )
 
     @abstractmethod

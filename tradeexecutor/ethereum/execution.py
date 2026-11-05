@@ -1066,12 +1066,12 @@ def update_confirmation_status(
                     stack_trace = print_symbolic_trace(get_or_create_contract_registry(tx_web3), trace_data)
 
             tx.set_confirmation_information(
-                ts,
-                receipt["blockNumber"],
-                receipt["blockHash"].hex(),
-                receipt.get("effectiveGasPrice", 0),
-                receipt["gasUsed"],
-                status,
+                ts=ts,
+                block_number=receipt["blockNumber"],
+                block_hash=receipt["blockHash"].hex(),
+                realised_gas_units_consumed=receipt["gasUsed"],
+                realised_gas_price=receipt.get("effectiveGasPrice", 0),
+                status=status,
                 revert_reason=reason,
                 stack_trace=stack_trace,
             )

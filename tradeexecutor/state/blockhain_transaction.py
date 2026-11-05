@@ -268,9 +268,12 @@ class BlockchainTransaction:
     status: Optional[bool] = None
 
     #: Gas consumed by the tx
+    #:
+    #: Releases up to v1478 stored this and :py:attr:`realised_gas_price` the wrong
+    #: way round on the main execution path. Their product is still correct.
     realised_gas_units_consumed: Optional[int] = None
 
-    #: Gas price for the tx in gwei
+    #: Effective gas price for the tx in wei
     realised_gas_price: Optional[int] = None
 
     #: The transaction revert reason if we manage to extract it
@@ -421,6 +424,7 @@ class BlockchainTransaction:
         self.signed_bytes = signed_bytes
 
     def set_confirmation_information(self,
+        *,
         ts: datetime.datetime,
         block_number: int,
         block_hash: str,
