@@ -357,11 +357,22 @@ def test_lighter_withdrawal_keeps_trade_started_until_safe_claim(
     )
     routing_state = SimpleNamespace(
         vault=SimpleNamespace(safe_address="0x0000000000000000000000000000000000000001"),
+        tx_builder=SimpleNamespace(web3=mocker.Mock()),
     )
 
     # 2. Mock only the Lighter API request, delay observation and Safe claim signing.
     async def request_withdrawal(*_args: object) -> str:
         return "withdrawal-request-1"
+
+    mocker.patch.object(LighterRouting, "_fetch_reserve_token")
+    mocker.patch(
+        "tradeexecutor.ethereum.lighter.lighter_routing.fetch_lighter_withdrawal_baseline",
+        return_value=(100, Decimal(0)),
+    )
+    mocker.patch(
+        "tradeexecutor.ethereum.lighter.lighter_routing.get_lighter_relayer_payout",
+        return_value=None,
+    )
 
     async def wait_for_claimable(*_args: object) -> Decimal:
         return Decimal("1")

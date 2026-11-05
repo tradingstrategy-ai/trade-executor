@@ -98,6 +98,7 @@ def _make_trade(trade_id: int) -> MagicMock:
     trade.pair.get_ticker.return_value = f"PAIR-{trade_id}"
     trade.get_planned_value.return_value = float(trade_id)
     trade.get_status.return_value = SimpleNamespace(value="planned")
+    trade.is_paid_without_transaction.return_value = False
     trade.is_failed.return_value = False
     trade.get_revert_reason.return_value = None
     return trade
