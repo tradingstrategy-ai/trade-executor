@@ -1090,7 +1090,7 @@ def lagoon_lighter_test_trade(
                     journal,
                     "withdrawn",
                     withdrawal_usdc=str(claimable),
-                    claim_tx_hash=claim_tx_hash or "paid by Lighter relayer",
+                    claim_tx_hash=claim_tx_hash or "",
                 )
                 phase = "withdrawn"
 

@@ -606,7 +606,6 @@ class LighterRouting(RoutingModel):
             trade.other_data["lighter_safe_balance_before_claim"] = str(
                 self._get_safe_balance(routing_state, trade)
             )
-            trade.other_data["lighter_safe_address"] = vault.safe_address
             # Keep the trade started until the Safe claim is ready. The normal
             # transaction broadcaster performs the single state transition to
             # broadcasted after it receives the signed claim transaction.

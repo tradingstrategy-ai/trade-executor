@@ -762,13 +762,12 @@ def lighter_move_funds(
                     trade,
                     lighter_withdrawal_from_block=from_block,
                     lighter_pending_balance_before_usdc=str(pending_before),
+                    lighter_withdrawal_method="l1_withdraw" if is_sub_account else "api",
                 )
+                store.sync(state)
                 if is_sub_account:
                     # Key-free L1 request through the guard; the proceeds join the
                     # Safe's pending balance, which the resume step waits for.
-                    _append_transfer_metadata(trade, lighter_withdrawal_method="l1_withdraw")
-                store.sync(state)
-                if is_sub_account:
                     withdrawal_request_id = request_usdc_withdrawal_from_lighter_account(
                         web3,
                         hot_wallet,
