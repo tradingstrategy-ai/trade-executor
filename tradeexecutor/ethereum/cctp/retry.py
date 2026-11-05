@@ -10,6 +10,7 @@ import logging
 import datetime
 
 from eth_defi.compat import native_datetime_utc_now
+from eth_defi.provider.receipt import wait_for_transaction_receipt_robust
 
 from tradeexecutor.ethereum.cctp.routing import estimate_receive_message_gas
 from tradeexecutor.state.state import State
@@ -42,8 +43,8 @@ def check_and_retry_cctp_in_transit(
     5. On success: clears ``cctp_in_transit_at``, reverses
        ``bridge_capital_allocated`` for bridge-back sells, and calls
        ``mark_trade_success``.
-    6. On failure: logs a warning and includes the trade in the
-       returned unresolved list.
+    6. On failure: logs a warning and leaves the trade unresolved. Only
+       successfully resolved trades are returned.
 
     :param state:
         Current strategy state.
@@ -149,7 +150,8 @@ def check_and_retry_cctp_in_transit(
                     dest_web3.eth.send_raw_transaction(
                         HexBytes(existing_receive_tx.signed_bytes)
                     )
-                    receipt = dest_web3.eth.wait_for_transaction_receipt(
+                    receipt = wait_for_transaction_receipt_robust(
+                        dest_web3,
                         HexBytes(existing_receive_tx.tx_hash),
                         timeout=120,
                     )
@@ -203,10 +205,19 @@ def check_and_retry_cctp_in_transit(
 
                 trade.blockchain_transactions.append(receive_tx)
 
+                # A receive can mint before this process books success. Save
+                # its exact signed identity using the existing executor
+                # checkpoint before broadcasting, while the trade still owns
+                # its in-transit entitlement. On restart the receipt branch
+                # above credits it once; a missing destination balance alone
+                # is never evidence that the burned capital was lost.
+                execution_model.sync_state_before_broadcast()
+
                 try:
                     dest_web3.eth.send_raw_transaction(HexBytes(receive_tx.signed_bytes))
                     receive_tx.broadcasted_at = native_datetime_utc_now()
-                    receipt = dest_web3.eth.wait_for_transaction_receipt(
+                    receipt = wait_for_transaction_receipt_robust(
+                        dest_web3,
                         HexBytes(receive_tx.tx_hash), timeout=120,
                     )
                 except Exception as e:

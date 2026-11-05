@@ -261,15 +261,20 @@ deposit queue. Symmetrically, shares locked in a pending redemption are
 subtracted from the position's *available trading quantity*, so a strategy
 cannot request the same shares twice.
 
-**Reconciliation expects the wallet to disagree.** On-chain balance checks
-(`check-accounts`, `correct-accounts`) compare our books against the wallet.
+**Reconciliation expects the wallet to disagree.** The shared on-chain balance
+checker compares the wallet projection of our books against actual custody.
 In live trading a pending deposit leaves both sides in agreement (cash gone
 on both, shares zero on both). A pending redemption would *not* agree
 naively: our books hold the full share quantity while the wallet holds none,
 because the vault escrowed them. The expected-balance calculation therefore
-subtracts escrowed-in-redemption shares, so a clean state reads as clean —
-and an account correction can never mistake an escrow for a lost position
-and close it mid-settlement. Backtests follow the same reconciliation model:
+subtracts escrowed-in-redemption shares. The live accounting gate can therefore
+validate this projection without mistaking escrow for a lost position.
+The manual `check-accounts` command adds a separate pending-operation check:
+it reports pending trade IDs, excludes affected assets including shared cash,
+checks unaffected holdings and exits nonzero. `correct-accounts` refuses generic
+correction until those operations settle. Keep this command-specific rule out
+of the shared startup gate so the settlement sweep and CCTP retry can recover.
+Backtests follow the same wallet projection:
 the simulated wallet is debited on the request cycle and settlement only
 credits the claim output.
 
@@ -603,10 +608,19 @@ How each command or context takes a request from pending to settled:
   settled-but-unclaimed vault amounts (`maxDeposit`/`maxRedeem`/
   `pendingRedeemRequest`) so the operator can see where in the lifecycle the
   capital sits. It never resolves trades.
-- **`check-accounts` / `correct-accounts`** — neither resolves; they
-  *tolerate*. Expected balances account for queue escrow, so a position
-  mid-settlement reads as clean and is never "corrected" away. Settlement
-  itself still happens via the daemon or a re-run of the originating command.
+- **`check-accounts` / `correct-accounts`** — neither resolves queued work.
+  Inspection reports pending operations and explicitly unchecked assets,
+  checks unaffected balances and exits nonzero. Generic correction refuses
+  before side effects. Settlement still happens via the daemon or a re-run of
+  the originating command. Once settled, ordinary corrections use the existing
+  balance events and save only after confirmation and final validation.
+  Specialised HyperCore recovery remains available while an investor queue
+  waits; recover uncertain capital before treasury valuation. Exchange-account
+  sync records one successful equity snapshot rather than requiring market
+  prices to remain unchanged during confirmation. The separate read-only
+  command still reports a fresh equity observation.
+  The correction command also records failed equity reads locally and refuses
+  to save if a shared non-Lighter sync backend swallows the transport error.
 - **`repair` / `retry`** — not involved: they act on *failed* trades, and a
   pending settlement is not a failure. Both explicitly leave
   `vault_settlement_pending` trades alone.

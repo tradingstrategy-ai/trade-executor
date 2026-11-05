@@ -47,6 +47,7 @@ from tradeexecutor.ethereum.lighter.lighter_pool import create_lighter_pool_sess
 from tradeexecutor.ethereum.lighter.lighter_pool_valuation import LighterPoolPricing
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.state import State
+from tradeexecutor.ethereum import address_sync_model
 from tradeexecutor.state.trade import TradeStatus
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.testing.erc4626_manual import load_universe
@@ -150,11 +151,14 @@ def cli(
     simulation_time: datetime.datetime | None = typer.Option(None),
     delay_pool_confirmation: bool = typer.Option(False),
     fail_account_read: bool = typer.Option(False),
+    delay_cctp_attestation: bool = typer.Option(False),
+    interrupt_cctp_booking: bool = typer.Option(False),
+    fail_satellite_read: bool = typer.Option(False),
 ) -> None:
     """Run one ``trade-executor`` command in this process, simulated when configured."""
     command = get_command(executor_app)
     simulation = get_simulation()
-    if simulation is None and (simulation_time is not None or delay_pool_confirmation or fail_account_read):
+    if simulation is None and (simulation_time is not None or delay_pool_confirmation or fail_account_read or delay_cctp_attestation or interrupt_cctp_booking or fail_satellite_read):
         raise RuntimeError("Simulation controls require running local dual forks")
     code = 0
     try:
@@ -168,6 +172,35 @@ def cli(
                     stack.enter_context(mock.patch("eth_defi.lighter.execution.LighterPoolExecutor.reconcile", side_effect=TimeoutError("Simulated sequencer confirmation delay")))
                 if fail_account_read:
                     stack.enter_context(mock.patch("tradeexecutor.ethereum.lighter.idle_collateral.fetch_execution_account", side_effect=TimeoutError("Simulated public account read failure")))
+                if fail_satellite_read:
+                    original_balance_read = address_sync_model.fetch_onchain_balances_multichain
+
+                    def unavailable_satellite(web3, *args, **kwargs):
+                        # Simulate loss of a correctly identified provider at
+                        # observation time, after the custody preflight passed.
+                        if web3.eth.chain_id == 1:
+                            raise TimeoutError("Simulated satellite balance read failure")
+                        return original_balance_read(web3, *args, **kwargs)
+
+                    stack.enter_context(mock.patch.object(address_sync_model, "fetch_onchain_balances_multichain", new=unavailable_satellite))
+                if delay_cctp_attestation:
+                    # Keep the real burn and saved message; only Circle's
+                    # availability is simulated. No destination cash is injected.
+                    stack.enter_context(mock.patch("eth_defi.cctp.attestation.fetch_attestation", side_effect=TimeoutError("Simulated attestation delay")))
+                if interrupt_cctp_booking:
+                    original_mark_success = State.mark_trade_success
+
+                    def leave_bridge_pending(state, ts, trade, *args, **kwargs):
+                        # The receive has really mined, but completion is not
+                        # booked. Exit without saving executor state here: only
+                        # the production pre-broadcast checkpoint may preserve
+                        # the receive identity. A test-created checkpoint would
+                        # hide the very crash window we need to exercise.
+                        if trade.pair.is_cctp_bridge():
+                            raise SystemExit(91)
+                        return original_mark_success(state, ts, trade, *args, **kwargs)
+
+                    stack.enter_context(mock.patch.object(State, "mark_trade_success", new=leave_bridge_pending))
                 command.main(args=list(ctx.args), standalone_mode=False)
     except SystemExit as error:
         code = error.code or 0

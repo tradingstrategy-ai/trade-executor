@@ -26,9 +26,10 @@ from typer.main import get_command
 from web3 import Web3
 
 from tradeexecutor.cli.main import app
+from tradeexecutor.cli.bootstrap import resolve_deployment_file
 from tradeexecutor.cli.commands import perform_test_trade as perform_test_trade_command
 from tradeexecutor.cli.testtrade import make_test_trade
-from tradeexecutor.state.state import State
+from tradeexecutor.state.state import State, UncleanState
 from tradeexecutor.state.trade import TradeExecution, TradeStatus
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.pricing_model import PricingModel
@@ -120,13 +121,25 @@ def test_upshift_pending_resume(environment: dict[str, str], runtime: tuple[dict
     """Resume one saved queue request without submitting a duplicate withdrawal.
 
     1. Deposit and request through the public CLI with time advancement disabled.
-    2. Repeat close-only and verify the same request remains pending.
+    2. Refuse account correction with a queued or unparsed request, then repeat close-only with the same identity.
     3. Recover through start with one saved-state sweep per phase, then repeat safely.
     """
     # 1. Deposit and request through the public CLI with time advancement disabled.
     cli = get_command(app)
     args = ["perform-test-trade", "--pair", f"(ethereum, {SENTORA})", "--no-test-short"]
     cli.main(args=args + ["--amount", "10", "--buy-only"], standalone_mode=False)
+    # The older single-chain writer omits Safe metadata. Both public account
+    # commands must still resolve custody from the actual Lagoon contract.
+    artefact = resolve_deployment_file(environment["EXECUTOR_ID"], environment["STATE_FILE"])
+    original_artefact = artefact.read_bytes()
+    deployed = json.loads(original_artefact)["deployments"]["ethereum"]
+    artefact.write_text(json.dumps({"multichain": False, "deployments": {"ethereum": {key: deployed[key] for key in ("vault_address", "module_address", "is_satellite")}}}))
+    for command in ("check-accounts", "correct-accounts"):
+        try:
+            cli.main(args=[command], standalone_mode=False)
+        except SystemExit as completed:
+            assert completed.code == 0
+    artefact.write_bytes(original_artefact)
     # Disable fork time advancement to exercise persisted pending-state resume.
     monkeypatch.setattr(perform_test_trade_command, "make_test_trade", partial(make_test_trade, force_async_settlement_on_anvil=False))
     cli.main(args=args + ["--close-only"], standalone_mode=False)
@@ -135,7 +148,27 @@ def test_upshift_pending_resume(environment: dict[str, str], runtime: tuple[dict
     sell = next(t for t in pending.portfolio.get_all_trades() if t.is_sell())
     assert sell.get_status() is TradeStatus.vault_settlement_pending
     request = sell.other_data["vault_request_tx_hash"]
-    # 2. A changed live queue setting cannot invalidate the saved request.
+    # 2. Refuse account correction with a queued or unparsed request, then repeat close-only with the same identity.
+    saved = path.read_bytes()
+    for parsed in (True, False):
+        if not parsed:
+            # The actual request is already mined. Reproduce a crash before
+            # its ticket was parsed, retaining the original signed request.
+            # Generic correction must refuse both sides of this crash window.
+            sell.vault_settlement_pending_at = None
+            sell.other_data = {}
+            path.write_text(pending.to_json_safe())
+        unchecked = path.read_bytes()
+        for command in ("check-accounts", "correct-accounts"):
+            with pytest.raises((UncleanState, SystemExit)) as error:
+                cli.main(args=[command], standalone_mode=False)
+            if isinstance(error.value, SystemExit):
+                assert error.value.code == 1
+            assert path.read_bytes() == unchecked
+        path.write_bytes(saved)
+    pending = State.read_json_file(path)
+    sell = pending.portfolio.get_trade_by_id(sell.trade_id)
+    # A changed live queue setting cannot invalidate the saved request.
     with monkeypatch.context() as changed_queue:
         changed_queue.setattr(UpshiftMultiAssetDepositManager, "has_synchronous_redemption", lambda self: True)
         cli.main(args=args + ["--close-only"], standalone_mode=False)

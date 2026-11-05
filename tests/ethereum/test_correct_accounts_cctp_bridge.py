@@ -343,6 +343,7 @@ def test_lagoon_fetch_onchain_balances_multichain_routing(
 
     # 2. Set web3config with both chains
     web3config = Web3Config()
+    web3config.unit_testing = True
     web3config.connections = {
         ChainId.arbitrum: web3_source,
         ChainId.base: web3_dest,

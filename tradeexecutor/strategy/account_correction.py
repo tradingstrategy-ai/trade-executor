@@ -226,8 +226,12 @@ class AccountingBalanceCheck:
         """
 
         # We don't calculate USD value for leveraged positions ATM
-        if self.usd_value is not None:
-            return self.usd_value < usd_value_threshold
+        # A missing $1,000 is a material deficit, not a value below ten cents.
+        # Preserve the signed event delta, but compare magnitudes here. A zero
+        # or unavailable price cannot certify that missing token units are dust.
+        if self.usd_value is not None and (self.usd_value != 0 or self.quantity == 0):
+            return abs(self.usd_value) < usd_value_threshold
+        return False
 
     def is_mismatch(self) -> bool:
         return self.mismatch
@@ -283,26 +287,31 @@ def calculate_account_corrections(
     relative_epsilon=None,
     all_balances=False,
     block_identifier: BlockIdentifier = None,
+    excluded_assets: set[AssetIdentifier] | None = None,
 ) -> Iterable[AccountingBalanceCheck]:
     """Figure out differences between our internal ledger (state) and on-chain balances.
 
     :param pair_universe:
-        Needed to know what asses we are looking for
+        Trading pairs whose known assets can be checked.
 
     :param reserve_assets:
-        Needed to know what asses we are looking for
+        Configured reserve assets.
 
     :param state:
         The current state of the internal ledger
 
     :param sync_model:
-        How ot access on-chain balances
+        Reader for actual custody balances.
 
-    :param dust_epsilon:
-        Minimum amount of token (abs quantity) before it is considered as a rounding error
+    :param relative_epsilon:
+        Optional override for the existing relative quantity tolerance.
 
     :param all_balances:
         If `True` iterate all balances even if there are no mismatch.
+
+    :param excluded_assets:
+        Assets whose balances cannot establish a settled outcome while an
+        operation is pending. The caller must report these as unchecked.
 
     :param block_identifier:
         Check at certain account height
@@ -334,6 +343,10 @@ def calculate_account_corrections(
 
     # assets = get_relevant_assets(pair_universe, reserve_assets, state)
     asset_to_position = build_expected_asset_map(state.portfolio, pair_universe=pair_universe)
+    # CLI inspection may still show independent holdings while a bridge or
+    # claim is pending. Never compare its shared cash against a partial ledger.
+    if excluded_assets:
+        asset_to_position = {asset: mapping for asset, mapping in asset_to_position.items() if asset not in excluded_assets}
 
     asset_balances = sync_model.fetch_onchain_balances(
         asset_to_position.keys(),
@@ -386,7 +399,7 @@ def calculate_account_corrections(
                 if p.pair.base == ab.asset:
                     price = p.last_token_price
                     price_at = p.last_pricing_at
-                    usd_value = abs(float(diff) * price)
+                    usd_value = float(diff) * price if price is not None else None
                     break
 
         elif mapping.is_one_to_one_asset_to_position():
@@ -1265,6 +1278,7 @@ def check_accounts(
     block_identifier: BlockIdentifier = None,
     exchange_account_value_func: Callable[..., Decimal] | None = None,
     check_clean: bool = True,
+    excluded_assets: set[AssetIdentifier] | None = None,
 ) -> Tuple[bool, pd.DataFrame]:
     """Create a summary accounting corrections needed.
 
@@ -1282,7 +1296,8 @@ def check_accounts(
         Current strategy state we check
 
     :param block_identifier:
-        Check at certain block height
+        Observation block for the primary chain. Satellite readers select
+        their own safe observation blocks.
 
     :param exchange_account_value_func:
         Optional public account-value reader for external exchange positions.
@@ -1290,8 +1305,12 @@ def check_accounts(
 
     :param check_clean:
         Refuse a state with unfinished trades. ``check-accounts`` turns this
-        off after it has checked that the only unfinished trades are pending
-        Lighter transfers, which it reports instead.
+        off after classifying supported pending routed operations or Lighter
+        transfers, which it reports instead of declaring the account clean.
+
+    :param excluded_assets:
+        Explicitly unchecked assets affected by those pending operations,
+        including cash shared with them. These assets are not compared.
 
     :return:
         Tuple (accounts clean, accounting clean Dataframe that can be printed to the console)
@@ -1316,6 +1335,7 @@ def check_accounts(
         relative_epsilon=None,
         all_balances=True,
         block_identifier=block_identifier,
+        excluded_assets=excluded_assets,
     ))
     corrections.extend(_build_hypercore_vault_account_checks(state, sync_model, block_identifier))
     if exchange_account_value_func is not None:
@@ -1579,6 +1599,10 @@ def _format_account_check_row(
             logger.info(f"Detected blacklisted pair in accounting: {position_label}")
 
     return correction.asset.token_symbol, {
+        "Chain": correction.asset.chain_id,
+        "Owner": correction.holding_address,
+        "Block": correction.block_number,
+        "Observed at": correction.timestamp,
         "Address": correction.asset.address,
         "Position": position_label,
         "Actual": f"{correction.actual_amount:.6f}",

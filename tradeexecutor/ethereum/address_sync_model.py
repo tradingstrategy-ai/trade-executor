@@ -9,7 +9,8 @@ from web3.types import BlockIdentifier
 
 from eth_defi.compat import native_datetime_utc_now
 from eth_defi.provider.broken_provider import get_almost_latest_block_number
-from tradeexecutor.ethereum.multichain_balance import fetch_onchain_balances_multichain
+from tradeexecutor.ethereum.multichain_balance import fetch_onchain_balances_multichain, filter_onchain_assets
+from tradeexecutor.ethereum.web3config import Web3Config
 from tradeexecutor.state.balance_update import BalanceUpdate
 from tradingstrategy.chain import ChainId
 from tradeexecutor.ethereum.wallet import sync_reserves
@@ -151,7 +152,8 @@ class AddressSyncModel(SyncModel):
 
         When :py:attr:`web3config` is set, assets are grouped by ``chain_id``
         and each group is fetched from the correct chain's Web3 connection.
-        Otherwise falls back to fetching all from ``self.web3``.
+        With no configuration, only assets belonging to ``self.web3`` can be
+        inspected. A missing satellite connection never falls back to the hub.
 
         Off-chain assets (e.g. Hypercore vault tokens on chain 9999) are
         silently filtered out via :py:func:`fetch_onchain_balances_multichain`.
@@ -159,7 +161,10 @@ class AddressSyncModel(SyncModel):
 
         address = self.get_token_storage_address()
 
-        if self.web3config is not None and len(self.web3config.connections) > 1:
+        # Synthetic pool shares and external equity are API observations, not
+        # ERC-20 contracts on the custody chain. Filter them before RPC checks.
+        assets = filter_onchain_assets(assets)
+        if self.web3config is not None:
             # Multichain mode: route each asset group to the correct chain
             by_chain: dict[int, list[AssetIdentifier]] = {}
             for asset in assets:
@@ -169,13 +174,22 @@ class AddressSyncModel(SyncModel):
                 try:
                     chain_web3 = self.web3config.get_connection(ChainId(chain_id))
                 except KeyError:
-                    chain_web3 = None
+                    if self.web3config.unit_testing and len(self.web3config.connections) == 1 and ChainId.anvil in self.web3config.connections:
+                        chain_web3 = self.web3
+                    else:
+                        raise RuntimeError(f"No RPC configured for balance custody chain {chain_id}") from None
 
                 if chain_web3 is None:
-                    # Fall back to default connection
-                    chain_web3 = self.web3
+                    raise RuntimeError(f"No RPC configured for balance custody chain {chain_id}")
 
-                chain_block = get_almost_latest_block_number(chain_web3)
+                # Querying the same token address on the hub can return a
+                # plausible zero (or an unrelated token). Never turn a missing
+                # satellite provider into evidence for writing off its assets.
+                actual_chain = chain_web3.eth.chain_id
+                if actual_chain != chain_id and not (self.web3config.unit_testing and actual_chain == 31337):
+                    raise RuntimeError(f"Balance RPC chain mismatch: expected {chain_id}, got {actual_chain}")
+
+                chain_block = block_identifier if chain_web3 is self.web3 and block_identifier is not None else get_almost_latest_block_number(chain_web3)
                 logger.info(
                     "Fetching chain %s balances at block %d for %d asset(s)",
                     ChainId(chain_id).name,
@@ -191,6 +205,9 @@ class AddressSyncModel(SyncModel):
                 )
         else:
             # Single-chain mode (existing behaviour)
+            for asset in assets:
+                if asset.chain_id != self.web3.eth.chain_id and self.web3.eth.chain_id != 31337:
+                    raise RuntimeError(f"No RPC configured for balance custody chain {asset.chain_id}")
             if block_identifier is None:
                 block_identifier = get_almost_latest_block_number(self.web3)
 

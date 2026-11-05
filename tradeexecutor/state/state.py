@@ -1348,7 +1348,11 @@ class State:
         position_ids = set()
         trade_ids = set()
 
-        for p in self.portfolio.get_all_positions(pending=True):
+        # Expired, unfunded positions retain their IDs in the existing archive.
+        # They own no economic entitlement, so normal portfolio iteration omits
+        # them, but restart must include them when checking ID uniqueness and
+        # counters. Otherwise a halted CCTP batch cannot reach its retry hook.
+        for p in [*self.portfolio.get_all_positions(pending=True), *self.portfolio.expired_positions.values()]:
             assert p.position_id not in position_ids, f"Position id reuse {p.position_id}"
             position_ids.add(p.position_id)
             for t in p.trades.values():
