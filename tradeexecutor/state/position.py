@@ -2765,14 +2765,22 @@ class TradingPosition(GenericPosition):
             # Only the available (unallocated) portion is still in the wallet;
             # the rest has been moved to satellite trade positions.
             available = self.get_available_bridge_capital()
-            if available > 0:
-                yield self.pair.base, available
+            # Zero free cash is still an expected wallet balance. Omitting it
+            # hides unsolicited satellite USDC in large universes, where token
+            # discovery is intentionally bounded. Allocated capital remains in
+            # the external positions and must never be compared as wallet cash.
+            yield self.pair.base, available
         elif self.is_spot():
             # Hypercore vaults and Lighter pool shares are tracked through APIs.
             if self.pair.is_hyperliquid_vault() or self.pair.is_lighter_pool():
                 return
             held_quantity = self.get_quantity()
             if self.is_vault():
+                # A redemption still owns a claim, but its negative requested
+                # quantity removes the escrowed shares from wallet custody.
+                # Do not turn their absence into an accounting loss. Commands
+                # additionally mark shared pending assets unchecked until the
+                # existing settlement sweep establishes the final entitlement.
                 held_quantity += sum_decimal([
                     t.get_vault_settlement_request_quantity()
                     for t in self.trades.values()

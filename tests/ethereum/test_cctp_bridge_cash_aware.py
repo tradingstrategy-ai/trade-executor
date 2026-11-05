@@ -1422,8 +1422,10 @@ def test_async_vault_deposit_bridges_only_missing_satellite_capital(
     assert wallet.get_balance(satellite_vault_pair.base) == Decimal(0)
     assert bridge_position.bridge_capital_allocated == Decimal(10_000)
     assert bridge_position.get_available_bridge_capital() == Decimal(0)
-    assert usdc_base not in calculate_total_assets(state.portfolio)
-    assert get_asset_amounts(bridge_position) == []
+    # Fully allocated satellite cash is still a checked custody asset. Its
+    # explicit zero must not disappear from large-universe account reports.
+    assert calculate_total_assets(state.portfolio)[usdc_base] == Decimal(0)
+    assert get_asset_amounts(bridge_position) == [(usdc_base, Decimal(0))]
     assert state.portfolio.get_vault_settlement_pending_value() == pytest.approx(10_000.0, abs=1e-6)
 
 

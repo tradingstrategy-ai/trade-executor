@@ -19,6 +19,14 @@ validation, current admission and funded rehearsal remain outstanding. The
 table and delivery steps below record the approved baseline scope. The linked
 report records current results and remaining operational checks.
 
+The [multichain account-check implementation record](multichain-account-checks.md)
+adds read-only hub/satellite custody checks and bounded settled corrections to
+the mixed Lagoon deployment. Missing observations and unresolved operations now
+refuse a clean result; generic correction is not a bridge, vault or pool recovery
+tool. The record contains the fixed-fork acceptance coverage and validation gaps.
+This closes a command-coverage gap without replacing the remaining production
+configuration, admission and funded-rehearsal requirements below.
+
 The launch-selection criteria below must not silently become historical backtest
 exclusions. For strategy conversion and financial comparisons, apply
 [backtest universe preservation](../backtest-universe-preservation.md) and its

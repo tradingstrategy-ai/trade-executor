@@ -1,10 +1,15 @@
 """Process-level driver for the mixed-vault strategy on persistent forks."""
 
 import datetime
+import calendar
+import copy
 import json
 import os
 import subprocess
 import sys
+import tempfile
+from contextlib import contextmanager
+from collections.abc import Iterator
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
@@ -12,16 +17,49 @@ from pathlib import Path
 from eth_defi.provider.anvil import mine
 from eth_defi.hotwallet import HotWallet
 from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
-from eth_defi.compat import native_datetime_utc_fromtimestamp
+from eth_defi.compat import native_datetime_utc_fromtimestamp, native_datetime_utc_now
 from eth_defi.token import USDC_NATIVE_TOKEN, fetch_erc20_details
 from eth_defi.vault.base import VaultSpec
 from eth_defi.erc_4626.vault_protocol.atoma.vault import AtomaVault
 from eth_defi.erc_4626.classification import create_vault_instance_autodetect
 
 from tradeexecutor.state.state import State
-from tradeexecutor.testing.multi_vault_simulation import MultiVaultSimulation
+from tradeexecutor.testing.multi_vault_simulation import MultiVaultSimulation, stop_multi_vault_simulation, ARBITRUM_ATOMA_FORK_BLOCK, ETHEREUM_MULTI_VAULT_FORK_BLOCK
+from tradeexecutor.state.identifier import TradingPairKind
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, create_pair_universe_from_code
 from tradeexecutor.testing.lighter_core import FakeLighterCore
 from tradeexecutor.testing.lighter_manual import broadcast_and_wait
+
+
+@contextmanager
+def deployed_multi_vault() -> Iterator["MultiVaultStartDriver"]:
+    """Reuse the public deployment runbook on the established fixed dual forks.
+
+    Each caller owns its forks, state and fake venue together. No test restores
+    an EVM snapshot while accidentally retaining a later executor or API state.
+    """
+    repository = Path(__file__).resolve().parents[2]
+    with tempfile.TemporaryDirectory(prefix="multi-vault-start-") as directory:
+        run = MultiVaultStartDriver(repository, Path(directory) / "run", Path(directory) / "simulation")
+        environment = {k: v for k, v in os.environ.items() if k not in {"HYPERSYNC_API_KEY", "TELEGRAM_API_KEY", "TELEGRAM_CHAT_ID", "DERIVE_OWNER_PRIVATE_KEY", "DERIVE_SESSION_PRIVATE_KEY"}}
+        environment.update({"SIMULATE": "true", "MULTI_VAULT_RUN_DIR": str(run.directory), "MULTI_VAULT_SIM_DIR": str(run.simulation_directory), "MULTI_VAULT_PYTHON": sys.executable, "LOG_LEVEL": "warning"})
+        try:
+            with (Path(directory) / "deployment.log").open("w+") as output:
+                result = subprocess.run(["bash", "scripts/lagoon/manual-multi-vault-cli.sh", "--deploy", "--targets", ""], cwd=repository, env=environment, stdout=output, stderr=subprocess.STDOUT, text=True, timeout=1200)
+                output.seek(0)
+                assert result.returncode == 0, output.read()[-16000:]
+            # Source state is historical; the existing harness advances both
+            # clocks together so claims and freshness use one simulated UTC.
+            run.fork_timestamps = {
+                chain: run.simulation.get_web3(chain).eth.get_block(block)["timestamp"]
+                for chain, block in ((42161, ARBITRUM_ATOMA_FORK_BLOCK), (1, ETHEREUM_MULTI_VAULT_FORK_BLOCK))
+            }
+            tip = max(run.simulation.get_web3(chain).eth.get_block("latest")["timestamp"] for chain in (1, 42161))
+            run.advance(max(1, calendar.timegm(native_datetime_utc_now().timetuple()) - tip + 1))
+            yield run
+        finally:
+            if (run.simulation_directory / "simulation.json").exists():
+                stop_multi_vault_simulation(run.simulation_directory)
 
 
 @dataclass
@@ -31,6 +69,9 @@ class MultiVaultStartDriver:
     repository: Path
     directory: Path
     simulation_directory: Path
+
+    #: Original historical times before the existing driver synchronises clocks.
+    fork_timestamps: dict[int, int] | None = None
 
     @property
     def state_file(self) -> Path:
@@ -103,7 +144,7 @@ class MultiVaultStartDriver:
         })
         return environment
 
-    def command(self, *arguments: str, timestamp: datetime.datetime | None = None, controls: tuple[str, ...] = (), helper: bool = False, check: bool = True) -> subprocess.CompletedProcess:
+    def command(self, *arguments: str, timestamp: datetime.datetime | None = None, controls: tuple[str, ...] = (), helper: bool = False, check: bool = True, environment_overrides: dict[str, str | None] | None = None) -> subprocess.CompletedProcess:
         """Invoke the registered CLI in a new process with bounded execution."""
         args = [sys.executable, "-m", "tradeexecutor.testing.multi_vault_manual"]
         if not helper:
@@ -113,10 +154,17 @@ class MultiVaultStartDriver:
                 timestamp = native_datetime_utc_fromtimestamp(tip)
             args += ["--simulation-time", timestamp.isoformat()]
             args += ["--"]
-        result = subprocess.run(args + list(arguments), env=self.environment(), cwd=self.repository, capture_output=True, text=True, timeout=900)
+        environment = self.environment()
+        for key, value in (environment_overrides or {}).items():
+            if value is None:
+                environment.pop(key, None)
+            else:
+                environment[key] = value
+        result = subprocess.run(args + list(arguments), env=environment, cwd=self.repository, capture_output=True, text=True, timeout=900)
         if check and result.returncode:
             raise AssertionError(result.stdout[-8000:] + result.stderr[-8000:])
         return result
+
 
     def start(self, *, controls: tuple[str, ...] = (), check: bool = True) -> subprocess.CompletedProcess:
         """Run one decision cycle using the current fork time."""
@@ -150,3 +198,26 @@ class MultiVaultStartDriver:
         vault = LagoonVault(web3, VaultSpec(42161, environment["VAULT_ADDRESS"]))
         shares = vault.share_token.fetch_raw_balance_of(wallet.address)
         broadcast_and_wait(web3, wallet, vault.request_redeem(wallet.address, shares), "queue simulated investor redemption")
+
+
+def expand_account_check_universe(universe: TradingStrategyUniverse) -> TradingStrategyUniverse:
+    """Exercise the discovery limit with twenty pairs and real tracked custody.
+
+    Extra untracked spot tokens deliberately have no contracts. A checker that
+    wrongly enumerates them will fail its RPC reads, while held tokens and
+    configured cash must still be read from the actual fork deployments.
+    This helper is only for account inspection, never strategy execution.
+    """
+    pairs = list(universe.iterate_pairs())
+    template = next(pair for pair in pairs if pair.is_vault() and not pair.is_lighter_pool())
+    for index in range(len(pairs) + 1, 21):
+        pair = copy.deepcopy(template)
+        pair.internal_id = index
+        pair.kind = TradingPairKind.spot_market_hold
+        pair.pool_address = pair.base.address = f"0x{index:040x}"
+        pair.base.internal_id = index
+        pair.base.token_symbol = f"UNTRACKED{index}"
+        pair.other_data = {}
+        pairs.append(pair)
+    universe.data_universe.pairs = create_pair_universe_from_code(universe.primary_chain, pairs)
+    return universe

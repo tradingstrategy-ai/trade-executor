@@ -24,6 +24,7 @@ from eth_defi.token import fetch_erc20_details
 
 from tradeexecutor.cli.main import app
 from tradeexecutor.ethereum import multichain_balance
+from tradeexecutor.ethereum.lagoon.vault import LagoonVaultSyncModel
 from tradeexecutor.ethereum.vault import hypercore_transit_recovery, hypercore_vault
 from tradeexecutor.ethereum.vault.hypercore_transit_recovery import HypercoreTransitBalanceSnapshot
 from tradeexecutor.state.state import State
@@ -203,6 +204,10 @@ def test_interrupted_hypercore_deposit_cli(
     assert all(state.portfolio.get_position_by_id(position_id).is_closed() for position_id in (533, 534, 535))
     assert token.fetch_balance_of(SAFE) == INITIAL_SAFE
     before_dry_run = incident_state_file.read_bytes()
+    # Model a queued investor flow while real receipt-backed HyperCore capital
+    # still needs recovery. Settlement must wait for this specialised path.
+    original_queue = LagoonVaultSyncModel._fetch_lagoon_queue_amounts
+    monkeypatch.setattr(LagoonVaultSyncModel, "_fetch_lagoon_queue_amounts", lambda self, block: (Decimal(1), Decimal(0)))
     preview = runner.invoke(app, ["correct-accounts", "--dry-run"], env=env)
     assert preview.exit_code == 0, repr(preview.exception)
     assert "not safe to restart" in preview.output.lower()
@@ -217,6 +222,7 @@ def test_interrupted_hypercore_deposit_cli(
     assert corrected.exit_code == 0, repr(corrected.exception)
     assert hypercore["transfers"] == 1
     assert token.fetch_balance_of(SAFE) == INITIAL_SAFE + Decimal("3023.624536")
+    monkeypatch.setattr(LagoonVaultSyncModel, "_fetch_lagoon_queue_amounts", original_queue)
 
     # 4. Restart scheduling must advance to 30 September without replaying
     # the three successful sibling trades from the 28 September slot.

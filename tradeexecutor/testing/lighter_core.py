@@ -729,6 +729,7 @@ class FakeLighterCore:
             (f"{pool_routing}.create_lighter_pool_session", self.create_api_session),
             ("tradeexecutor.ethereum.lagoon.vault.create_executor_lighter_session", self.create_api_session),
             ("tradeexecutor.cli.commands.init.create_executor_lighter_session", self.create_api_session),
+            ("tradeexecutor.cli.account_check.create_executor_lighter_session", self.create_api_session),
             ("tradeexecutor.cli.commands.lagoon_redeem.create_executor_lighter_session", self.create_api_session),
             ("tradeexecutor.ethereum.vault.settlement_retry.create_executor_lighter_session", self.create_api_session),
             ("tradeexecutor.ethereum.lighter.lighter_pool_valuation.create_lighter_pool_session", self.create_api_session),

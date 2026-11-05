@@ -19,6 +19,39 @@ from tradeexecutor.strategy.account_correction import (
 )
 
 
+def test_account_difference_uses_magnitude_and_requires_a_price() -> None:
+    """Apply the low-value threshold symmetrically without hiding unknown value.
+
+    1. Build a material negative quantity discrepancy with a signed USD value.
+    2. Compare deficits, surpluses and unavailable prices against one threshold.
+    """
+    # 1. Build a material negative quantity discrepancy with a signed USD value.
+    timestamp = datetime.datetime(2026, 11, 5)
+    asset = AssetIdentifier(1, "0x0000000000000000000000000000000000000001", "USDC", 6)
+    correction = AccountingBalanceCheck(
+        type=AccountingCorrectionCause.unknown_cause,
+        holding_address="0x0000000000000000000000000000000000000002",
+        asset=asset,
+        positions=set(),
+        expected_amount=Decimal(1000),
+        actual_amount=Decimal(0),
+        dust_epsilon=Decimal("0.000001"),
+        relative_epsilon=0.0,
+        block_number=123,
+        timestamp=timestamp,
+        usd_value=-1000.0,
+        reserve_asset=False,
+        mismatch=True,
+        price=None,
+        price_at=None,
+    )
+    # 2. Compare deficits, surpluses and unavailable prices against one threshold.
+    for value, low_value in ((-1000, False), (1000, False), (-0.01, True), (0.01, True), (0, False), (None, False)):
+        correction.usd_value = value
+        assert correction.is_usd_low_value_diff(usd_value_threshold=0.1) is low_value
+        assert correction.usd_value == value  # Reports retain the signed delta.
+
+
 def test_correct_accounts_accepts_exact_confirmation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

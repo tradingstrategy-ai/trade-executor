@@ -18,8 +18,7 @@
 #     A live exit takes at least six to nine days; rerun --targets atoma for
 #     the request and again for the claim.
 #  5. Upshift Core USDC: bridge, deposit; redeem, bridge back.
-#  6. Reconcile books and NAV (state audit and check-wallet: check-accounts
-#     supports one chain only).
+#  6. Reconcile books and NAV (state audit, multichain check-accounts and check-wallet).
 #  7. Settle NAV, redeem the investor and check that no shares remain.
 #
 # Live funding, the minimum for the default amounts (see
@@ -319,7 +318,8 @@ test_target() {
         log "$target is waiting ($phase). Keep this state and rerun after the protocol settles."
         return 0
     fi
-    # check-accounts is single-chain; check-wallet reads both chains' Safes.
+    # Wallet diagnostics complement the ledger check below. Other targets may
+    # still have unsettled requests here, so do not certify the whole account.
     run "${EXECUTOR[@]}" check-wallet
 }
 
@@ -343,11 +343,12 @@ if [ -n "$REMAINING" ]; then
 fi
 
 # Step 6: no automatic corrections; a discrepancy stops the run.
-# check-accounts and correct-accounts support one chain only, so this
-# multichain vault is reconciled by the state audit, check-wallet's balances
-# on both chains and the NAV.
+# Account inspection reads both Safes and the public pool account. Missing
+# observations or pending operations stop here; use the existing recovery
+# commands, never a generic correction to erase an unsettled entitlement.
 step 6 "Reconcile books and NAV"
 run "${HELPER[@]}" audit
+run "${EXECUTOR[@]}" check-accounts
 run "${EXECUTOR[@]}" check-wallet
 run "${EXECUTOR[@]}" show-valuation
 

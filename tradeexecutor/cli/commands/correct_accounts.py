@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Optional
 
 import typer
+import pandas as pd
 from tabulate import tabulate
 from typer import Option
 
@@ -40,6 +41,7 @@ from tradeexecutor.ethereum.lighter.transfer_verification import reconcile_verif
 from tradeexecutor.exchange_account.lighter_operator import load_lighter_signers
 from tradeexecutor.exchange_account.sync_model import ExchangeAccountSyncModel
 from tradeexecutor.exchange_account.utils import create_exchange_account_value_func
+from tradeexecutor.cli.account_check import configure_account_check, pending_account_trades, check_pool_accounts, refuse_unreconciled_investors
 from tradeexecutor.strategy.account_correction import (
     check_accounts,
     correct_accounts as _correct_accounts,
@@ -63,6 +65,7 @@ from ...ethereum.vault.hypercore_small_position_cleanup import (
 )
 from ...state.repair import close_hypercore_dust_positions
 from ...state.position import TradingPosition
+from ...state.identifier import TradingPairIdentifier
 from ...state.state import State, UncleanState
 from ...state.trade import (
     HYPERCORE_ACCOUNTING_RECONCILIATION_REQUIRED_KEY,
@@ -773,6 +776,18 @@ def correct_accounts(
     if not state_file:
         state_file = f"state/{id}.json"
 
+    # Load without writing first: missing custody data and unresolved operations
+    # must refuse even before the ordinary backup or specialised recovery hooks.
+    preflight_store = create_state_store(Path(state_file))
+    preflight_state = preflight_store.load()
+    multichain = configure_account_check(sync_model, web3config, resolve_deployment_file(id, state_file), preflight_state)
+    pending_routed = pending_account_trades(preflight_state)
+    if pending_routed:
+        pending_description = [(t.trade_id, t.get_status().value) for t in pending_routed]
+        raise UncleanState(f"Pending routed trades {pending_description}; use existing recovery before correct-accounts")
+    if multichain and (transfer_away or process_redemption):
+        raise RuntimeError("Multichain correct-accounts refuses --transfer-away and --process-redemption; use separate recovery/lagoon-settle commands")
+
     if dry_run:
         store = create_state_store(Path(state_file), simulate=True)
         assert not store.is_pristine(), f"State file does not exist: {state_file}"
@@ -936,6 +951,17 @@ def correct_accounts(
         state=state,
     )
 
+    multichain = configure_account_check(sync_model, web3config, resolve_deployment_file(id, state_file), state, universe)
+    if multichain and (transfer_away or process_redemption):
+        raise RuntimeError("Multichain correct-accounts refuses --transfer-away and --process-redemption")
+    pool_clean, pool_report = check_pool_accounts(state, sync_model, universe)
+    if not pool_clean:
+        raise UncleanState(f"Reconcile Lighter pool account before correction:\n{pool_report.to_string(index=False)}")
+    if isinstance(sync_model, LagoonVaultSyncModel) and state.portfolio.reserves and not process_redemption and not (incident or withdrawal or completed_top_up):
+        # Specialised HyperCore recovery must restore uncertain capital before
+        # the treasury can safely value or settle a queued investor flow.
+        refuse_unreconciled_investors(sync_model, state)
+
     runner = run_description.runner
     routing_state = pricing_model = valuation_method = None
 
@@ -1077,22 +1103,36 @@ def correct_accounts(
             execution_model=execution_model,
         )
 
-        if exchange_account_value_func:
-            exchange_sync_model = ExchangeAccountSyncModel(exchange_account_value_func, web3=web3)
-            ensure_routing_setup()
-            exchange_events = exchange_sync_model.sync_positions(
-                timestamp=native_datetime_utc_now(),
-                state=state,
-                strategy_universe=universe,
-                pricing_model=pricing_model,
-            )
-            logger.info("Exchange account sync: %d balance update(s)", len(exchange_events))
-            for evt in exchange_events:
-                logger.info("  Position %d: %s (change: %s)", evt.position_id, evt.notes, evt.quantity)
+        if exchange_account_value_func is None:
+            raise UncleanState("Exchange equity observation unavailable: no account reader was configured; no ordinary corrections saved")
+        failed_equity_reads: list[tuple[str, str]] = []
+
+        def read_correction_equity(pair: TradingPairIdentifier, **kwargs) -> Decimal:
+            """Record failures even if a backend's shared sync swallows them."""
+            try:
+                return exchange_account_value_func(pair, **kwargs)
+            except Exception as exc:
+                # Keep transport details and credentials out of the report.
+                failed_equity_reads.append((pair.get_ticker(), type(exc).__name__))
+                raise
+
+        exchange_sync_model = ExchangeAccountSyncModel(read_correction_equity, web3=web3)
+        ensure_routing_setup()
+        exchange_events = exchange_sync_model.sync_positions(
+            timestamp=native_datetime_utc_now(),
+            state=state,
+            strategy_universe=universe,
+            pricing_model=pricing_model,
+        )
+        if failed_equity_reads:
+            raise UncleanState(f"Exchange equity observation unavailable; no ordinary corrections saved: {failed_equity_reads}")
+        logger.info("Exchange account sync: %d balance update(s)", len(exchange_events))
+        for evt in exchange_events:
+            logger.info("  Position %d: %s (change: %s)", evt.position_id, evt.notes, evt.quantity)
 
     # Lighter's own close rule, then the owned/declared/tracked account check.
     # Both run before the preflight and the dry-run return, so a dry run
-    # previews them; a mismatch exits 1 after the corrections are saved.
+    # previews them; a mismatch exits 1 without saving ordinary corrections.
     lighter_account_problem = None
     closed_lighter_positions = []
     if not incident and not withdrawal and isinstance(sync_model, LagoonVaultSyncModel):
@@ -1256,17 +1296,16 @@ def correct_accounts(
 
     block_timestamp = get_block_timestamp(web3, block_number)
 
-    # Skip on-chain corrections when all positions are exchange account positions
-    # (their balances are synced via exchange API, not on-chain balance checks).
-    # A Lagoon Lighter vault is the narrow exception: its Safe reserve remains
-    # on-chain even when its sole trading position is the synthetic account.
-    # A closed phantom Hypercore vault can similarly leave USDC in the Safe.
-    # A Lighter position closed above still leaves its Safe reserve to reconcile.
+    # API-only positions use their existing exchange sync. A configured reserve
+    # still needs its normal custody comparison, including after the last vault
+    # exits; an empty trading book does not prove the Safe cash is correct.
     has_lagoon_lighter_position = (
         asset_management_mode == AssetManagementMode.lagoon
         and (bool(closed_lighter_positions) or any(is_lighter_exchange_account_pair(position.pair) for position in state.portfolio.get_open_and_frozen_positions()))
     )
     has_onchain_positions = (
+        (bool(state.portfolio.reserves) and (asset_management_mode.is_vault() or not any(state.portfolio.get_open_and_frozen_positions())))
+        or
         any(
             not p.pair.is_exchange_account()
             for p in state.portfolio.get_open_and_frozen_positions()
@@ -1317,6 +1356,11 @@ def correct_accounts(
         web3config.close()
         return
 
+    if any(c.position is None or c.position.is_closed() for c in corrections if not c.reserve_asset):
+        # Reconstruction needs an actual vault quote. Ordinary cash correction
+        # does not, so avoid constructing routing/signing state for inspection.
+        ensure_routing_setup()
+
     tx_builder = sync_model.create_transaction_builder()
 
     # Set the default token dump address
@@ -1359,14 +1403,9 @@ def correct_accounts(
             len(closed_dust_trades),
         )
 
-    if not skip_save and not incident and not withdrawal and not completed_top_up:
-        logger.info("Saving state to %s", store.path)
-        store.sync(state)
-    else:
-        logger.info("Saving the fixed state skipped")
-
-    if not incident and not withdrawal and not completed_top_up:
-        web3config.close()
+    # Ordinary balance corrections are still only in memory. A failed final
+    # observation must leave the authoritative ledger unchanged; a backup
+    # alone is not sufficient recovery from an incorrectly saved write-off.
 
     # Shortcut here
     if unit_testing:
@@ -1378,28 +1417,33 @@ def correct_accounts(
 
     block_number = get_almost_latest_block_number(web3)
 
-    # Lagoon Lighter needs a final Safe reserve check even though Lighter itself
-    # is represented by a synthetic exchange-account position.
-    has_onchain_positions_final = any(
-        not p.pair.is_exchange_account()
-        for p in state.portfolio.get_open_and_frozen_positions()
-    ) or has_lagoon_lighter_position
-    if not has_onchain_positions_final:
-        logger.info("Final account check skipped - no on-chain positions")
-        if lighter_account_problem:
-            sys.exit(1)
-        logger.info("All ok")
-        sys.exit(0)
-
-    clean, df = check_accounts(
-        universe.data_universe.pairs,
-        universe.reserve_assets,
-        state,
-        sync_model,
-        block_identifier=block_number,
-        exchange_account_value_func=exchange_account_value_func,
-    )
+    # Validate custody before saving, including actual reserve-only portfolios.
+    # Exchange equity is a mark-to-market snapshot already read by sync_positions;
+    # another price movement during confirmation must not discard that booking.
+    # Non-custodial exchange strategies also use virtual reserve token addresses,
+    # so retain their existing API-only path rather than issuing ERC-20 calls.
+    if has_onchain_positions:
+        clean, df = check_accounts(
+            universe.data_universe.pairs,
+            universe.reserve_assets,
+            state,
+            sync_model,
+            block_identifier=block_number,
+        )
+    else:
+        clean, df = True, pd.DataFrame()
     clean = clean and lighter_account_problem is None
+    pool_clean, pool_report = check_pool_accounts(state, sync_model, universe)
+    clean = clean and pool_clean
+    if isinstance(sync_model, LagoonVaultSyncModel) and state.portfolio.reserves and not process_redemption and not (incident or withdrawal or completed_top_up):
+        # Investors can queue or settle independently while the operator
+        # confirms. Recheck the existing treasury evidence before committing
+        # ordinary corrections, even when the new queue has not moved Safe cash.
+        refuse_unreconciled_investors(sync_model, state)
+    if clean and not skip_save and not incident and not withdrawal and not completed_top_up:
+        store.sync(state)
+    if not incident and not withdrawal and not completed_top_up:
+        web3config.close()
 
     if withdrawal:
         if not clean:
@@ -1481,6 +1525,8 @@ def correct_accounts(
         tablefmt='rounded_outline',
         disable_numparse=True,
     )
+    if not pool_report.empty:
+        output += "\n\nLighter pool observations:\n" + tabulate(pool_report, headers="keys", tablefmt="rounded_outline", disable_numparse=True)
 
     # Append exchange account positions to the summary
     exchange_positions = [
@@ -1503,7 +1549,7 @@ def correct_accounts(
             headers=["Position", "Protocol", "Value (USD)", "Position ID"],
             tablefmt="rounded_outline",
         )
-        output += f"\n\nExchange account positions:\n{exchange_output}"
+        output += f"\n\nExchange account positions (recorded API snapshot):\n{exchange_output}"
 
     if clean:
         logger.info(f"Accounts after the correction match for block {block_number:,}:\n%s", output)

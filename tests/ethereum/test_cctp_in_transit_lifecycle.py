@@ -269,6 +269,8 @@ def test_executor_halt_expires_remaining_trades(
     # 8. Verify orphan position (third_trade's position) is removed
     #    since it had zero quantity and all trades expired
     assert third_position_id not in state.portfolio.open_positions
+    assert state.portfolio.expired_positions[third_position_id].position_id == third_position_id
+    state.perform_integrity_check()
 
 
 def test_startup_retry_resolves_in_transit(
@@ -338,6 +340,7 @@ def test_startup_retry_resolves_in_transit(
         patch("eth_defi.cctp.transfer._resolve_cctp_domain", return_value=3),
         patch("eth_defi.cctp.transfer.get_message_transmitter_v2", return_value=MagicMock()),
         patch("eth_defi.cctp.receive.prepare_receive_message", return_value=MagicMock()),
+        patch("tradeexecutor.ethereum.cctp.retry.wait_for_transaction_receipt_robust", return_value={"status": 1}),
         patch("eth_defi.hotwallet.HotWallet") as MockHW,
         patch("tradeexecutor.ethereum.tx.HotWalletTransactionBuilder") as MockTxBuilder,
     ):
@@ -364,6 +367,7 @@ def test_startup_retry_resolves_in_transit(
     # 7. Verify the trade is in the returned resolved list
     assert len(resolved) == 1
     assert resolved[0].trade_id == trade.trade_id
+    mock_execution_model.sync_state_before_broadcast.assert_called_once()
 
 
 @pytest.mark.timeout(300)

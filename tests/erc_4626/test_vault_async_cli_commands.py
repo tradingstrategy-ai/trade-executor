@@ -3,7 +3,7 @@
 Tests that the following CLI commands handle async vault trades correctly:
 - ``perform-test-trade``: Opens and closes a vault position with forced settlement on Anvil
 - ``start`` with MAX_CYCLES: Runs decide_trades() which opens/closes vault positions
-- ``check-accounts``: Reports no mismatches during pending settlement
+- ``check-accounts``: Reports pending settlement and leaves state unchanged
 - ``repair``: Does not touch vault_settlement_pending trades
 
 These tests use the ``arbitrum-ostium-v15.py`` strategy module and verify
@@ -17,6 +17,7 @@ from pathlib import Path
 
 import flaky
 import pytest
+from pytest_mock import MockerFixture
 from typer.main import get_command
 from web3 import Web3
 
@@ -216,14 +217,15 @@ def test_ostium_v15_start_one_cycle(
 @flaky.flaky
 def test_ostium_v15_check_accounts_cli(
     environment: dict,
-    mocker,
+    mocker: MockerFixture,
     state_file: Path,
-):
-    """Run check-accounts after a vault deposit — should report no mismatches.
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Report an unresolved vault deposit without treating custody as settled.
 
     1. Init + start (1 cycle to create a pending vault trade)
-    2. Run check-accounts CLI
-    3. Verify exit code 0 (no mismatches)
+    2. Run check-accounts and require a nonzero result naming the pending trade.
+    3. Verify inspection leaves the pending entitlement and state unchanged.
     """
     # 1. Init + one cycle
     mocker.patch.dict("os.environ", environment, clear=True)
@@ -234,16 +236,22 @@ def test_ostium_v15_check_accounts_cli(
     mocker.patch.dict("os.environ", env_cycle, clear=True)
     cli.main(args=["start"], standalone_mode=False)
 
-    # 2. Check accounts — should exit 0 (no mismatches)
-    # When a vault deposit is pending: on-chain USDC is lower (sent to vault via requestDeposit),
-    # and state reserve is also lower (debited at trade start). So on-chain == expected.
-    # Position has quantity 0 (no vault shares yet), on-chain also 0. No mismatch.
+    # 2. Matching zero shares cannot certify an unresolved deposit. Its cash
+    # has left custody but remains an entitlement until the normal claim path.
+    state = State.read_json_file(state_file)
+    pending = [trade for trade in state.portfolio.get_all_trades() if trade.get_status() == TradeStatus.vault_settlement_pending]
+    assert pending
+    before_check = state_file.read_bytes()
     env_check = {**environment, "SKIP_SAVE": "true"}
     mocker.patch.dict("os.environ", env_check, clear=True)
-    try:
+    with pytest.raises(SystemExit) as checked:
         cli.main(args=["check-accounts"], standalone_mode=False)
-    except SystemExit as e:
-        assert e.code == 0, f"check-accounts exited with code {e.code} — accounting mismatch detected"
+    assert checked.value.code == 1
+    assert all(f"Pending trade #{trade.trade_id}" in caplog.text for trade in pending)
+    assert "Unchecked pending asset" in caplog.text
+
+    # 3. A read-only refusal must preserve the saved request and its cash claim.
+    assert state_file.read_bytes() == before_check
 
 
 @flaky.flaky

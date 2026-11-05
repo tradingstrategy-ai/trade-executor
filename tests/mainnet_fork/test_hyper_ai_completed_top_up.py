@@ -24,6 +24,7 @@ from eth_defi.token import fetch_erc20_details
 
 from tradeexecutor.cli.main import app
 from tradeexecutor.ethereum import multichain_balance
+from tradeexecutor.ethereum.lagoon.vault import LagoonVaultSyncModel
 from tradeexecutor.ethereum.vault import hypercore_transit_recovery, hypercore_vault
 from tradeexecutor.state.state import State
 from tradeexecutor.state.store import JSONFileStore
@@ -57,7 +58,7 @@ def anvil() -> Iterator[AnvilLaunch]:
 
 @pytest.fixture()
 def top_up_cli(anvil: AnvilLaunch, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, dict, list[dict]]:
-    """Copy production accounting and mock only HyperCore's unavailable fork state."""
+    """Replay deposit evidence without HyperCore or unrelated investor history."""
     source = Path(os.environ.get("HYPER_AI_TOP_UP_STATE", Path(__file__).parents[1] / "hyperliquid/state/hyper-ai-oct8-top-up.json"))
     state_file = tmp_path / "hyper-ai.json"
     shutil.copy2(source, state_file)
@@ -90,6 +91,11 @@ def top_up_cli(anvil: AnvilLaunch, tmp_path: Path, monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(hypercore_vault, "fetch_user_vault_equity", vault_equity)
     monkeypatch.setattr(multichain_balance, "fetch_user_vault_equity", vault_equity)
     monkeypatch.setattr(hypercore_transit_recovery, "execute_hypercore_transit_recovery_actions", no_transfer)
+    # This incident fixture already isolates reserve movements above. Replaying
+    # its unrelated lifetime investor logs can exceed the public RPC's range
+    # limits and test deadline. Real discovery is covered by the dual-fork
+    # account-command tests; keep deposit receipts and current queue reads real.
+    monkeypatch.setattr(LagoonVaultSyncModel, "_fetch_lagoon_settlements", lambda self, start_block, end_block: [])
     for name in tuple(os.environ):
         if name.startswith("JSON_RPC_"):
             monkeypatch.delenv(name)
@@ -105,7 +111,7 @@ def top_up_cli(anvil: AnvilLaunch, tmp_path: Path, monkeypatch: pytest.MonkeyPat
     return state_file, environment, events
 
 
-def test_correct_accounts_completed_top_up(top_up_cli: tuple[Path, dict, list[dict]]) -> None:
+def test_correct_accounts_completed_top_up(top_up_cli: tuple[Path, dict, list[dict]], monkeypatch: pytest.MonkeyPatch) -> None:
     """Recover the actual top-up without resending capital or replaying its slot.
 
     1. Preview against copied production accounting without changing its bytes.
@@ -118,6 +124,12 @@ def test_correct_accounts_completed_top_up(top_up_cli: tuple[Path, dict, list[di
     original = State.read_json_file(state_file)
     quantity = original.portfolio.get_position_by_id(531).get_quantity()
     reserve = original.portfolio.get_default_reserve_position().quantity
+
+    # A queued subscription must wait for uncertain HyperCore capital to be
+    # recovered, rather than block recovery itself. Only the queue observation
+    # is simulated here; custody, receipts and ledger recovery remain real.
+    original_queue = LagoonVaultSyncModel._fetch_lagoon_queue_amounts
+    monkeypatch.setattr(LagoonVaultSyncModel, "_fetch_lagoon_queue_amounts", lambda self, block: (Decimal(1), Decimal(0)))
 
     # 1. Dry-run traverses the same evidence path but cannot save or back up.
     preview = runner.invoke(app, ["correct-accounts", "--dry-run"], env=env)
@@ -142,6 +154,8 @@ def test_correct_accounts_completed_top_up(top_up_cli: tuple[Path, dict, list[di
     assert state.cycle == original.cycle + 1
     assert state_file.with_suffix(".backup-1.json").is_file()
     state.check_if_clean()
+
+    monkeypatch.setattr(LagoonVaultSyncModel, "_fetch_lagoon_queue_amounts", original_queue)
 
     # 3. Both repeat correction and independent checks see settled accounting.
     assert runner.invoke(app, ["check-accounts"], env=env).exit_code == 0

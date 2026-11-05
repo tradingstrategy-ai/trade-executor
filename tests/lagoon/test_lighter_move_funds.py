@@ -29,6 +29,7 @@ from web3 import Web3
 
 from tradeexecutor.cli.commands.lagoon_lighter_test_trade import LighterWithdrawalRejected
 from tradeexecutor.cli.main import app
+from tradeexecutor.ethereum.lagoon.vault import LagoonVaultSyncModel
 from tradeexecutor.exchange_account.lighter import (
     LIGHTER_PROTOCOL,
     create_lighter_exchange_account_pair,
@@ -226,6 +227,11 @@ def test_cli_lighter_move_funds_records_safe_and_lighter_custody(
         decimals=usdc.decimals,
     )
     state = State()
+    # This fixture books its initial subscription directly below. Use normal
+    # deployment metadata and acknowledge that funded baseline in the existing
+    # discovery cursor, so later checks scan only subsequent investor flows.
+    LagoonVaultSyncModel(deployment.vault, deployer, unit_testing=True).sync_initial(state)
+    state.sync.treasury.last_lagoon_settlement_block_scanned = web3_ethereum.eth.block_number
     state.portfolio.initialise_reserves(reserve_asset, reserve_token_price=1.0)
     state.portfolio.get_reserve_position(reserve_asset).quantity = SAFE_USDC
     pair = create_lighter_exchange_account_pair(reserve_asset, LIGHTER_ACCOUNT_INDEX)
