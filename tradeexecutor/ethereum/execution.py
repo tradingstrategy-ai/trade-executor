@@ -837,6 +837,12 @@ class EthereumExecution(ExecutionModel):
                                 for t in pos.trades.values()
                             )
                             if all_expired:
+                                # Keep the existing expired-position archive,
+                                # as the vault halt branch above already does.
+                                # Deleting these IDs breaks restart integrity
+                                # before CCTP retry can finish the burned funds.
+                                # No cash moved for these unfunded positions.
+                                state.portfolio.expired_positions[pos.position_id] = pos
                                 del state.portfolio.open_positions[remaining_trade.position_id]
 
                 remaining_ids = [t.trade_id for t in trades[idx:]]

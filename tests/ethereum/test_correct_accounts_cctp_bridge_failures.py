@@ -1,18 +1,9 @@
-"""Test correct-accounts CLI repairs CCTP bridge failure scenarios.
+"""Reconcile settled cash moved externally between two test chains.
 
-Tests two failure modes:
-
-1. **Burn failure** — ``depositForBurn`` reverted on source chain, USDC
-   never left.  After repair: reserves restored to full amount, bridge
-   position closed.
-
-2. **Mint failure** — burn succeeded but ``receiveMessage`` failed on
-   destination chain.  After repair: reserves unchanged, bridge position
-   closed, total equity reflects the loss (capital in transit until mint
-   is retried).
-
-Uses two separate Anvil instances and Anvil impersonation to manipulate
-on-chain balances between ``correct-accounts`` invocations.
+This is balance-correction coverage, not CCTP execution evidence. Actual burn,
+receive, interruption and restart are covered on fixed Lagoon forks by
+``tests/lagoon/test_multichain_account_commands.py``. A recoverable CCTP message
+must never be written off merely because destination cash has not arrived.
 """
 
 import os
@@ -167,7 +158,7 @@ def environment(
 
 
 @pytest.mark.timeout(120)
-def test_correct_accounts_burn_failure(
+def test_correct_accounts_settled_cash_return(
     environment: dict,
     state_file: Path,
     web3_source: Web3,
@@ -178,17 +169,15 @@ def test_correct_accounts_burn_failure(
     usdc_source: Contract,
     usdc_dest: Contract,
 ):
-    """Test correct-accounts repairs state after a failed CCTP burn.
+    """Correct settled external cash movement without inferring bridge execution.
 
-    The burn tx reverted on source chain, so USDC never left.
-
-    On-chain after failure: source=10,000, dest=0.
-    State before repair: reserves=5,000, bridge=5,000.
-    After repair: reserves=10,000, bridge closed, total=10,000.
+    1. Establish a settled two-chain cash ledger.
+    2. Move tokens on both chains to represent an external return of capital.
+    3. Correct balances and verify total equity and per-chain attribution.
     """
     cli = get_command(app)
 
-    # Phase 1: Establish baseline via init + correct-accounts
+    # 1. Establish a settled two-chain cash ledger.
     with patch.dict(os.environ, environment, clear=True):
         cli.main(args=["init"], standalone_mode=False)
     with patch.dict(os.environ, environment, clear=True):
@@ -202,14 +191,14 @@ def test_correct_accounts_burn_failure(
     bridge_pos = list(baseline.portfolio.open_positions.values())[0]
     assert float(bridge_pos.get_quantity()) == pytest.approx(5_000, rel=0.02)
 
-    # Phase 2: Simulate burn failure — USDC returned to source, removed from dest
-    # Add 5,000 USDC back on source (burn reverted)
+    # 2. Move tokens on both chains to represent an external return of capital.
+    # External transfers are deliberate test actions, not evidence of a burn revert.
     tx_hash = usdc_source.functions.transfer(
         hot_wallet.address, 5_000 * 10**6,
     ).transact({"from": deployer_source})
     assert_transaction_success_with_explanation(web3_source, tx_hash)
 
-    # Remove 5,000 USDC from dest (mint never happened)
+    # Remove settled cash from the destination using test-only impersonation.
     web3_dest.provider.make_request("anvil_impersonateAccount", [hot_wallet.address])
     tx_hash = usdc_dest.functions.transfer(
         deployer_dest, 5_000 * 10**6,
@@ -217,7 +206,7 @@ def test_correct_accounts_burn_failure(
     assert_transaction_success_with_explanation(web3_dest, tx_hash)
     web3_dest.provider.make_request("anvil_stopImpersonatingAccount", [hot_wallet.address])
 
-    # Phase 3: Run correct-accounts to repair
+    # 3. Correct balances and verify total equity and per-chain attribution.
     with patch.dict(os.environ, environment, clear=True):
         with pytest.raises(SystemExit) as e:
             cli.main(args=["correct-accounts"])
@@ -245,79 +234,4 @@ def test_correct_accounts_burn_failure(
     # Chain equity: all on source chain
     chain_equity = repaired.portfolio.calculate_total_equity_chain()
     assert chain_equity.get(ChainId.arbitrum, 0) == pytest.approx(10_000, rel=0.02)
-    assert chain_equity.get(ChainId.base, 0) == pytest.approx(0, abs=1)
-
-
-@pytest.mark.timeout(120)
-def test_correct_accounts_mint_failure(
-    environment: dict,
-    state_file: Path,
-    web3_source: Web3,
-    web3_dest: Web3,
-    deployer_source,
-    deployer_dest,
-    hot_wallet: HotWallet,
-    usdc_source: Contract,
-    usdc_dest: Contract,
-):
-    """Test correct-accounts repairs state after a failed CCTP mint.
-
-    The burn succeeded (USDC left source) but mint on dest failed.
-
-    On-chain after failure: source=5,000 (burn deducted), dest=0.
-    State before repair: reserves=5,000, bridge=5,000.
-    After repair: reserves=5,000, bridge closed, total=5,000.
-    The 5,000 burned USDC is in transit until mint is retried.
-    """
-    cli = get_command(app)
-
-    # Phase 1: Establish baseline via init + correct-accounts
-    with patch.dict(os.environ, environment, clear=True):
-        cli.main(args=["init"], standalone_mode=False)
-    with patch.dict(os.environ, environment, clear=True):
-        with pytest.raises(SystemExit) as e:
-            cli.main(args=["correct-accounts"])
-        assert e.value.code == 0
-
-    # Verify baseline: reserve=5,000, bridge=5,000
-    baseline = State.read_json_file(state_file)
-    assert float(baseline.portfolio.get_default_reserve_position().quantity) == pytest.approx(5_000, rel=0.02)
-
-    # Phase 2: Simulate mint failure — source unchanged, dest USDC removed
-    # (Burn already deducted from source, mint never happened on dest)
-    web3_dest.provider.make_request("anvil_impersonateAccount", [hot_wallet.address])
-    tx_hash = usdc_dest.functions.transfer(
-        deployer_dest, 5_000 * 10**6,
-    ).transact({"from": hot_wallet.address})
-    assert_transaction_success_with_explanation(web3_dest, tx_hash)
-    web3_dest.provider.make_request("anvil_stopImpersonatingAccount", [hot_wallet.address])
-
-    # Phase 3: Run correct-accounts to repair
-    with patch.dict(os.environ, environment, clear=True):
-        with pytest.raises(SystemExit) as e:
-            cli.main(args=["correct-accounts"])
-        assert e.value.code == 0
-
-    # Phase 4: Verify repaired state
-    repaired = State.read_json_file(state_file)
-
-    # Reserve stays 5,000 (source unchanged)
-    reserve = repaired.portfolio.get_default_reserve_position()
-    assert float(reserve.quantity) == pytest.approx(5_000, rel=0.02), \
-        f"Reserve expected ~5,000, got {reserve.quantity}"
-
-    # Bridge position should be closed (went to 0)
-    assert len(repaired.portfolio.open_positions) == 0, \
-        f"Expected 0 open positions, got {len(repaired.portfolio.open_positions)}"
-    assert len(repaired.portfolio.closed_positions) >= 1, \
-        "Bridge position should have been closed"
-
-    # Total equity = 5,000 (lost 5,000 to failed mint, in transit)
-    total = repaired.portfolio.calculate_total_equity()
-    assert total == pytest.approx(5_000, rel=0.02), \
-        f"Total equity expected ~5,000, got {total}"
-
-    # Chain equity: all remaining on source chain
-    chain_equity = repaired.portfolio.calculate_total_equity_chain()
-    assert chain_equity.get(ChainId.arbitrum, 0) == pytest.approx(5_000, rel=0.02)
     assert chain_equity.get(ChainId.base, 0) == pytest.approx(0, abs=1)

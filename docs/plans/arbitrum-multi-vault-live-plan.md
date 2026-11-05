@@ -1,5 +1,15 @@
 # Arbitrum multi-vault live execution plan
 
+Implementation update, 5 November 2026: the account-inspection work below is
+delivered by [the multichain account-check implementation](multichain-account-checks.md).
+`check-accounts` reads both custody chains and the public pool account without a
+signer. Pending work is reported with affected assets unchecked; `correct-accounts`
+(including dry run) refuses unresolved routed operations. These command-specific
+rules leave startup retries and the settlement sweep available. The runbook now
+uses the read-only check at its settled reconciliation step. Fixed-fork evidence
+and remaining validation gaps are recorded in the linked file; this is not
+approval to deploy or evidence of another live funded rehearsal.
+
 ## Objective and scope
 
 Deploy one Lagoon vault on Arbitrum, with an Ethereum satellite Safe, and execute these external vault positions through normal `start` cycles and `perform-test-trade`:

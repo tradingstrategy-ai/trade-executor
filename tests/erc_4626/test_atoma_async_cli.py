@@ -130,7 +130,7 @@ def test_atoma_start_blackbox(atoma_environment: dict[str, str], atoma_runtime: 
     """Run both deployed ABIs through start, pending restart, settlement and claim.
 
     1. Start the dummy strategy and check synchronous deposits and locked exits.
-    2. Advance only fork time, request exits through start and repeat while pending.
+    2. Request exits, verify inspection reports pending work, and repeat start.
     3. Settle as the real operator, verify burned shares and claim entitlements.
     4. Restart start to claim, reconcile cash and prove repeating cannot trade again.
     5. Post final Lagoon NAV and return the investor's cash through the normal CLI.
@@ -161,7 +161,7 @@ def test_atoma_start_blackbox(atoma_environment: dict[str, str], atoma_runtime: 
     cli.main(args=["start"], standalone_mode=False)
     assert len(list(State.read_json_file(state_path).portfolio.get_all_trades())) == 2
 
-    # 2. Advance only fork time, request exits through start and repeat while pending.
+    # 2. Request exits, verify inspection reports pending work, and repeat start.
     lock_ends = [vault.get_deposit_manager().get_redemption_delay_over(owner) for vault in vaults]
     mine(web3, timestamp=max(calendar.timegm(end.timetuple()) for end in lock_ends))
     cli.main(args=["start"], standalone_mode=False)
@@ -171,9 +171,13 @@ def test_atoma_start_blackbox(atoma_environment: dict[str, str], atoma_runtime: 
     assert all(t.get_status() == TradeStatus.vault_settlement_pending for t in sells)
     assert pending.portfolio.get_cash() == pytest.approx(200)
     assert pending.portfolio.get_net_asset_value() == pytest.approx(399, abs=0.02)
+    # Escrowed shares remain an entitlement, but inspection cannot certify
+    # affected custody as settled until the existing claim path completes.
+    before_check = state_path.read_bytes()
     with pytest.raises(SystemExit) as checked:
         cli.main(args=["check-accounts"], standalone_mode=False)
-    assert checked.value.code == 0
+    assert checked.value.code == 1
+    assert state_path.read_bytes() == before_check
     request_hashes = [t.other_data["vault_request_tx_hash"] for t in sells]
     cli.main(args=["start"], standalone_mode=False)
     repeated = State.read_json_file(state_path)
@@ -192,7 +196,9 @@ def test_atoma_start_blackbox(atoma_environment: dict[str, str], atoma_runtime: 
         expected_payout += vault.denomination_token.convert_to_decimals(manager.fetch_claim_amounts(ticket)[2])
     with pytest.raises(SystemExit) as checked:
         cli.main(args=["check-accounts"], standalone_mode=False)
-    assert checked.value.code == 0
+    # Operator settlement burned the shares, but the unclaimed entitlement
+    # still belongs to this trade. The checker must continue to report pending.
+    assert checked.value.code == 1
 
     # 4. Restart start to claim, reconcile cash and prove repeating cannot trade again.
     cli.main(args=["start"], standalone_mode=False)
@@ -206,6 +212,9 @@ def test_atoma_start_blackbox(atoma_environment: dict[str, str], atoma_runtime: 
         assert vault.share_token.fetch_raw_balance_of(owner) == 0
     cli.main(args=["start"], standalone_mode=False)
     assert len(list(State.read_json_file(state_path).portfolio.get_all_trades())) == 4
+    with pytest.raises(SystemExit) as checked:
+        cli.main(args=["check-accounts"], standalone_mode=False)
+    assert checked.value.code == 0
 
     # 5. Post final Lagoon NAV and return the investor's cash through the normal CLI.
     cli.main(args=["lagoon-settle", "--force-valuation"], standalone_mode=False)

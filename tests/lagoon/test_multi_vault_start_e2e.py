@@ -1,23 +1,16 @@
 """Strategy-produced Lighter, Atoma and Upshift trades on persistent dual forks."""
 
 import json
-import calendar
 import os
 import shutil
-import subprocess
-import sys
-import tempfile
 from collections.abc import Iterator
 from decimal import Decimal
-from pathlib import Path
 
 import pytest
 from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
 from eth_defi.vault.base import VaultSpec
-from eth_defi.compat import native_datetime_utc_now
 
-from tradeexecutor.testing.multi_vault_simulation import stop_multi_vault_simulation
-from tradeexecutor.testing.multi_vault_start import MultiVaultStartDriver
+from tradeexecutor.testing.multi_vault_start import MultiVaultStartDriver, deployed_multi_vault
 from tradeexecutor.testing.lighter_core import FakeLighterCore, FAKE_TX_TYPE_MINT
 
 
@@ -30,25 +23,9 @@ pytestmark = [
 
 @pytest.fixture()
 def driver() -> Iterator[MultiVaultStartDriver]:
-    """Deploy through the existing shell runbook; no vault trades are pre-created."""
-    repository = Path(__file__).resolve().parents[2]
-    with tempfile.TemporaryDirectory(prefix="multi-vault-start-") as directory:
-        run = MultiVaultStartDriver(repository, Path(directory) / "run", Path(directory) / "simulation")
-        environment = {k: v for k, v in os.environ.items() if k not in {"HYPERSYNC_API_KEY", "TELEGRAM_API_KEY", "TELEGRAM_CHAT_ID", "DERIVE_OWNER_PRIVATE_KEY", "DERIVE_SESSION_PRIVATE_KEY"}}
-        environment.update({"SIMULATE": "true", "MULTI_VAULT_RUN_DIR": str(run.directory), "MULTI_VAULT_SIM_DIR": str(run.simulation_directory), "MULTI_VAULT_PYTHON": sys.executable, "LOG_LEVEL": "warning"})
-        try:
-            # The shell heartbeat's sleep can outlive its parent and retain
-            # a pipe. A diagnostic log avoids waiting for pipe EOF after exit.
-            with (Path(directory) / "deployment.log").open("w+") as output:
-                result = subprocess.run(["bash", "scripts/lagoon/manual-multi-vault-cli.sh", "--deploy", "--targets", ""], cwd=repository, env=environment, stdout=output, stderr=subprocess.STDOUT, text=True, timeout=1200)
-                output.seek(0)
-                assert result.returncode == 0, output.read()[-16000:]
-            tip = max(run.simulation.get_web3(chain).eth.get_block("latest")["timestamp"] for chain in (1, 42161))
-            run.advance(max(1, calendar.timegm(native_datetime_utc_now().timetuple()) - tip + 1))
-            yield run
-        finally:
-            if (run.simulation_directory / "simulation.json").exists():
-                stop_multi_vault_simulation(run.simulation_directory)
+    """Deploy through the shared fixed-fork runbook fixture."""
+    with deployed_multi_vault() as run:
+        yield run
 
 
 def test_multi_vault_start_lifecycle(driver: MultiVaultStartDriver) -> None:

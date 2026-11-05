@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Optional
 
 import typer
+import pandas as pd
 from eth_defi.compat import native_datetime_utc_now
 from eth_defi.hotwallet import HotWallet
 from tabulate import tabulate
@@ -17,6 +18,7 @@ from tradeexecutor.exchange_account.lighter_cleanup import check_lighter_vault_a
 from tradeexecutor.ethereum.lighter.transfer_verification import reconcile_verified_lighter_transfers
 from tradeexecutor.exchange_account.lighter_operator import load_lighter_signers
 from tradeexecutor.strategy.account_correction import check_accounts as _check_accounts
+from tradeexecutor.cli.account_check import configure_account_check, pending_account_trades, pending_account_assets, check_pool_accounts
 
 from ...ethereum.lagoon.vault import LagoonVaultSyncModel
 from ...state.state import UncleanState
@@ -26,7 +28,7 @@ from ...strategy.description import StrategyExecutionDescription
 from ...strategy.execution_context import ExecutionContext, ExecutionMode
 from ...strategy.execution_model import AssetManagementMode
 from ...strategy.run_state import RunState
-from ...strategy.strategy_module import StrategyModuleInformation, read_strategy_module
+from ...strategy.strategy_module import read_strategy_module
 from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
 from ...strategy.universe_model import UniverseOptions
 from ..bootstrap import (
@@ -35,6 +37,8 @@ from ..bootstrap import (
     create_sync_model,
     create_web3_config,
     prepare_executor_id,
+    configure_default_chain,
+    resolve_deployment_file,
 )
 from ..log import setup_logging
 from . import shared_options
@@ -97,7 +101,8 @@ def check_accounts(
     assert web3config, "No RPC endpoints given. A working JSON-RPC connection is needed for check-wallet"
 
     # Check that we are connected to the chain strategy assumes
-    web3config.choose_single_chain()
+    mod = read_strategy_module(strategy_file)
+    configure_default_chain(web3config, mod)
 
     if private_key is not None:
         hot_wallet = HotWallet.from_private_key(private_key)
@@ -140,6 +145,9 @@ def check_accounts(
     assert not store.is_pristine(), f"State does not exists yet: {state_file}"
 
     state = store.load()
+    configure_account_check(sync_model, web3config, resolve_deployment_file(id, state_file), state)
+    routed_pending = pending_account_trades(state)
+    excluded_assets = pending_account_assets(state, routed_pending)
     verified_transfers = reconcile_verified_lighter_transfers(
         state,
         web3,
@@ -157,7 +165,11 @@ def check_accounts(
     def is_pending_lighter_transfer(trade: TradeExecution) -> bool:
         return trade.is_exchange_account_transfer_pending() and is_lighter_exchange_account_pair(trade.pair)
 
-    state.check_if_clean(ignore=is_pending_lighter_transfer)
+    state.check_if_clean(ignore=lambda trade: is_pending_lighter_transfer(trade) or trade in routed_pending)
+    for trade in routed_pending:
+        logger.error("Pending trade #%d (%s); affected assets unchecked; recover before correction", trade.trade_id, trade.get_status().value)
+    for asset in excluded_assets:
+        logger.warning("Unchecked pending asset: chain %s %s (%s)", asset.chain_id, asset.token_symbol, asset.address)
     pending = [trade for position in state.portfolio.get_open_and_frozen_positions() for trade in position.trades.values() if is_pending_lighter_transfer(trade)]
     for trade in pending:
         logger.error(
@@ -167,8 +179,6 @@ def check_accounts(
             trade.get_status().value,
             ", ".join(get_lighter_trade_hashes(trade)) or "no recorded hash",
         )
-
-    mod: StrategyModuleInformation = read_strategy_module(strategy_file)
 
     client, routing_model = create_client(
         mod=mod,
@@ -208,6 +218,8 @@ def check_accounts(
 
     logger.info("Universe contains %d pairs", universe.data_universe.pairs.get_count())
     logger.info("Reserve assets are: %s", universe.reserve_assets)
+    configure_account_check(sync_model, web3config, resolve_deployment_file(id, state_file), state, universe)
+    logger.info("Coverage: recorded holdings, configured cash and small-universe tokens; arbitrary untracked tokens are not discovered")
 
     assert len(universe.reserve_assets) == 1, "Need exactly one reserve asset"
 
@@ -235,9 +247,15 @@ def check_accounts(
         state,
         sync_model,
         exchange_account_value_func=exchange_account_value_func,
-        check_clean=not pending,
+        check_clean=not (pending or routed_pending),
+        excluded_assets=excluded_assets,
     )
-    clean = clean and not pending
+    pool_clean, pool_df = check_pool_accounts(state, sync_model, universe)
+    # API observations have no EVM block. Keep integer block/chain identifiers
+    # as objects so the missing API cells do not display heights as floats.
+    df = pd.concat([df.astype(object), pool_df.astype(object)], ignore_index=False)
+    df = df.where(pd.notna(df), "")
+    clean = clean and not pending and not routed_pending and pool_clean
 
     # Every Lighter account a Lagoon Safe owns must be declared and tracked, or NAV misses it.
     if isinstance(sync_model, LagoonVaultSyncModel) and check_lighter_vault_accounts(sync_model.vault.safe_address, state, universe):

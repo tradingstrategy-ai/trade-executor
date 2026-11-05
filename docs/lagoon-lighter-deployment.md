@@ -272,8 +272,27 @@ cost includes the consumed idle collateral, so investing it does not create
 profit. If no pool holding remains but idle collateral is needed to fund an
 investor redemption, settlement defers while trading continues: recover it through the pool
 purchase/exit lifecycle. Idle dust is measured, not automatically written off.
-`check-accounts` and `correct-accounts` support one chain only; reconcile a
-multichain vault with `check-wallet`, the state and the NAV.
+Run `check-accounts` with both custody RPCs and the sibling deployment artefact.
+It needs no private key, checks recorded ERC-20 holdings and configured cash on
+each chain, and compares public Lighter pool shares and idle collateral. Reports
+include custody and observation details; they do not discover arbitrary tokens
+outside the strategy's checked assets. Keep `check-wallet` and NAV reconciliation
+as independent evidence.
+
+`correct-accounts` can reconcile settled cash and ERC-20 shares after confirmation
+and final validation. It refuses unresolved bridge/vault/pool operations, missing
+observations, unexplained pool differences and unreconciled investor flows. Use
+the existing startup/settlement recovery paths or evidence-led manual repair,
+then rerun inspection; use `lagoon-settle` for investor flows. A missing destination
+balance does not prove bridge capital was lost. Multichain `--transfer-away` and
+`--process-redemption` are refused. Satellites must use the hub's Safe address.
+If an investor flow and an unexplained custody discrepancy coexist, investigate
+and reconcile the custody evidence before posting NAV or settling investors.
+Specialised HyperCore recovery remains available while investor flows wait.
+Exchange-account corrections record their successful API equity observation;
+market movement during confirmation does not undo that snapshot. ERC-20 reserve
+and pool observations still require final validation.
+See the [coverage and acceptance record](plans/multichain-account-checks.md).
 
 [`scripts/lagoon/manual-multi-vault-cli.sh`](../scripts/lagoon/manual-multi-vault-cli.sh)
 is the runbook: it deploys an Arbitrum vault and opens and closes a Lighter

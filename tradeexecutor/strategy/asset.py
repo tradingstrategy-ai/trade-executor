@@ -254,6 +254,12 @@ def build_expected_asset_map(
                         logger.info("Discovered asset %s in the pair universe", asset.token_symbol)
 
         else:
+            # Configured bridge cash is a finite custody obligation even when
+            # the directional universe is too large for token enumeration.
+            for dex_pair in pair_universe.iterate_pairs():
+                pair = translate_trading_pair(dex_pair)
+                if pair.is_cctp_bridge() and pair.base not in mappings:
+                    mappings[pair.base] = AssetToPositionsMapping(asset=pair.base)
             logger.info(
                 "Universe is not added to the accounting checks, because it is %d pairs and threshold is %d pairs",
                 pair_universe.get_count(),

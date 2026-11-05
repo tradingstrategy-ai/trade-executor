@@ -70,7 +70,7 @@ def refresh_lighter_idle_collateral(
     holdings = {int(row["public_pool_index"]): int(row["shares_amount"]) for row in account["shares"] if row["shares_amount"]}
     recorded = {p.pair.get_lighter_pool_index(): int(p.get_quantity()) for p in positions if p.get_quantity()}
     if holdings != recorded:
-        raise VaultRequestInvariantViolation("Lighter pool holdings differ from executor state; reconcile before posting NAV")
+        raise VaultRequestInvariantViolation(f"Lighter pool holdings differ from executor state: expected raw shares {recorded}, observed {holdings}; reconcile before posting NAV")
     pricing = LighterPoolPricing(session)
     valuator = LighterPoolValuator(pricing, account_index=account_index)
     for position in positions:

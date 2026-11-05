@@ -21,8 +21,11 @@ from eth_defi.token import USDC_WHALE
 from pytest import CaptureFixture, LogCaptureFixture, MonkeyPatch
 
 from tradeexecutor.state.balance_update import BalanceUpdateCause
+from tradeexecutor.state.identifier import AssetIdentifier
+from tradeexecutor.cli.commands import correct_accounts as correction_command
 from tradeexecutor.state.position import TradingPosition
-from tradeexecutor.state.state import State
+from tradeexecutor.state.state import State, UncleanState
+from tradeexecutor.exchange_account.sync_model import ExchangeAccountSyncModel
 from tradeexecutor.state.trade import TradeFlag
 from tradeexecutor.testing.lighter_scripted_transfers import SCRIPTED_STEP_KEY, SCRIPTED_TRANSFER_UNIT_USDC
 from tradeexecutor.testing.lighter_tutorial import (
@@ -113,7 +116,7 @@ def _run_and_read(tutorial: Tutorial, args: list[str], caplog: LogCaptureFixture
 
 
 @pytest.mark.timeout(900)
-def test_cli_lighter_sub_account_balance_corrections(tutorial: Tutorial, caplog: LogCaptureFixture, capsys: CaptureFixture[str]) -> None:
+def test_cli_lighter_sub_account_balance_corrections(tutorial: Tutorial, caplog: LogCaptureFixture, capsys: CaptureFixture[str], monkeypatch: MonkeyPatch) -> None:
     """Report and record sub-account balance changes made outside the executor.
 
     ``check-accounts`` must name each mismatched sub-account, and
@@ -129,7 +132,7 @@ def test_cli_lighter_sub_account_balance_corrections(tutorial: Tutorial, caplog:
     6. Interrupt the next scripted transfer: check-accounts reports it as pending, correct-accounts --dry-run previews its reconciliation without saving, and correct-accounts completes it.
     7. Run the last scripted cycle, which drains every account, and check that check-accounts passes.
     8. Freeze a sub-account position and credit its account: correct-accounts revalues the frozen position without opening a second one.
-    9. Stop declaring the sub-accounts: correct-accounts closes the drained one, reports the funded one with the drain command, and closes it once it holds only Lighter dust.
+    9. Stop declaring the sub-accounts: refuse without saving while one is funded, then close both on a clean retry once only Lighter dust remains.
     """
     # 1. Deploy a vault with two sub-accounts, initialise state, subscribe and fund both sub-accounts with the scripted strategy.
     deploy(tutorial, "Lighter corrections", "LCT")
@@ -165,7 +168,55 @@ def test_cli_lighter_sub_account_balance_corrections(tutorial: Tutorial, caplog:
     assert "LIGHTER-trend-USDC" in report and "LIGHTER-arb-USDC" in report
 
     # 4. Run correct-accounts and check each sub-account position carries one balance update for its net change, in the accounting log, with the master unchanged.
-    run_cli(["correct-accounts"], get_cli_environment(tutorial))
+    # Simulate mark-to-market movement on a later observation. Successful API
+    # sync books one snapshot; price drift during confirmation must not discard
+    # it. Real Safe reserve checks still run and a later check reads fresh equity.
+    original_factory = correction_command.create_exchange_account_value_func
+
+    def drifting_factory(*args, **kwargs):
+        reader = original_factory(*args, **kwargs)
+        reads = {}
+
+        def drifting_equity(pair, **read_kwargs):
+            key = pair.get_exchange_account_id()
+            reads[key] = reads.get(key, 0) + 1
+            amount = reader(pair, **read_kwargs)
+            return amount if reads[key] == 1 else amount + Decimal(10)
+
+        return drifting_equity
+
+    with monkeypatch.context() as drift:
+        drift.setattr(correction_command, "create_exchange_account_value_func", drifting_factory)
+        run_cli(["correct-accounts"], get_cli_environment(tutorial))
+
+    # Non-Lighter backends may swallow a transport failure in their shared
+    # daemon sync. Model that existing policy here without provisioning another
+    # exchange, while retaining the real CLI, state store and Safe. The command
+    # must refuse the failed observation even if sync_positions returns normally.
+    def unavailable_factory(*args, **kwargs):
+        def unavailable_equity(pair, **read_kwargs):
+            raise TimeoutError("simulated exchange observation unavailable")
+        return unavailable_equity
+
+    def swallowing_sync(self, *, timestamp, state, strategy_universe, pricing_model):
+        for position in state.portfolio.get_open_and_frozen_positions():
+            if position.is_exchange_account():
+                try:
+                    self.account_value_func(position.pair)
+                except TimeoutError:
+                    continue
+        return []
+
+    saved_equity = tutorial.state_file.read_bytes()
+    # Missing credentials can also produce no reader at all. Neither that
+    # condition nor a swallowed transport error certifies a clean account.
+    for reader_factory in (unavailable_factory, lambda *args, **kwargs: None):
+        with monkeypatch.context() as unavailable:
+            unavailable.setattr(correction_command, "create_exchange_account_value_func", reader_factory)
+            unavailable.setattr(ExchangeAccountSyncModel, "sync_positions", swallowing_sync)
+            with pytest.raises(UncleanState, match="Exchange equity observation unavailable"):
+                run_cli(["correct-accounts"], get_cli_environment(tutorial))
+        assert tutorial.state_file.read_bytes() == saved_equity
     state = State.read_json_file(tutorial.state_file)
     positions = _positions_by_account(state)
     recorded_ids = {ref.balance_event_id for ref in state.sync.accounting.balance_update_refs}
@@ -179,6 +230,19 @@ def test_cli_lighter_sub_account_balance_corrections(tutorial: Tutorial, caplog:
         assert update.balance_update_id in recorded_ids
     assert set(positions[master].balance_updates) == updates_before[master]
     assert {index: position.get_quantity() for index, position in positions.items()} == {index: fake.get_account(index).collateral for index in (master, trend, arb)}
+
+    # The same API-only strategy can use virtual reserve metadata outside a
+    # Lagoon Safe. Its placeholder is not an ERC-20 contract. Use the real fork
+    # and the existing fake exchange account, changing only its ledger context;
+    # neither the EVM nor the sequencer changes during this isolated command.
+    saved_custodial_state = tutorial.state_file.read_bytes()
+    api_only = State.read_json_file(tutorial.state_file)
+    reserve = api_only.portfolio.get_default_reserve_position()
+    reserve.asset = AssetIdentifier(1, "0x0000000000000000000000000000000000000001", "USDC", 6)
+    api_only.write_json_file(tutorial.state_file)
+    run_cli(["correct-accounts"], get_cli_environment(tutorial, ASSET_MANAGEMENT_MODE="hot_wallet"))
+    assert State.read_json_file(tutorial.state_file).portfolio.get_default_reserve_position().asset == reserve.asset
+    tutorial.state_file.write_bytes(saved_custodial_state)
 
     # 5. Check that check-accounts passes, that the NAV matches Lighter, and that the next start cycle continues the script from the corrected balances.
     run_cli(["check-accounts"], get_cli_environment(tutorial))
@@ -243,14 +307,20 @@ def test_cli_lighter_sub_account_balance_corrections(tutorial: Tutorial, caplog:
     trend_position.frozen_at = None
     state.write_json_file(tutorial.state_file)
 
-    # 9. Stop declaring the sub-accounts: correct-accounts closes the drained one, reports the funded one with the drain command, and closes it once it holds only Lighter dust.
+    # 9. Stop declaring the sub-accounts: refuse without saving while one is funded, then close both on a clean retry once only Lighter dust remains.
     master_only = {"STRATEGY_FILE": str(STRATEGY_DIR / "minimal_lighter_strategy.py"), "LIGHTER_ACCOUNT_INDEX": str(master)}
     code, report = _run_and_read(tutorial, ["check-accounts"], caplog, capsys, **master_only)
     assert code == 1 and f"positions track Lighter accounts {sorted([trend, arb])} the strategy does not declare" in report
+    uncorrected = tutorial.state_file.read_bytes()
     code, report = _run_and_read(tutorial, ["correct-accounts"], caplog, capsys, **master_only)
     assert code == 1 and f"lighter-move-funds --lighter-account-index {trend}" in report
     state = State.read_json_file(tutorial.state_file)
-    assert set(_positions_by_account(state)) == {master, trend}, "The drained, undeclared account was closed"
+    # An unresolved funded account makes final validation fail. Ordinary
+    # corrections, including closing the drained sibling, stay staged until
+    # the complete account is clean; verified transfer checkpoints above are
+    # still preserved by their existing recovery path.
+    assert tutorial.state_file.read_bytes() == uncorrected
+    assert set(_positions_by_account(state)) == {master, trend, arb}
     fake.get_account(trend).collateral = Decimal("0.4")
     run_cli(["correct-accounts"], get_cli_environment(tutorial, **master_only))
     state = State.read_json_file(tutorial.state_file)

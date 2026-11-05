@@ -47,7 +47,6 @@ from eth_defi.cctp.testing import forge_attestation, replace_attester_on_fork
 from eth_defi.cctp.transfer import get_message_transmitter_v2
 from eth_defi.provider.anvil import fork_network_anvil, fund_erc20_on_anvil, is_anvil
 from eth_defi.provider.multi_provider import create_multi_provider_web3
-from eth_defi.testing.fork_blocks import ETHEREUM_MIDNIGHT_BLOCK
 from eth_defi.token import USDC_NATIVE_TOKEN, fetch_erc20_details
 from web3 import Web3
 from web3.logs import DISCARD
@@ -63,6 +62,11 @@ logger = logging.getLogger(__name__)
 #: simulation exercises the implementation live vaults use. Shared with
 #: eth-defi's Atoma tests, whose warmed RPC cache covers it.
 ARBITRUM_ATOMA_FORK_BLOCK = 520_900_000
+
+#: Keep this fixture stable even when eth-defi advances its shared midnight
+#: block. Ethereum and Arbitrum are historical snapshots from different dates;
+#: the driver synchronises their clocks before lifecycle assertions.
+ETHEREUM_MULTI_VAULT_FORK_BLOCK = 25_598_869
 
 #: Simulation description file inside the simulation directory.
 SIMULATION_FILE = "simulation.json"
@@ -146,7 +150,7 @@ def run_simulation_host(directory: Path) -> None:
     launches = {}
     try:
         launches["arbitrum"] = fork_network_anvil(os.environ["JSON_RPC_ARBITRUM"], fork_block_number=ARBITRUM_ATOMA_FORK_BLOCK)
-        launches["ethereum"] = fork_network_anvil(os.environ["JSON_RPC_ETHEREUM"], fork_block_number=ETHEREUM_MIDNIGHT_BLOCK)
+        launches["ethereum"] = fork_network_anvil(os.environ["JSON_RPC_ETHEREUM"], fork_block_number=ETHEREUM_MULTI_VAULT_FORK_BLOCK)
         (directory / FORKS_FILE).write_text(json.dumps({slug: launch.json_rpc_url for slug, launch in launches.items()}))
         logger.info("Simulation forks ready: %s", {slug: launch.json_rpc_url for slug, launch in launches.items()})
         stop.wait()

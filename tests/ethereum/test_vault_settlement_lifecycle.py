@@ -27,6 +27,7 @@ from tradeexecutor.state.identifier import (
     TradingPairKind,
 )
 from tradeexecutor.state.state import State
+from tradeexecutor.cli.account_check import pending_account_trades, pending_account_assets
 from tradeexecutor.state.trade import TradeExecution, TradeStatus, TradeType
 from tradeexecutor.ethereum.vault.settlement_estimate import refresh_vault_settlement_estimate
 
@@ -802,6 +803,7 @@ def test_vault_settlement_retry_claimable(
     assert len(resolved) == 1
     assert trade.get_status() == TradeStatus.success
     assert trade.vault_settlement_pending_at is None
+
     assert trade.executed_reserve == pytest.approx(Decimal(100))
     assert trade.executed_quantity == pytest.approx(Decimal("96.15"))
     assert mock_tx.block_number == 100
@@ -1408,6 +1410,11 @@ def test_vault_settlement_retry_reclaimable(
     assert len(resolved) == 1
     assert trade.get_status() == TradeStatus.failed
     assert trade.vault_settlement_pending_at is None
+
+    # A confirmed reclaim restores cash and ends the investment. Its failed
+    # trade remains historical evidence, not an outstanding custody operation.
+    assert trade not in pending_account_trades(state)
+    assert not pending_account_assets(state, pending_account_trades(state))
 
     # 6. Verify reserves restored (mark_trade_failed calls adjust_reserves for buys)
     cash_after = float(state.portfolio.get_cash())

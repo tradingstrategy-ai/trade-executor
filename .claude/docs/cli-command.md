@@ -92,7 +92,7 @@ Typical pattern:
 4. Call `setup_logging()`
 5. Prepare cache with `prepare_cache()` if datasets or token caches are needed
 6. Build `web3config = create_web3_config(...)`
-7. Choose the active chain with `web3config.choose_single_chain()` or `set_default_chain(...)`
+7. Choose the active chain from the loaded strategy with `configure_default_chain()` for multichain commands; use `choose_single_chain()` only when the command requires exactly one connection
 8. Build sync model, execution model, client, universe, pricing, routing as needed
 
 Representative code:
