@@ -1,6 +1,7 @@
 """Black-box command coverage for writer ownership and read-only access."""
 
 import os
+import runpy
 import subprocess
 import sys
 from pathlib import Path
@@ -14,7 +15,9 @@ from tradeexecutor.cli.commands import correct_accounts as correct_accounts_comm
 from tradeexecutor.cli.commands import blacklist as blacklist_command
 from tradeexecutor.cli.commands import perform_test_trade as test_trade_command
 from tradeexecutor.cli.main import app
+from tradeexecutor.ethereum.vault import hyperliquid_cleanup
 from tradeexecutor.state.state import State
+from tradeexecutor.state.lock import StateFileLocked, state_file_lock
 from tradeexecutor.state.store import JSONFileStore
 from tradeexecutor.testing.state_lock import hold_state_lock_in_subprocess
 
@@ -24,7 +27,7 @@ def test_cli_state_writer_conflicts(tmp_path: Path, monkeypatch: pytest.MonkeyPa
 
     1. Prepare a state and hold its lock in another process.
     2. Invoke daemon, local, backtest and delegated writers and verify clean refusal.
-    3. Read positions during ownership, then prune successfully after release.
+    3. Read positions during ownership, then run maintenance after release.
     """
     # 1. Prepare a state and hold its lock in another process.
     # Isolate CLI defaults from local credentials; no RPC or trading is needed.
@@ -103,13 +106,58 @@ def test_cli_state_writer_conflicts(tmp_path: Path, monkeypatch: pytest.MonkeyPa
         assert "Stop the other executor" in cleanup.stderr
         assert "Traceback" not in cleanup.stderr
 
-        # 3. Read positions during ownership, then prune successfully after release.
+        # 3. Read positions during ownership, then run maintenance after release.
         result = runner.invoke(app, ["show-positions", "--state-file", str(path)])
         assert result.exit_code == 0, result.exception
         assert "Lock test" in result.output
     result = runner.invoke(app, ["prune-state", *common, "--unit-testing"])
     assert result.exit_code == 0, result.exception
     assert "Pruning completed successfully" in result.output
+    # Execute the real script entry point but mock financial operations: only
+    # configuration parsing, canonical paths and lock ownership are under test.
+    expected_settings = {
+        "state_file": path,
+        "strategy_file": Path("unused-strategy.py"),
+        "private_key": "not-a-signing-key",
+        "json_rpc_hyperliquid": "https://rpc.invalid",
+        "vault_address": "0x" + "11" * 20,
+        "vault_adapter_address": "0x" + "22" * 20,
+        "trading_strategy_api_key": "unused-api-key",
+        "network": "testnet",
+        "auto_approve": True,
+        "cache_path": tmp_path / "cleanup-cache",
+        "unit_testing": True,
+        "log_level": "warning",
+    }
+
+    def fake_execute(**settings: object) -> None:
+        """Check configuration and ownership without running financial actions."""
+        assert settings == expected_settings
+        with pytest.raises(StateFileLocked):
+            with state_file_lock(path):
+                pytest.fail("The cleanup driver ran without writer ownership")
+
+    execute = Mock(side_effect=fake_execute)
+    monkeypatch.setattr(hyperliquid_cleanup, "run_hyperliquid_cleanup", execute)
+    for key, value in {
+        "STATE_FILE": str(state_directory / "lock-test.json"),
+        "STRATEGY_FILE": "unused-strategy.py",
+        "PRIVATE_KEY": "not-a-signing-key",
+        "JSON_RPC_HYPERLIQUID": "https://rpc.invalid",
+        "VAULT_ADDRESS": "0x" + "11" * 20,
+        "VAULT_ADAPTER_ADDRESS": "0x" + "22" * 20,
+        "TRADING_STRATEGY_API_KEY": "unused-api-key",
+        "NETWORK": "testnet",
+        "AUTO_APPROVE": "yes",
+        "CACHE_PATH": str(tmp_path / "cleanup-cache"),
+        "UNIT_TESTING": "true",
+        "LOG_LEVEL": "warning",
+    }.items():
+        monkeypatch.setenv(key, value)
+    runpy.run_path(str(cleanup_script), run_name="__main__")
+    execute.assert_called_once()
+    with state_file_lock(path):
+        pass
 
 
 def test_cli_non_writing_modes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

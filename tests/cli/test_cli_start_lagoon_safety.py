@@ -16,19 +16,6 @@ from tradeexecutor.strategy.dummy import DummyExecutionModel
 from tradeexecutor.strategy.sync_model import DummySyncModel
 
 
-class FakeWeb3Config:
-    """Provide the minimal Web3 configuration needed for CLI start-up tests."""
-
-    def __init__(self) -> None:
-        self._default = SimpleNamespace(eth=SimpleNamespace(chain_id=137))
-
-    def has_any_connection(self) -> bool:
-        return True
-
-    def get_default(self):
-        return self._default
-
-
 @pytest.mark.parametrize("interrupt", [False, True])
 def test_cli_start_enables_lagoon_frozen_position_safety_by_default(
     tmp_path: Path,
@@ -42,20 +29,22 @@ def test_cli_start_enables_lagoon_frozen_position_safety_by_default(
     3. Verify the safety flag and lock ownership during execution and crash sleep.
     4. Verify writer ownership is released when the command exits.
     """
-    class FakeLagoonVaultSyncModel(DummySyncModel):
-        def __init__(self) -> None:
-            self.abort_lagoon_settlement_on_frozen_positions = False
-
+    # 1. Patch CLI start-up so it runs offline with a fake Lagoon sync model.
+    # DummySyncModel stands in for LagoonVaultSyncModel so the real isinstance
+    # branch sets the safety flag; mocking Web3 avoids all RPC connections.
     strategy_path = Path(os.path.join(os.path.dirname(__file__), "..", "..", "strategies", "test_only", "quickswap_dummy.py"))
     state_file = tmp_path / "lagoon_safety.json"
     cache_path = tmp_path / "cache"
-    fake_sync_model = FakeLagoonVaultSyncModel()
+    fake_sync_model = DummySyncModel()
+    fake_sync_model.abort_lagoon_settlement_on_frozen_positions = False
+    fake_web3_config = mock.Mock()
+    fake_web3_config.has_any_connection.return_value = True
+    fake_web3_config.get_default.return_value = SimpleNamespace(eth=SimpleNamespace(chain_id=137))
 
     def fake_create_execution_and_sync_model(**kwargs):
         return DummyExecutionModel(SimpleNamespace()), fake_sync_model, None, None
 
     def fake_setup(self: ExecutionLoop) -> State:
-        # 1. Patch CLI start-up so it runs offline with a fake Lagoon sync model.
         state = self.init_state()
         self.runner = SimpleNamespace(check_accounts=lambda universe, state: None)
         self.universe_model = SimpleNamespace()
@@ -79,8 +68,8 @@ def test_cli_start_enables_lagoon_frozen_position_safety_by_default(
                 pytest.fail("start released ownership during crash-status sleep")
         raise RuntimeError("Stop crash-status sleep")
 
-    monkeypatch.setattr(start_module, "LagoonVaultSyncModel", FakeLagoonVaultSyncModel)
-    monkeypatch.setattr(start_module, "create_web3_config", lambda **kwargs: FakeWeb3Config())
+    monkeypatch.setattr(start_module, "LagoonVaultSyncModel", DummySyncModel)
+    monkeypatch.setattr(start_module, "create_web3_config", lambda **kwargs: fake_web3_config)
     monkeypatch.setattr(start_module, "configure_default_chain", lambda web3config, mod: None)
     monkeypatch.setattr(start_module, "create_execution_and_sync_model", fake_create_execution_and_sync_model)
     monkeypatch.setattr(start_module, "create_client", lambda **kwargs: (object(), None))

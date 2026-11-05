@@ -26,6 +26,7 @@ from tradeexecutor.cli.bootstrap import locked_state_file
 from ..bootstrap import prepare_executor_id, prepare_cache_and_token_cache, create_web3_config, create_state_store, \
     create_execution_and_sync_model, create_lighter_key_management, resolve_deployment_file, log_multichain_deployment_information, update_strategy_file_deployment_info, refresh_lagoon_guard_migration_state, create_metadata, create_approval_model, create_client, configure_default_chain
 from ...exchange_account.derive import DeriveNetwork
+from ...exchange_account.utils import create_derive_value_func_from_credentials, resolve_derive_addresses
 from ..log import setup_logging, setup_discord_logging, setup_logstash_logging, setup_file_logging, setup_telegram_logging, setup_sentry_logging
 from ..loop import ExecutionLoop
 from ..result import display_backtesting_results
@@ -51,6 +52,12 @@ from ...strategy.strategy_cycle_trigger import StrategyCycleTrigger
 from ...strategy.strategy_module import read_strategy_module
 from ...strategy.universe_model import UniverseOptions
 from ...utils.timer import timed_task
+
+# ipdb is a development dependency; production images can still run the daemon.
+try:
+    import ipdb
+except ImportError:
+    ipdb = None
 
 try:
     from ...webhook.server import create_webhook_server
@@ -423,7 +430,6 @@ def start(
             # Wire up exchange account value function if Derive credentials provided
             derive_addresses = None
             if derive_session_private_key:
-                from ...exchange_account.utils import create_derive_value_func_from_credentials, resolve_derive_addresses
                 account_value_func = create_derive_value_func_from_credentials(
                     derive_session_private_key=derive_session_private_key,
                     derive_owner_private_key=derive_owner_private_key,
@@ -820,7 +826,8 @@ def start(
 
             # Debug exceptions in production
             if port_mortem_debugging:
-                import ipdb
+                if ipdb is None:
+                    raise ImportError("Post-mortem debugging requires the ipdb development dependency")
                 ipdb.post_mortem()
 
             running_time = native_datetime_utc_now() - started_at

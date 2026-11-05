@@ -22,7 +22,7 @@ from eth_defi.gas import GasPriceMethod
 from eth_defi.hotwallet import HotWallet
 from web3 import Web3
 
-from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
+from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault, LagoonSatelliteVault
 from eth_defi.vault.base import VaultSpec
 from eth_defi.velvet import VelvetVault
 from tradeexecutor.ethereum.lagoon.execution import LagoonExecution
@@ -74,7 +74,8 @@ from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_valuation import (
 )
 from tradeexecutor.ethereum.velvet.execution import VelvetExecution
 from tradeexecutor.ethereum.velvet.vault import VelvetVaultSyncModel
-from tradeexecutor.ethereum.web3config import Web3Config, get_rpc_env_var_name
+from tradeexecutor.ethereum.web3config import TEST_CHAIN_IDS, Web3Config, get_rpc_env_var_name
+from tradeexecutor.ethereum.token_cache import get_default_token_cache
 from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 from tradeexecutor.state.metadata import Metadata, OnChainData
 from tradeexecutor.state.deployment_info import DeploymentInfo, DeploymentInfoChange
@@ -786,10 +787,6 @@ def create_execution_and_sync_model(
         if isinstance(execution_model, LagoonExecution):
             satellite_modules = resolve_satellite_modules(deployment_file)
             if satellite_modules:
-                from eth_defi.erc_4626.vault_protocol.lagoon.vault import (
-                    LagoonSatelliteVault,
-                )
-
                 # The Safe address is shared across all chains (CREATE2)
                 safe_address = sync_model.vault.safe_address
                 satellite_vaults = {}
@@ -974,8 +971,6 @@ def prepare_token_cache(
     :return:
         Initialised token disk cache instance
     """
-
-    from tradeexecutor.ethereum.token_cache import get_default_token_cache
 
     assert cache_path, "cache_path must be provided"
     assert cache_path.exists(), (
@@ -1414,8 +1409,6 @@ def check_universe_chains_have_rpc(
     if web3config is None:
         return
 
-    from tradeexecutor.ethereum.web3config import TEST_CHAIN_IDS, get_rpc_env_var_name
-
     configured_chains = set(web3config.connections.keys())
 
     # Skip check when running on test chains (e.g. Anvil forks of mainnet)
@@ -1546,8 +1539,6 @@ def check_universe_contracts_resolve(
     """
     if web3config is None or universe is None:
         return
-
-    from tradeexecutor.ethereum.web3config import TEST_CHAIN_IDS
 
     configured_chains = set(web3config.connections.keys())
 

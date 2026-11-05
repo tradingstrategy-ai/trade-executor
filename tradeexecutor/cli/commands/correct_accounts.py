@@ -46,6 +46,8 @@ from tradeexecutor.strategy.account_correction import (
     check_accounts,
     correct_accounts as _correct_accounts,
     create_missing_exchange_account_positions,
+    create_missing_vault_positions,
+    create_missing_cctp_bridge_positions,
     preflight_state_for_account_correction,
     UnknownTokenPositionFix,
 )
@@ -68,6 +70,7 @@ from ...state.repair import close_hypercore_dust_positions
 from ...state.position import TradingPosition
 from ...state.identifier import TradingPairIdentifier
 from ...state.state import State, UncleanState
+from ...state.valuation import ValuationUpdate
 from ...state.trade import (
     HYPERCORE_ACCOUNTING_RECONCILIATION_REQUIRED_KEY,
     HYPERCORE_DEPOSIT_CAPITAL_AT_RISK_KEY,
@@ -86,7 +89,7 @@ from ...strategy.execution_model import AssetManagementMode
 from . import shared_options
 from ...strategy.run_state import RunState
 from ...strategy.strategy_module import StrategyModuleInformation, read_strategy_module
-from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
+from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel, translate_trading_pair
 from ...strategy.universe_model import UniverseOptions
 from ...utils.blockchain import get_block_timestamp
 
@@ -308,8 +311,6 @@ def _sync_hypercore_vault_positions(
     if not asset_management_mode.is_vault() or universe is None:
         return False
 
-    from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair
-
     has_vault_pairs = any(
         translate_trading_pair(p).is_hyperliquid_vault()
         for p in universe.data_universe.pairs.iterate_pairs()
@@ -319,9 +320,6 @@ def _sync_hypercore_vault_positions(
 
     safe_address = sync_model.get_token_storage_address()
     chain_id = web3.eth.chain_id
-
-    from tradeexecutor.strategy.account_correction import create_missing_vault_positions
-    from tradeexecutor.state.valuation import ValuationUpdate
 
     is_testnet = chain_id == 998
     api_url = HYPERLIQUID_TESTNET_API_URL if is_testnet else HYPERLIQUID_API_URL
@@ -1025,8 +1023,6 @@ def correct_accounts(
 
     # Auto-create CCTP bridge positions from universe before corrections
     # (so newly created positions are included in the on-chain balance check)
-    from tradeexecutor.strategy.account_correction import create_missing_cctp_bridge_positions
-
     logger.info("Checking for missing CCTP bridge positions in universe...")
     created_bridge_trades = create_missing_cctp_bridge_positions(
         strategy_universe=universe,

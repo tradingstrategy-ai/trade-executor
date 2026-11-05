@@ -422,6 +422,9 @@ use `locked_state_file()` around their complete working-state lifecycle.
 When auditing writer coverage, follow scripts that delegate to recovery helpers,
 even if the script contains no direct state save. Lock the script entry point;
 the same helper may also be called from an already-locked console session.
+Parse maintenance-script settings at the script entry point and pass them
+explicitly to recovery helpers. Keep environment-reading adapters out of
+protocol and execution modules.
 
 Contention exits immediately with status 1. Lock files remain beside the state
 JSON; kernel ownership is released automatically when the process dies. Never

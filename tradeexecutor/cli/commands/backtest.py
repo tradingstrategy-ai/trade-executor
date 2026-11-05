@@ -12,6 +12,7 @@ To read generated cprofile reports:
 
 """
 
+import cProfile
 import logging
 import os
 from pathlib import Path
@@ -147,7 +148,6 @@ def backtest(
         return result
 
     if python_profile_report:
-        import cProfile
         profiler = cProfile.Profile()
         print("Preparing to profile the backtest execution")
         result = profiler.runcall(loop)

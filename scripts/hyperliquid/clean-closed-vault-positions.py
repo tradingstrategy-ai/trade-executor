@@ -33,18 +33,31 @@ Console usage
 """
 
 import os
+from pathlib import Path
 
 import click
 
 from tradeexecutor.cli.bootstrap import locked_state_file
-from tradeexecutor.ethereum.vault.hyperliquid_cleanup import \
-    run_hyperliquid_cleanup_from_environment
+from tradeexecutor.ethereum.vault.hyperliquid_cleanup import run_hyperliquid_cleanup
 
 
 def main() -> None:
     """Run the Hyperliquid clean-up flow from environment variables."""
     with locked_state_file(os.environ["STATE_FILE"]) as state_file:
-        run_hyperliquid_cleanup_from_environment(state_file=state_file)
+        run_hyperliquid_cleanup(
+            state_file=state_file,
+            strategy_file=Path(os.environ["STRATEGY_FILE"]),
+            private_key=os.environ["PRIVATE_KEY"],
+            json_rpc_hyperliquid=os.environ["JSON_RPC_HYPERLIQUID"],
+            vault_address=os.environ["VAULT_ADDRESS"],
+            vault_adapter_address=os.environ["VAULT_ADAPTER_ADDRESS"],
+            trading_strategy_api_key=os.environ.get("TRADING_STRATEGY_API_KEY", ""),
+            network=os.environ.get("NETWORK", "mainnet"),
+            auto_approve=os.environ.get("AUTO_APPROVE", "").lower() in {"1", "true", "yes"},
+            cache_path=Path(os.environ["CACHE_PATH"]) if os.environ.get("CACHE_PATH") else None,
+            unit_testing=os.environ.get("UNIT_TESTING", "").lower() in {"1", "true", "yes"},
+            log_level=os.environ.get("LOG_LEVEL", "info"),
+        )
 
 
 if __name__ == "__main__":

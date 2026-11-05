@@ -102,6 +102,7 @@ import click
 from eth_defi.compat import native_datetime_utc_now
 from eth_defi.erc_4626.classification import create_vault_instance_autodetect
 from eth_defi.erc_4626.vault_protocol.gains.vault import OstiumVault, OstiumVersion
+from eth_defi.erc_4626.vault_protocol.gains.testing import force_ostium_v15_settlement
 from eth_defi.hotwallet import HotWallet
 from eth_defi.provider.anvil import fork_network_anvil, AnvilLaunch
 from eth_defi.provider.multi_provider import create_multi_provider_web3
@@ -402,8 +403,6 @@ def do_simulate_all(web3, hot_wallet, vault, arb_usdc, amount):
     Uses force_ostium_v15_settlement() to advance the Ostium settlement epoch
     on the Anvil fork, then settlement retry to claim.
     """
-    from eth_defi.erc_4626.vault_protocol.gains.testing import force_ostium_v15_settlement
-
     # Build universe and execution model
     strategy_universe, vault_pair = build_universe(vault, arb_usdc)
     tx_builder = HotWalletTransactionBuilder(web3, hot_wallet)
