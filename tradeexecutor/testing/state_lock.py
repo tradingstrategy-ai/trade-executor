@@ -1,4 +1,18 @@
-"""Small real-process harness for state locking tests and Compose smoke checks."""
+"""Real-process fixtures for executor state-lock contention and crash recovery.
+
+The fixture starts an isolated process group and waits for confirmed lock
+ownership before yielding. An optional forked worker acknowledges that its
+inherited lock handles have been closed, allowing tests to kill the owner
+without a readiness race. Fixture cleanup kills the whole isolated group.
+
+The same module can run in disposable Compose containers with only the shared
+state directory mounted for writing::
+
+    poetry run python -m tradeexecutor.testing.state_lock /state/example.json
+    poetry run python -m tradeexecutor.testing.state_lock /state/example.json --try-lock
+
+These entry points acquire locks only; they never load state or submit trades.
+"""
 
 import argparse
 import json
@@ -18,7 +32,26 @@ from tradeexecutor.state.lock import StateFileLocked, state_file_lock
 def hold_state_lock_in_subprocess(
     path: Path, *, fork_worker: bool = False,
 ) -> Iterator[tuple[subprocess.Popen, int | None]]:
-    """Wait for real ownership, then clean up the owner and any forked worker."""
+    """Start a separate lock owner and wait until it is ready for assertions.
+
+    Real processes exercise kernel exclusion and owner-death behaviour that a
+    mocked lock cannot establish. Cleanup kills the isolated process group,
+    including workers surviving an interrupted owner or failed readiness check.
+
+    :param path:
+        State path passed to the subprocess. Its parent directory must exist;
+        no state JSON is loaded or created.
+    :param fork_worker:
+        Whether to fork a worker that remains alive independently of the owner.
+        Readiness is reported after the worker closes inherited lock handles.
+    :return:
+        A context manager yielding ``(owner_process, worker_pid)``. The PID is
+        ``None`` when no worker was requested. The owner holds the lock on entry.
+    :raises TimeoutError:
+        Ownership is not confirmed within the readiness deadline.
+    :raises RuntimeError:
+        The subprocess exits before reporting ownership.
+    """
     command = [sys.executable, "-m", "tradeexecutor.testing.state_lock", str(path)]
     if fork_worker:
         command.append("--fork-worker")
@@ -48,7 +81,18 @@ def hold_state_lock_in_subprocess(
 
 
 def main() -> int:
-    """Hold a lock until terminated, or attempt one non-blocking acquisition."""
+    """Run the lock-fixture subprocess selected by command-line arguments.
+
+    The positional argument selects the state path. ``--fork-worker`` starts
+    the surviving-worker scenario; ``--try-lock`` releases ownership and exits
+    after acquisition. Otherwise the owner waits for process termination.
+    Successful acquisition emits one JSON readiness record on stdout; contention
+    emits the operator error on stderr without reading or changing the JSON.
+
+    :return:
+        Exit status 0 for a successful probe, or 1 for lock contention. Argument
+        parsing and other filesystem failures retain their normal exceptions.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("state_file", type=Path)
     parser.add_argument("--fork-worker", action="store_true")

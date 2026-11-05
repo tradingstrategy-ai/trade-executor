@@ -1,5 +1,7 @@
-"""Reinitialise a strategy state.
+"""Reconstruct executor state from the strategy deployment history.
 
+State writer ownership is acquired at the command boundary. See
+:func:`reset` for non-writing modes and contention behaviour.
 """
 import os
 import shutil
@@ -43,6 +45,17 @@ def reset(
 
     This command will start the internal ledger accounting from the scratch.
     All strategy live execution history is lost.
+
+    A writing invocation exclusively owns the state file through cleanup. If
+    another writer owns it, the command exits with status 1 before loading state or
+    submitting transactions. Stop the daemon before running a writing command.
+
+    :param state_file:
+        Executor JSON path, resolved before locking and used for all state
+        operations. CLI option help describes the remaining arguments and
+        environment variables.
+    :raises click.ClickException:
+        Another writer owns the selected state file.
     """
 
     global logger

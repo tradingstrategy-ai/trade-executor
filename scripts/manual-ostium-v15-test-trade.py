@@ -7,6 +7,10 @@ used by the ``start`` and ``perform-test-trade`` CLI commands.
 Self-contained: builds the trading universe from the on-chain vault contract
 without requiring a strategy module or TradingStrategy API key.
 
+Live deposit and claim actions own the selected state file from before loading
+their working state until the final save. Conflicting writers are refused.
+Status queries and fork simulations do not acquire that writer lock.
+
 Simulation mode
 ---------------
 
@@ -402,6 +406,20 @@ def do_simulate_all(web3, hot_wallet, vault, arb_usdc, amount):
 
     Uses force_ostium_v15_settlement() to advance the Ostium settlement epoch
     on the Anvil fork, then settlement retry to claim.
+
+    :param web3:
+        Anvil fork provider; settlement advancement uses test-only chain control.
+    :param hot_wallet:
+        Funded test signer used for every leg of the simulated round trip.
+    :param vault:
+        Ostium V1.5 vault instance on that fork.
+    :param arb_usdc:
+        Arbitrum USDC reserve asset identifier for the simulated portfolio.
+    :param amount:
+        Human-readable USDC amount used for the test deposit.
+    :return:
+        None. Prints lifecycle results and checks returned reserve balances;
+        the simulated executor state is kept in memory rather than saved.
     """
     # Build universe and execution model
     strategy_universe, vault_pair = build_universe(vault, arb_usdc)

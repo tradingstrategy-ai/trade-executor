@@ -1,4 +1,7 @@
-"""lagoon-reclaim-satellites command.
+"""Recover satellite Safe capital into the master Lagoon vault.
+
+State writer ownership is acquired at the command boundary. See
+:func:`lagoon_reclaim_satellites` for non-writing modes and contention behaviour.
 
 Consolidates capital scattered across multichain Lagoon satellite Safes back
 into the master vault Safe. This is the manual recovery counterpart to the
@@ -504,6 +507,19 @@ def lagoon_reclaim_satellites(
     Satellites are auto-discovered from the ``SATELLITE_MODULES`` env var or the
     ``{id}.deployment.json`` artifact written next to the state file by
     ``lagoon-deploy-vault``.
+
+    A writing invocation exclusively owns the state file through cleanup. If
+    another writer owns it, the command exits with status 1 before loading state or
+    submitting transactions. Stop the daemon before running a writing command.
+
+    The --dry-run and --simulate modes do not acquire writer ownership or submit transactions.
+
+    :param state_file:
+        Executor JSON path, resolved before locking and used for all state
+        operations. CLI option help describes the remaining arguments and
+        environment variables.
+    :raises click.ClickException:
+        Another writer owns the selected state file.
     """
     id = prepare_executor_id(id, strategy_file)
 

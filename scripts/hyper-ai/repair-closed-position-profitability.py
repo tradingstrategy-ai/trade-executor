@@ -3,6 +3,10 @@
 The command previews changes by default.  Pass ``--write`` to create a backup
 and atomically replace the local state file.
 
+Writing owns the adjacent state lock from before loading the working state
+through backup and final save. A conflicting writer is refused immediately.
+The default preview remains available while the daemon owns the state file.
+
 Local development::
 
     source .local-test.env && poetry run python scripts/hyper-ai/repair-closed-position-profitability.py state/hyper-ai.json
@@ -37,7 +41,22 @@ def format_usd(value: float) -> str:
 
 
 def main() -> None:
-    """Run the local state profitability repair."""
+    """Preview or apply historical profitability repairs from command-line inputs.
+
+    The positional argument selects the state JSON; repeated ``--position-id``
+    options limit the repair to selected closed positions. Without ``--write``
+    the command prints a preview without saving. Writing first acquires state
+    ownership, creates a numbered backup and saves through the existing store.
+
+    :return:
+        None. The command prints the proposed or applied repairs.
+    :raises click.ClickException:
+        Another writer owns the selected state file in write mode.
+    :raises SystemExit:
+        Argument validation or the repair's input validation fails.
+    :raises OSError:
+        The state, lock or backup files cannot be accessed.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "state_file", type=Path, help="Local trade-executor state JSON file"

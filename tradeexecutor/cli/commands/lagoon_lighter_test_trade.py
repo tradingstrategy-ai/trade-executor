@@ -1,4 +1,7 @@
-"""Run a manual Lighter trade round trip for an existing Lagoon vault.
+"""Run a funded Lighter trade round trip through a Lagoon vault.
+
+State writer ownership is acquired at the command boundary. See
+:func:`lagoon_lighter_test_trade` for non-writing modes and contention behaviour.
 
 The command is deliberately an operator test instead of a strategy execution
 path.  It moves a bounded amount of Safe-owned USDC to Lighter, opens and
@@ -554,6 +557,15 @@ def _claim_unless_paid(
     """
 
     def is_paid() -> bool:
+        """Check whether the recorded Lighter withdrawal has already reached the Safe.
+
+        Uses the captured claim amount and pre-withdrawal journal evidence so a
+        relayer-paid withdrawal is not claimed again.
+
+        :return:
+            True when payment is verified; False without withdrawal evidence or
+            while the recorded withdrawal remains unpaid.
+        """
         if "withdrawal_from_block" not in journal:
             return False
         return is_lighter_withdrawal_paid(
@@ -763,7 +775,21 @@ def lagoon_lighter_test_trade(
     ),
     auto_approve: bool = Option(False, envvar="AUTO_APPROVE"),
 ) -> None:
-    """Deposit, trade, withdraw and NAV-sync one funded Lagoon Lighter vault."""
+    """Deposit, trade, withdraw and NAV-sync one funded Lagoon Lighter vault.
+
+    A writing invocation exclusively owns the state file through cleanup. If
+    another writer owns it, the command exits with status 1 before loading state or
+    submitting transactions. Stop the daemon before running a writing command.
+
+    Simulation is unsupported and is rejected before any state change.
+
+    :param state_file:
+        Executor JSON path, resolved before locking and used for all state
+        operations. CLI option help describes the remaining arguments and
+        environment variables.
+    :raises click.ClickException:
+        Another writer owns the selected state file.
+    """
     if simulate:
         raise LighterTestTradeError("lagoon-lighter-test-trade does not support SIMULATE=true")
     if asset_management_mode != AssetManagementMode.lagoon:

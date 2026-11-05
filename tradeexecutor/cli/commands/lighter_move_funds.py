@@ -1,4 +1,7 @@
-"""Move USDC manually between a Lagoon Safe and its Lighter accounts.
+"""Move USDC between a Lagoon Safe and its Lighter accounts.
+
+State writer ownership is acquired at the command boundary. See
+:func:`lighter_move_funds` for non-writing modes and contention behaviour.
 
 This command is an operator diagnostic and recovery tool. It records verified
 custody movements in the executor state, but it does not execute strategy
@@ -270,6 +273,16 @@ def _sync_lighter_position(
     }
 
     def get_account_value(pair, **_kwargs) -> Decimal:
+        """Supply the refreshed Lighter equity to the shared position sync model.
+
+        :param pair:
+            Exchange-account pair whose account index selects the equity value.
+        :param _kwargs:
+            Unused pricing-context keywords required by the account-value interface.
+        :return:
+            Fresh equity for the queried account, or the tracked quantity for
+            another account that is not part of this transfer refresh.
+        """
         account_index = int(pair.get_exchange_account_id())
         return equity.get_total() if account_index == equity.account_index else tracked[account_index]
 
@@ -554,7 +567,21 @@ def lighter_move_funds(
         envvar="LIGHTER_WITHDRAW_TIMEOUT",
     ),
 ) -> None:
-    """Move USDC between a Lagoon Safe and Lighter for diagnostics and recovery."""
+    """Move USDC between a Lagoon Safe and Lighter for diagnostics and recovery.
+
+    A writing invocation exclusively owns the state file through cleanup. If
+    another writer owns it, the command exits with status 1 before loading state or
+    submitting transactions. Stop the daemon before running a writing command.
+
+    Simulation is unsupported and is rejected before any state change.
+
+    :param state_file:
+        Executor JSON path, resolved before locking and used for all state
+        operations. CLI option help describes the remaining arguments and
+        environment variables.
+    :raises click.ClickException:
+        Another writer owns the selected state file.
+    """
     if simulate:
         raise LighterMoveFundsError("lighter-move-funds does not support SIMULATE=true")
     if asset_management_mode != AssetManagementMode.lagoon:

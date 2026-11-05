@@ -1,4 +1,8 @@
-"""Claim untracked Hypercore vault dust back to reserves."""
+"""Claim untracked HyperCore vault balances back to executor reserves.
+
+State writer ownership is acquired at the command boundary. See
+:func:`claim_hypercore_vault_dust` for non-writing modes and contention behaviour.
+"""
 
 from decimal import Decimal
 from pathlib import Path
@@ -41,7 +45,19 @@ def claim_hypercore_vault_dust(
         help="Maximum per-vault Hypercore dust claim amount in USDC.",
     ),
 ):
-    """Claim live Hypercore vault dust that is not represented in state."""
+    """Claim live Hypercore vault dust that is not represented in state.
+
+    A writing invocation exclusively owns the state file through cleanup. If
+    another writer owns it, the command exits with status 1 before loading state or
+    submitting transactions. Stop the daemon before running a writing command.
+
+    :param state_file:
+        Executor JSON path, resolved before locking and used for all state
+        operations. CLI option help describes the remaining arguments and
+        environment variables.
+    :raises click.ClickException:
+        Another writer owns the selected state file.
+    """
     id = prepare_executor_id(id, strategy_file)
     if state_file is None:
         state_file = Path(f"state/{id}.json")

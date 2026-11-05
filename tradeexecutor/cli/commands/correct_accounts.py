@@ -1,5 +1,7 @@
-"""Correct accounting errors in the internal state.
+"""Reconcile executor accounting against live account balances.
 
+State writer ownership is acquired at the command boundary. See
+:func:`correct_accounts` for non-writing modes and contention behaviour.
 """
 import calendar
 import datetime
@@ -301,6 +303,21 @@ def _sync_hypercore_vault_positions(
 ) -> bool:
     """Auto-create and mark Hypercore vault positions from the Hyperliquid API.
 
+    Reconcile vault positions against the Safe's live HyperCore holdings before
+    reserve corrections. Missing live holdings may become tracked positions;
+    positions already withdrawn on-chain can be closed without inventing sale
+    proceeds. The caller must retain writer ownership while this mutates state.
+
+    :param asset_management_mode:
+        Managed deployment mode; non-vault modes return without changes.
+    :param universe:
+        Strategy universe containing HyperCore vault pairs, or None to skip.
+    :param sync_model:
+        Vault sync model used to obtain the Safe's token-storage address.
+    :param web3:
+        Configured HyperEVM provider; its chain ID selects mainnet or testnet.
+    :param state:
+        Loaded executor state whose portfolio and valuation records may change.
     :return:
         True if any phantom positions were closed (zero-proceeds repair).
         The caller should ensure the reserve balance correction runs
@@ -717,6 +734,19 @@ def correct_accounts(
     after final account checks; dry-run previews the same in-memory result.
 
     An old state file is automatically backed up.
+
+    A writing invocation exclusively owns the state file through cleanup. If
+    another writer owns it, the command exits with status 1 before loading state or
+    submitting transactions. Stop the daemon before running a writing command.
+
+    The --dry-run preview does not acquire writer ownership or save state.
+
+    :param state_file:
+        Executor JSON path, resolved before locking and used for all state
+        operations. CLI option help describes the remaining arguments and
+        environment variables.
+    :raises click.ClickException:
+        Another writer owns the selected state file.
     """
 
     global logger

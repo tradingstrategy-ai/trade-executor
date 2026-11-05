@@ -1,4 +1,8 @@
-"""Typer entry point for testing external vault deposits and redemptions."""
+"""Test external vault routes through a dedicated Lagoon executor.
+
+State writer ownership is acquired at the command boundary. See
+:func:`vault_test_trade` for non-writing modes and contention behaviour.
+"""
 
 import logging
 from decimal import Decimal
@@ -195,6 +199,19 @@ def vault_test_trade(
     Unlike ``perform-test-trade``, this command has no strategy file.  The
     runner constructs a minimal universe from downloaded vault metadata for
     each individual action.
+
+    A writing invocation exclusively owns the state file through cleanup. If
+    another writer owns it, the command exits with status 1 before loading state or
+    submitting transactions. Stop the daemon before running a writing command.
+
+    Simulated vault tests also own the state file because their results are persisted.
+
+    :param state_file:
+        Executor JSON path, resolved before locking and used for all state
+        operations. CLI option help describes the remaining arguments and
+        environment variables.
+    :raises click.ClickException:
+        Another writer owns the selected state file.
     """
 
     _validate_vault_test_options(

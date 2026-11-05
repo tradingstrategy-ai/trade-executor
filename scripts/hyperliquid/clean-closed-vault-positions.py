@@ -8,7 +8,8 @@ restarting the executor. Inspect the proposed actions before confirming;
 ``AUTO_APPROVE`` bypasses that confirmation.
 
 The console command can also run the helper below; its session already holds
-the state lock.
+the state lock. Direct script execution acquires that ownership before reading
+the working state or submitting transactions and retains it until cleanup ends.
 
 Console usage
 -------------
@@ -42,7 +43,23 @@ from tradeexecutor.ethereum.vault.hyperliquid_cleanup import run_hyperliquid_cle
 
 
 def main() -> None:
-    """Run the Hyperliquid clean-up flow from environment variables."""
+    """Parse deployment settings and run recovery while owning executor state.
+
+    ``STATE_FILE`` selects the locked state. Strategy, signer, provider and vault
+    settings come from the standard deployment environment and are passed
+    explicitly to :func:`run_hyperliquid_cleanup`. Ownership is acquired before
+    reading the remaining settings or invoking any recovery operations.
+
+    :return:
+        None after the recovery helper returns. Inspect its account-validation
+        output before restarting the stopped executor.
+    :raises click.ClickException:
+        Another writer already owns the selected state file.
+    :raises KeyError:
+        A required deployment environment variable is missing.
+    :raises OSError:
+        State or lock-file access fails.
+    """
     with locked_state_file(os.environ["STATE_FILE"]) as state_file:
         run_hyperliquid_cleanup(
             state_file=state_file,

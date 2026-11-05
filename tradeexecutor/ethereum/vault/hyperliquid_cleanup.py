@@ -588,7 +588,22 @@ def _broadcast_bound_call(
     bound_func,
     gas_limit: int = SAFE_GAS_LIMIT,
 ) -> str:
-    """Broadcast a single Safe/module transaction and assert success."""
+    """Submit a Safe/module call through the shared HyperCore recovery helper.
+
+    Delegating keeps transaction confirmation and success checks consistent
+    with other transit-recovery actions. The caller owns the executor state lock.
+
+    :param web3:
+        Configured HyperEVM provider used to submit and confirm the transaction.
+    :param hot_wallet:
+        Signer authorised to execute the bound Safe/module call.
+    :param bound_func:
+        Prepared contract function, including its call arguments.
+    :param gas_limit:
+        Gas allowance passed to the shared broadcast helper.
+    :return:
+        Transaction hash returned after the shared helper confirms success.
+    """
     return hypercore_transit_recovery.broadcast_bound_call(web3, hot_wallet, bound_func, gas_limit=gas_limit)
 
 

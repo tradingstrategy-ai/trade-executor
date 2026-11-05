@@ -1,4 +1,8 @@
-"""Repair Hypercore dust positions from a state file."""
+"""Repair HyperCore dust positions and safe duplicate-position records.
+
+State writer ownership is acquired at the command boundary. See
+:func:`repair_hypercore_dust` for non-writing modes and contention behaviour.
+"""
 
 from pathlib import Path
 from typing import Optional
@@ -79,6 +83,17 @@ def repair_hypercore_dust(
     Duplicate Hypercore positions are diagnosed before and after cleanup so
     operators can see whether stale dust residuals were removed or whether a
     deeper manual repair is still needed.
+
+    A writing invocation exclusively owns the state file through cleanup. If
+    another writer owns it, the command exits with status 1 before loading state or
+    submitting transactions. Stop the daemon before running a writing command.
+
+    :param state_file:
+        Executor JSON path, resolved before locking and used for all state
+        operations. CLI option help describes the remaining arguments and
+        environment variables.
+    :raises click.ClickException:
+        Another writer owns the selected state file.
     """
 
     logger = setup_logging(log_level=log_level)

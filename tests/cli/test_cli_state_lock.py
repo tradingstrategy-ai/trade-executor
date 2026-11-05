@@ -1,4 +1,11 @@
-"""Black-box command coverage for writer ownership and read-only access."""
+"""Exercise state ownership through the real CLI and maintenance entry points.
+
+A separate process owns the lock while commands are invoked through Typer.
+Checks cover refusal before state reads or backups, continued snapshot access,
+conditional non-writing modes and successful maintenance after release. Script
+configuration and in-call ownership are checked with financial execution mocked
+so the tests cannot submit real transactions.
+"""
 
 import os
 import runpy
@@ -28,6 +35,12 @@ def test_cli_state_writer_conflicts(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     1. Prepare a state and hold its lock in another process.
     2. Invoke daemon, local, backtest and delegated writers and verify clean refusal.
     3. Read positions during ownership, then run maintenance after release.
+
+    :param tmp_path:
+        Pytest directory for state files, path aliases and maintenance outputs.
+    :param monkeypatch:
+        Pytest helper isolating deployment settings and replacing operations
+        that would perform unrelated logging or financial execution.
     """
     # 1. Prepare a state and hold its lock in another process.
     # Isolate CLI defaults from local credentials; no RPC or trading is needed.
@@ -131,7 +144,12 @@ def test_cli_state_writer_conflicts(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     }
 
     def fake_execute(**settings: object) -> None:
-        """Check configuration and ownership without running financial actions."""
+        """Assert that script execution receives settings while ownership is held.
+
+        :param settings:
+            Parsed keyword settings passed by the real script entry point.
+            They must match the expected configuration, including its state path.
+        """
         assert settings == expected_settings
         with pytest.raises(StateFileLocked):
             with state_file_lock(path):
@@ -166,6 +184,12 @@ def test_cli_non_writing_modes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     1. Hold the state lock and replace costly command setup with a sentinel.
     2. Verify preview, simulation and listing reach setup instead of refusing.
     3. Verify their corresponding writing modes refuse before setup.
+
+    :param tmp_path:
+        Pytest directory for the state path held by the competing writer.
+    :param monkeypatch:
+        Pytest helper isolating CLI settings and replacing expensive setup with
+        a sentinel exception after the lock wrapper has made its decision.
     """
     # 1. Hold the state lock and replace costly command setup with a sentinel.
     # Preserve Python subprocess imports while removing local CLI settings.

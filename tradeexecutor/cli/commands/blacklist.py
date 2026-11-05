@@ -1,11 +1,13 @@
-"""blacklist command.
+"""Inspect or update the executor token blacklist.
+
+State writer ownership is acquired at the command boundary. See
+:func:`blacklist` for non-writing modes and contention behaviour.
 
 To run with Docker:
 
 .. code-block:: bash
 
     docker compose run base-ath blacklist
-
 """
 from pathlib import Path
 from typing import Optional
@@ -66,6 +68,19 @@ def blacklist(
 
     - Show currently blacklisted tokens (do not trade them)
     - Add and remove entries
+
+    A writing invocation exclusively owns the state file through cleanup. If
+    another writer owns it, the command exits with status 1 before loading state or
+    submitting transactions. Stop the daemon before running a writing command.
+
+    Listing the blacklist without adding or removing tokens does not acquire writer ownership.
+
+    :param state_file:
+        Executor JSON path, resolved before locking and used for all state
+        operations. CLI option help describes the remaining arguments and
+        environment variables.
+    :raises click.ClickException:
+        Another writer owns the selected state file.
     """
 
     global logger

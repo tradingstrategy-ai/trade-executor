@@ -1,4 +1,7 @@
-"""start command
+"""Run the strategy executor daemon and its state lifecycle.
+
+The daemon owns its state file across startup, execution and shutdown.
+See :func:`start` for simulation, backtest-output and crash-status behaviour.
 
 TODO: Restructure and move backtesting related functionality to a separate command
 """
@@ -235,7 +238,21 @@ def start(
     html_report: Optional[Path] = shared_options.html_report,
     cache_path: Optional[Path] = shared_options.cache_path,
 ):
-    """Launch Trade Executor instance."""
+    """Run the strategy executor daemon and its state lifecycle.
+
+    Acquire state-file ownership before state-dependent startup and retain it
+    through execution, crash handling and shutdown. A conflicting daemon or
+    maintenance writer causes an immediate CLI failure outside the crash handlers.
+
+    Ownership continues during crash-status sleep and is released after daemon cleanup. Non-writing simulation and non-file stores skip locking; a backtest output reset still takes the lock.
+
+    :param state_file:
+        Executor JSON path, resolved before locking and used for all state
+        operations. CLI option help describes the remaining arguments and
+        environment variables.
+    :raises click.ClickException:
+        Another writer owns the selected state file.
+    """
     global logger
 
     started_at = native_datetime_utc_now()

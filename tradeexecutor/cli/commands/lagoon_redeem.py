@@ -1,4 +1,7 @@
-"""lagoon-redeem command.
+"""Redeem the asset manager shares from a Lagoon vault.
+
+State writer ownership is acquired at the command boundary. See
+:func:`lagoon_redeem` for non-writing modes and contention behaviour.
 
 Redeems all vault shares held by the asset manager from a Lagoon vault:
 
@@ -282,6 +285,19 @@ def lagoon_redeem(
     - Posts new valuation and settles the vault (Phase 2)
     - Finalises the redemption to claim denomination tokens back (Phase 3)
     - Updates the state file reserves to reflect the new Safe balance
+
+    A writing invocation exclusively owns the state file through cleanup. If
+    another writer owns it, the command exits with status 1 before loading state or
+    submitting transactions. Stop the daemon before running a writing command.
+
+    Simulation does not acquire writer ownership or save state.
+
+    :param state_file:
+        Executor JSON path, resolved before locking and used for all state
+        operations. CLI option help describes the remaining arguments and
+        environment variables.
+    :raises click.ClickException:
+        Another writer owns the selected state file.
     """
     id = prepare_executor_id(id, strategy_file)
 

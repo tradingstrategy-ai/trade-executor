@@ -1,4 +1,8 @@
-"""Repair interrupted trades and inconsistent position state."""
+"""Repair interrupted trades and inconsistent executor position state.
+
+State writer ownership is acquired at the command boundary. See
+:func:`repair` for non-writing modes and contention behaviour.
+"""
 import datetime
 from pathlib import Path
 from typing import Optional
@@ -90,6 +94,17 @@ def repair(
     Review ``correct-accounts --dry-run`` before any live recovery.
 
     See also check-accounts and correct-accounts commands.
+
+    A writing invocation exclusively owns the state file through cleanup. If
+    another writer owns it, the command exits with status 1 before loading state or
+    submitting transactions. Stop the daemon before running a writing command.
+
+    :param state_file:
+        Executor JSON path, resolved before locking and used for all state
+        operations. CLI option help describes the remaining arguments and
+        environment variables.
+    :raises click.ClickException:
+        Another writer owns the selected state file.
     """
 
     id = prepare_executor_id(id, strategy_file)

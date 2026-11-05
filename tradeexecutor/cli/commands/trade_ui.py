@@ -1,4 +1,7 @@
-"""trade-ui command.
+"""Select and execute test trades through an interactive terminal interface.
+
+State writer ownership is acquired at the command boundary. See
+:func:`trade_ui` for non-writing modes and contention behaviour.
 
 Interactive TUI for selecting a trading pair and performing a test trade.
 
@@ -10,12 +13,12 @@ fork internally, no need to start one manually):
 
 .. code-block:: shell
 
-    trade-executor trade-ui \
-        --strategy-file=strategies/test_only/hyper-ai-tui-test.py \
-        --private-key=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 \
-        --asset-management-mode=hot_wallet \
-        --json-rpc-hyperliquid=$JSON_RPC_HYPERLIQUID \
-        --trading-strategy-api-key=$TRADING_STRATEGY_API_KEY \
+    trade-executor trade-ui \\
+        --strategy-file=strategies/test_only/hyper-ai-tui-test.py \\
+        --private-key=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 \\
+        --asset-management-mode=hot_wallet \\
+        --json-rpc-hyperliquid=$JSON_RPC_HYPERLIQUID \\
+        --trading-strategy-api-key=$TRADING_STRATEGY_API_KEY \\
         --simulate
 
 """
@@ -143,6 +146,19 @@ def trade_ui(
 
     Browse the strategy's trading universe and interactively select
     a pair, amount and trade mode to perform a test trade.
+
+    A writing invocation exclusively owns the state file through cleanup. If
+    another writer owns it, the command exits with status 1 before loading state or
+    submitting transactions. Stop the daemon before running a writing command.
+
+    Simulation does not acquire writer ownership or save state.
+
+    :param state_file:
+        Executor JSON path, resolved before locking and used for all state
+        operations. CLI option help describes the remaining arguments and
+        environment variables.
+    :raises click.ClickException:
+        Another writer owns the selected state file.
     """
 
     id = prepare_executor_id(id, strategy_file)

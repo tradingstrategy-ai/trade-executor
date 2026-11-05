@@ -1,4 +1,10 @@
-"""Verify kernel ownership and recovery using actual competing processes."""
+"""Regression coverage for state-file ownership and owner-death recovery.
+
+Real competing processes exercise kernel exclusion, while canonical-path and
+atomic-replacement checks protect the state-store integration. Forked-worker
+coverage verifies both that a live parent's lock survives and that its death
+does not strand ownership in an unrelated worker. No chain access is required.
+"""
 
 import os
 import subprocess
@@ -19,6 +25,11 @@ def test_state_file_lock_lifetime(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     1. Lock a canonical state and verify contention through path aliases.
     2. Save an atomic replacement and verify readers and independent writers work.
     3. Verify release after an exception without replacing the lock inode.
+
+    :param tmp_path:
+        Pytest directory for isolated state, alias and lock files.
+    :param monkeypatch:
+        Pytest helper used to exercise relative paths from that directory.
     """
     # 1. Lock a canonical state and verify contention through path aliases.
     monkeypatch.chdir(tmp_path)
@@ -68,6 +79,12 @@ def test_state_file_lock_owner_death(tmp_path: Path, fork_worker: bool) -> None:
     1. Start a real owner, optionally with an inherited worker, and verify exclusion.
     2. Kill the owner and confirm the worker can remain alive.
     3. Reacquire the surviving lock file immediately without manual cleanup.
+
+    :param tmp_path:
+        Pytest directory containing the lock used by both competing processes.
+    :param fork_worker:
+        Include a surviving forked worker when true; otherwise test owner death
+        without descriptor inheritance.
     """
     # 1. Start a real owner, optionally with an inherited worker, and verify exclusion.
     path = tmp_path / "executor.json"

@@ -1,4 +1,9 @@
-"""CLI coverage for Lagoon settlement safety options."""
+"""Verify Lagoon startup safety and daemon state-lock lifetime without RPC calls.
+
+Existing dummy execution and sync models exercise the real startup command.
+The tests check that its safety option reaches the sync model and that state
+ownership spans execution and crash-status sleep, then ends on command exit.
+"""
 
 import os
 from pathlib import Path
@@ -28,6 +33,15 @@ def test_cli_start_enables_lagoon_frozen_position_safety_by_default(
     2. Run `start` without overriding the Lagoon frozen-position safety option.
     3. Verify the safety flag and lock ownership during execution and crash sleep.
     4. Verify writer ownership is released when the command exits.
+
+    :param tmp_path:
+        Pytest directory for the daemon's state and cache paths.
+    :param monkeypatch:
+        Pytest helper replacing chain resources and the indefinite crash wait
+        while retaining the real command and locking contexts.
+    :param interrupt:
+        Raise KeyboardInterrupt during execution when true to exercise the
+        daemon's crash-status sleep; otherwise complete execution normally.
     """
     # 1. Patch CLI start-up so it runs offline with a fake Lagoon sync model.
     # DummySyncModel stands in for LagoonVaultSyncModel so the real isinstance
@@ -42,16 +56,39 @@ def test_cli_start_enables_lagoon_frozen_position_safety_by_default(
     fake_web3_config.get_default.return_value = SimpleNamespace(eth=SimpleNamespace(chain_id=137))
 
     def fake_create_execution_and_sync_model(**kwargs):
+        """Supply offline components while retaining the real startup wiring.
+
+        :param kwargs:
+            Parsed model settings supplied by start. They are unused because
+            this replacement must not construct live providers or signers.
+        :return:
+            Dummy execution and sync models with unused pricing factories.
+        """
         return DummyExecutionModel(SimpleNamespace()), fake_sync_model, None, None
 
     def fake_setup(self: ExecutionLoop) -> State:
+        """Initialise real stored state without creating trading resources.
+
+        :param self:
+            Execution loop whose store is already protected by the command.
+        :return:
+            Initialised executor state used by the fake execution callback.
+        """
         state = self.init_state()
         self.runner = SimpleNamespace(check_accounts=lambda universe, state: None)
         self.universe_model = SimpleNamespace()
         return state
 
     def fake_run_with_state(self: ExecutionLoop, state: State) -> None:
-        """Check ownership; state is unused but required by the execution interface."""
+        """Check safety propagation and ownership at the execution boundary.
+
+        :param self:
+            Loop containing the sync model configured by the real command.
+        :param state:
+            Unused state argument required by the execution-loop interface.
+        :raises KeyboardInterrupt:
+            The interrupted scenario intentionally enters crash-status handling.
+        """
         # 3. Verify the safety flag and lock ownership during execution and crash sleep.
         assert self.sync_model.abort_lagoon_settlement_on_frozen_positions is True
         with pytest.raises(StateFileLocked):
@@ -61,7 +98,13 @@ def test_cli_start_enables_lagoon_frozen_position_safety_by_default(
             raise KeyboardInterrupt("Exercise the crash-status sleep")
 
     def fake_sleep(seconds: float) -> None:
-        """Check the crash-status wait without leaving the test sleeping."""
+        """Check ownership during the crash-status wait, then terminate the test.
+
+        :param seconds:
+            Requested sleep duration, checked against the daemon's long wait.
+        :raises RuntimeError:
+            Sentinel exception ending the wait after ownership has been checked.
+        """
         assert seconds == 3600 * 24 * 365
         with pytest.raises(StateFileLocked):
             with state_file_lock(state_file):

@@ -1,19 +1,21 @@
-"""init command.
+"""Create the initial executor state for a strategy deployment.
+
+State writer ownership is acquired at the command boundary. See
+:func:`init` for non-writing modes and contention behaviour.
 
 Quick local dev example:
 
 .. code-block:: shell
 
     # Set up JSON_RPC_POLYGON
-    source env/local-test.env
+    source .local-test.env
 
-    # Set up hto wallet private key
+    # Set up hot wallet private key
     export PRIVATE_KEY=...
 
-    poetry run trade-executor init \
-        --id=vault-init-test \
+    poetry run trade-executor init \\
+        --id=vault-init-test \\
         --vault-address=0x6E321256BE0ABd2726A234E8dBFc4d3caf255AE0
-
 
 """
 
@@ -107,7 +109,18 @@ def init(
     A strategy initialisation will create its state file.
     It will also connect to a blockchain and check the vault smart contract is ready.
 
-    Vault deployment is still handled separate.
+    Vault deployment is handled separately.
+
+    A writing invocation exclusively owns the state file through cleanup. If
+    another writer owns it, the command exits with status 1 before loading state or
+    submitting transactions. Stop the daemon before running a writing command.
+
+    :param state_file:
+        Executor JSON path, resolved before locking and used for all state
+        operations. CLI option help describes the remaining arguments and
+        environment variables.
+    :raises click.ClickException:
+        Another writer owns the selected state file.
     """
 
     global logger
