@@ -57,7 +57,11 @@ logger = logging.getLogger(__name__)
 #: Gas limit for the ERC-20 approval wrapped by Lagoon.
 LIGHTER_APPROVAL_GAS_LIMIT = 500_000
 #: Gas limit for a Lighter deposit wrapped by Lagoon.
-LIGHTER_DEPOSIT_GAS_LIMIT = 1_000_000
+#:
+#: A LIX mainnet deposit used 200,146 gas. A node refuses a transaction unless
+#: the hot wallet holds the limit times the maximum fee, so a generous limit
+#: stops a deposit the wallet could afford. Lagoon adds ``extra_gnosis_gas``.
+LIGHTER_DEPOSIT_GAS_LIMIT = 400_000
 #: Gas limit for a Lighter pending withdrawal claim wrapped by Lagoon.
 LIGHTER_WITHDRAWAL_CLAIM_GAS_LIMIT = 1_000_000
 #: Default maximum wait for a secure or L1 Lighter withdrawal to arrive or become claimable.
