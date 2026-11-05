@@ -125,7 +125,8 @@ def create_lighter_pool_session() -> LighterSession:
     """Create the Ethereum Lighter API session used for pool execution and valuation.
 
     Reuses the executor's long-retry session for replay-safe reads. Upstream
-    submits signed transactions through a separate session without POST retries.
+    submits signed transactions through a separate session that retries only
+    Lighter's rate-limit refusals.
 
     :return:
         Ethereum deployment session.

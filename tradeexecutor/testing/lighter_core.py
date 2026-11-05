@@ -36,7 +36,6 @@ import time
 from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any, Callable
 
 from eth_defi.abi import get_deployed_contract
@@ -290,7 +289,7 @@ class FakeLighterCore:
         """Record a key registered by a real Safe ``changePubKey`` transaction."""
         self.get_account(account_index).api_keys[api_key_index] = expected_public_key
 
-    def create_lighter_sub_accounts(self, *, session: Any, l1_address: str, master_account_index: int, api_key_index: int, api_private_key: str, count: int, timeout: int = 300, api_url: str | None = None) -> list[int]:
+    def create_lighter_sub_accounts(self, *, session: Any, l1_address: str, master_account_index: int, api_key_index: int, api_private_key: str, count: int, timeout: int = 300) -> list[int]:
         """Create sub-accounts signed by the master key."""
         assert Web3.to_checksum_address(l1_address) == self.owner
         assert master_account_index == self.master_index
@@ -717,7 +716,7 @@ class FakeLighterCore:
             ("tradeexecutor.ethereum.lighter.lighter_pool_valuation.create_lighter_pool_session", self.create_api_session),
             (f"{pool_routing}.create_lighter_pool_signer", self.create_pool_signer),
             (f"{pool_routing}.wait_for_transaction_receipt_robust", self.wait_for_transaction_receipt_robust),
-            ("eth_defi.lighter.execution.requests", SimpleNamespace(Session=lambda: FakeLighterSubmission(self))),
+            ("eth_defi.lighter.execution.create_lighter_submission_session", lambda *_args: FakeLighterSubmission(self)),
             # The fake's lockup is seconds, not Lighter's five minutes; keep the
             # router's wait consistent with it so simulations stay fast.
             (f"{pool_routing}.LIGHTER_POOL_EXIT_LOCKUP", datetime.timedelta(seconds=7)),
@@ -820,7 +819,7 @@ class FakeLighterApiSession(LighterSession):
 
 
 class FakeLighterSubmission:
-    """Stand-in for the plain ``requests.Session`` upstream uses for ``sendTx``."""
+    """Stand-in for the upstream submission session used for ``sendTx``."""
 
     def __init__(self, core: FakeLighterCore):
         self.core = core

@@ -33,7 +33,6 @@ from eth_defi.lighter.api import (
     wait_for_lighter_collateral,
 )
 from eth_defi.lighter.constants import (
-    LIGHTER_API_URL,
     LIGHTER_ETHEREUM_DEPLOYMENT_CHAIN_ID,
     LIGHTER_USDC_ETHEREUM,
 )
@@ -41,7 +40,8 @@ from eth_defi.lighter.lagoon import (
     claim_usdc_to_lagoon_safe_from_lighter,
     deposit_usdc_from_lagoon_safe_into_lighter,
 )
-from eth_defi.lighter.sdk import LighterAuthTokenManager
+from eth_defi.lighter.sdk import create_lighter_api_client, create_lighter_signer_client, is_lighter_tx_accepted
+from eth_defi.lighter.transfer import create_lighter_auth_token_manager
 from eth_defi.lighter.session import LighterSession, create_lighter_session
 from eth_defi.lighter.valuation import (
     LighterEquity,
@@ -356,7 +356,7 @@ def _assert_non_negative(value: Decimal, label: str) -> None:
 
 async def resolve_eth_order(position_usdc: Decimal | None) -> tuple[int, Decimal, int, Decimal]:
     """Resolve an ETH market-order amount using Lighter's SDK market metadata."""
-    api_client = lighter.ApiClient(configuration=lighter.Configuration(host=LIGHTER_API_URL))
+    api_client = create_lighter_api_client()
     try:
         response = await lighter.OrderApi(api_client).order_book_details(
             market_id=ETH_PERP_MARKET_INDEX,
@@ -389,23 +389,16 @@ async def submit_lighter_order(
     """Submit one bounded Lighter market order without exposing SDK payloads."""
     client = None
     try:
-        client = lighter.SignerClient(
-            url=LIGHTER_API_URL,
-            account_index=operator.account_index,
-            api_private_keys={operator.api_key_index: operator.api_private_key},
-        )
-        if client.check_client():
-            raise LighterTestTradeError("Lighter API key was rejected")
-        _transaction, _response, error = await client.create_market_order_limited_slippage(
+        client = create_lighter_signer_client(operator.account_index, operator.api_key_index, operator.api_private_key)
+        _transaction, response, error = await client.create_market_order_limited_slippage(
             market_index=ETH_PERP_MARKET_INDEX,
             client_order_index=int(time.time() * MILLISECONDS_PER_SECOND),
             base_amount=base_amount,
             max_slippage=float(max_slippage),
             is_ask=is_ask,
             reduce_only=reduce_only,
-            api_key_index=operator.api_key_index,
         )
-        if error:
+        if not is_lighter_tx_accepted(response, error):
             raise LighterTestTradeError("Lighter market order was rejected")
     except LighterTestTradeError:
         raise
@@ -453,18 +446,13 @@ async def request_lighter_withdrawal(
     """
     client = None
     try:
-        client = lighter.SignerClient(
-            url=LIGHTER_API_URL,
-            account_index=operator.account_index,
-            api_private_keys={operator.api_key_index: operator.api_private_key},
-        )
+        client = create_lighter_signer_client(operator.account_index, operator.api_key_index, operator.api_private_key)
         _transaction, response, error = await client.withdraw(
             asset_id=client.ASSET_ID_USDC,
             route_type=client.ROUTE_PERP,
             amount=float(amount),
-            api_key_index=operator.api_key_index,
         )
-        if error or response is None:
+        if not is_lighter_tx_accepted(response, error):
             raise LighterWithdrawalRejected("Lighter secure withdrawal was rejected")
         transaction_id = str(response.tx_hash)
         logger.info("Secure Lighter withdrawal accepted: %s", transaction_id)
@@ -492,33 +480,10 @@ async def wait_for_lighter_withdrawal_claimable(
     requires an EOA private key that the Safe contract cannot provide.
     """
     client = None
-    api_client = None
     try:
-        client = lighter.SignerClient(
-            url=LIGHTER_API_URL,
-            account_index=operator.account_index,
-            api_private_keys={operator.api_key_index: operator.api_private_key},
-        )
-
-        api_client = lighter.ApiClient(configuration=lighter.Configuration(host=LIGHTER_API_URL))
-        transaction_api = lighter.TransactionApi(api_client)
-        token_generation = 0
-
-        def create_auth_token() -> tuple[str | None, object | None]:
-            """Create a short-lived token without exposing its value."""
-            nonlocal token_generation
-            token_generation += 1
-            action = "Creating" if token_generation == 1 else "Rotating"
-            logger.info(
-                "%s Lighter auth token for withdrawal history (generation %d)",
-                action,
-                token_generation,
-            )
-            return client.create_auth_token_with_expiry(
-                api_key_index=operator.api_key_index,
-            )
-
-        auth_manager = LighterAuthTokenManager(token_factory=create_auth_token)
+        client = create_lighter_signer_client(operator.account_index, operator.api_key_index, operator.api_private_key)
+        transaction_api = lighter.TransactionApi(client.api_client)
+        auth_manager = create_lighter_auth_token_manager(client, operator.api_key_index)
         deadline = time.monotonic() + timeout
         while True:
             history = await auth_manager.call(
@@ -549,8 +514,6 @@ async def wait_for_lighter_withdrawal_claimable(
     finally:
         if client is not None:
             await client.close()
-        if api_client is not None:
-            await api_client.close()
 
 
 def _get_lighter_positions(state: State) -> list[TradingPosition]:

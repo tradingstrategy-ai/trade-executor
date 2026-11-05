@@ -131,7 +131,7 @@ async def submit_trader_transfer(tutorial: Tutorial, handover: dict[str, Any], t
             tutorial.write_progress()
             fee = await fetch_lighter_transfer_fee(client, auth, to_account_index=to_account_index)
             logger.info("Lighter quotes a %s USDC fee from sub-account %d to sub-account %d", fee, from_account_index, to_account_index)
-            tx_hash = await request_lighter_transfer(client, to_account_index=to_account_index, amount=TRADER_TRANSFER_USDC, fee=fee, api_key_index=api_key_index)
+            tx_hash = await request_lighter_transfer(client, to_account_index=to_account_index, amount=TRADER_TRANSFER_USDC, fee=fee)
             tutorial.progress["trader_transfer_tx_hash"] = tx_hash
             tutorial.write_progress()
         record = await wait_for_lighter_transfer(client, auth, account_index=from_account_index, tx_hash=tx_hash, timeout=tutorial.config.transfer_timeout)

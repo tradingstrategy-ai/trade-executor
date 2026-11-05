@@ -86,6 +86,28 @@ artefact; `init` then records the account indices in the state. Each sub-account
 `vault-record.nautilus.<id>.json` hand-over file; the executor record keeps
 only the master key. Sub-accounts start empty.
 
+Lighter allows 2 `L2CreateSubAccount` requests per minute per L1 address, so
+deployment waits for the limit: four sub-accounts take at least a minute. Use an
+image later than `v1475` that includes eth-defi's `LighterSDKSession`. `v1475` and
+earlier stop with HTTP 429 on the third sub-account.
+
+If a deployment stops during Lighter activation, do not rerun it for the same
+vault. Creating sub-accounts is not idempotent and a rerun deploys new contracts.
+Find out how far it got before moving anything, because the funds can be in the
+silo, the Safe, a Lighter account or a pending withdrawal. Owners are only added
+after activation, so check that the deployer is still the Safe's sole owner with
+threshold 1. If the funds are on Lighter:
+
+1. Request each account's balance with the key-free L1 `withdraw`, through the
+   module.
+2. Poll the Safe's pending balance, which took about 28 minutes on 2026-11-05, and
+   claim it to the Safe.
+3. Transfer the Safe's USDC to the deployer with `execTransaction`, simulating it
+   first.
+
+Check that every account is empty, keep the key backup directory until the
+replacement vault is live, and then deploy a new vault.
+
 The executor funds sub-accounts from the master with same-owner L2
 transfers, which Lighter did not charge for on 2026-10-26, and withdraws
 them to the Safe with the key-free L1 `withdraw(subIndex)`, which took about
