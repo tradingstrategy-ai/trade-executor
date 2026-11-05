@@ -56,14 +56,17 @@ def create_sequencer() -> tuple[web.Application, list[tuple[int, str]]]:
         return web.json_response({"code": 200, "nonce": FIRST_NONCE})
 
     async def send_tx(request: web.Request) -> web.Response:
-        """Refuse a transaction above the limit, as Lighter's API server does."""
+        """Refuse a transaction above the limit, as Lighter's API server does.
+
+        The header exercises the session's read of it on the SDK's real response.
+        """
         form = await request.post()
         tx_info = form["tx_info"]
         now = time.monotonic()
         accepted_at[:] = [moment for moment in accepted_at if now - moment < RATE_LIMIT_WINDOW]
         if len(accepted_at) >= RATE_LIMIT_REQUESTS:
             sends.append((429, tx_info))
-            return web.json_response({"code": 23000, "message": "Too Many Requests!: L1Address ratelimit reached"}, status=429)
+            return web.json_response({"code": 23000, "message": "Too Many Requests!: L1Address ratelimit reached"}, status=429, headers={"Retry-After": "0"})
         accepted_at.append(now)
         sends.append((200, tx_info))
         return web.json_response({"code": 200, "tx_hash": f"0x{len(accepted_at):064x}", "predicted_execution_time_ms": 0})
