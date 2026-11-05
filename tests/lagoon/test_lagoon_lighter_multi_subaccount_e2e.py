@@ -37,6 +37,7 @@ from typer.main import get_command
 from web3 import Web3
 
 from tradeexecutor.cli.main import app
+from tradeexecutor.ethereum.lighter.lighter_routing import LIGHTER_APPROVAL_GAS_LIMIT, LIGHTER_DEPOSIT_GAS_LIMIT
 from tradeexecutor.exchange_account.lighter import is_lighter_sub_account_pair
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State, UncleanState
@@ -387,6 +388,14 @@ def test_cli_lagoon_lighter_multi_subaccount_lifecycle(
     relayer_paid = [trade for trade in state.portfolio.get_all_trades() if "lighter_relayer_paid_usdc" in trade.other_data]
     assert sorted(Decimal(trade.other_data["lighter_relayer_paid_usdc"]) for trade in relayer_paid) == sorted([safe_cash, sub_balances[sub_1], sub_balances[sub_2]])
     assert all(trade.is_success() and not trade.blockchain_transactions for trade in relayer_paid)
+    # The real Safe and guard ran these, so the limits and gas fields are checked on real receipts.
+    transactions = [tx for trade in state.portfolio.get_all_trades() for tx in trade.blockchain_transactions]
+    deposits = [tx for tx in transactions if tx.wrapped_function_selector == "deposit"]
+    approvals = [tx for tx in transactions if tx.wrapped_function_selector == "approve"]
+    assert deposits and approvals
+    assert all(tx.get_gas_limit() == LIGHTER_DEPOSIT_GAS_LIMIT for tx in deposits)
+    assert all(tx.get_gas_limit() < LIGHTER_APPROVAL_GAS_LIMIT for tx in approvals)
+    assert all(tx.status and 0 < tx.realised_gas_units_consumed < tx.get_gas_limit() for tx in deposits + approvals)
 
     # 10. Sweep stray USDC and ETH from the emptied Safe back to the deployer, as the mainnet tutorial does.
     stray_tx = usdc.contract.functions.transfer(safe_address, usdc.convert_to_raw(Decimal(3))).transact({"from": USDC_WHALE[1]})

@@ -62,6 +62,21 @@ class LagoonTransactionBuilder(TransactionBuilder):
         """
         return self.hot_wallet.get_native_currency_balance(self.web3)
 
+    def estimate_gas(self, args_bound_func: ContractFunction) -> int:
+        """Estimate the gas of a call wrapped by TradingStrategyModuleV0.
+
+        Estimates the outer module call from the hot wallet, so the result
+        includes the Safe and the guard. Signs nothing and uses no nonce.
+
+        :param args_bound_func:
+            The call the Safe will make.
+
+        :return:
+            Estimated gas units of the whole transaction.
+        """
+        bound_prepare_call = self.vault.transact_via_trading_strategy_module(args_bound_func)
+        return bound_prepare_call.estimate_gas({"from": self.hot_wallet.address})
+
     def sign_transaction(
         self,
         contract: Contract,
@@ -70,19 +85,32 @@ class LagoonTransactionBuilder(TransactionBuilder):
         gas_price_suggestion: Optional[GasPriceSuggestion] = None,
         asset_deltas: Optional[List[AssetDelta]] = None,
         notes: str = "",
+        total_gas_limit: Optional[int] = None,
     ) -> BlockchainTransaction:
-        """Create a signed tranaction using TradingStrategyModuleV0.prepareCall()."""
+        """Create a signed tranaction using TradingStrategyModuleV0.prepareCall().
+
+        :param gas_limit:
+            Gas for the wrapped call. :py:attr:`extra_gnosis_gas` is added on top.
+
+        :param total_gas_limit:
+            The whole transaction's gas limit, used instead of ``gas_limit``.
+
+            A node refuses a transaction unless the hot wallet holds this limit
+            times the maximum fee, so callers that know the real cost pass it here.
+        """
 
         assert isinstance(contract, Contract), f"Expected Contract, got {contract}"
         assert isinstance(args_bound_func, ContractFunction), f"Expected ContractFunction, got {args_bound_func}"
         assert asset_deltas is not None, f"{args_bound_func.fn_name}() - cannot make Enzyme trades without asset_deltas set. Set to asset_deltas=[] for approve()"
-        assert gas_limit is not None, f"Gas limit set to None for call: {args_bound_func} - LagoonTransactionBuilder needs explicit gas limit on all txs"
+        assert gas_limit is not None or total_gas_limit is not None, f"Gas limit set to None for call: {args_bound_func} - LagoonTransactionBuilder needs explicit gas limit on all txs"
+
+        tx_gas_limit = total_gas_limit if total_gas_limit is not None else gas_limit + self.extra_gnosis_gas
 
         logger.info("Lagoon tx for <%s>.%s(%s), gas limit %d, deltas %s",
                     args_bound_func.address,
                     args_bound_func.fn_name,
                     present_solidity_args(args_bound_func.args),
-                    gas_limit,
+                    tx_gas_limit,
                     asset_deltas)
 
         assert contract.address == args_bound_func.address, f"Contract address {contract.address} does not match bound function address {args_bound_func.address}"
@@ -93,7 +121,7 @@ class LagoonTransactionBuilder(TransactionBuilder):
             args_bound_func
         )
         tx_data = bound_prepare_call.build_transaction({
-            "gas": gas_limit + self.extra_gnosis_gas,
+            "gas": tx_gas_limit,
             "from": self.hot_wallet.address,
             "chainId": self.chain_id,
         })

@@ -90,6 +90,7 @@ from tradeexecutor.ethereum.lighter.lighter_routing import (
     LIGHTER_DEPOSIT_GAS_LIMIT,
     LIGHTER_WITHDRAWAL_CLAIM_GAS_LIMIT,
     LighterKeyManagement,
+    estimate_lighter_gas_limit,
 )
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.exchange_account.lighter_operator import LighterOperatorRecord
@@ -490,17 +491,18 @@ class LighterPoolRouting(RoutingModel):
             amount_raw = ctx.usdc.convert_to_raw(funding)
             if amount_raw:
                 asset_index = ctx.zk.functions.USDC_ASSET_INDEX().call()
+                approve_call = ctx.usdc.contract.functions.approve(self.lighter_contract, amount_raw)
                 approve = ctx.tx_builder.sign_transaction(
                     ctx.usdc.contract,
-                    ctx.usdc.contract.functions.approve(self.lighter_contract, amount_raw),
-                    gas_limit=LIGHTER_APPROVAL_GAS_LIMIT,
+                    approve_call,
+                    total_gas_limit=estimate_lighter_gas_limit(ctx.tx_builder, approve_call, LIGHTER_APPROVAL_GAS_LIMIT),
                     asset_deltas=[],
                     notes=trade.notes,
                 )
                 deposit = ctx.tx_builder.sign_transaction(
                     ctx.zk,
                     ctx.zk.functions.deposit(ctx.safe_address, asset_index, 0, amount_raw),
-                    gas_limit=LIGHTER_DEPOSIT_GAS_LIMIT,
+                    total_gas_limit=LIGHTER_DEPOSIT_GAS_LIMIT,
                     asset_deltas=[],
                     notes=trade.notes,
                 )
@@ -667,10 +669,11 @@ class LighterPoolRouting(RoutingModel):
         """
         if "claim_tx_hash" not in data:
             data["safe_balance_before_claim"] = str(ctx.usdc.fetch_balance_of(ctx.safe_address))
+            claim_call = ctx.zk.functions.withdrawPendingBalance(ctx.safe_address, ctx.zk.functions.USDC_ASSET_INDEX().call(), ctx.usdc.convert_to_raw(claimable))
             claim = ctx.tx_builder.sign_transaction(
                 ctx.zk,
-                ctx.zk.functions.withdrawPendingBalance(ctx.safe_address, ctx.zk.functions.USDC_ASSET_INDEX().call(), ctx.usdc.convert_to_raw(claimable)),
-                gas_limit=LIGHTER_WITHDRAWAL_CLAIM_GAS_LIMIT,
+                claim_call,
+                total_gas_limit=estimate_lighter_gas_limit(ctx.tx_builder, claim_call, LIGHTER_WITHDRAWAL_CLAIM_GAS_LIMIT),
                 asset_deltas=[],
                 notes=trade.notes,
             )
