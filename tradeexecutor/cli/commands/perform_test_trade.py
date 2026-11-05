@@ -21,6 +21,7 @@ from eth_defi.compat import native_datetime_utc_now
 from tradingstrategy.chain import ChainId
 
 from .app import app
+from tradeexecutor.cli.state_lock import with_state_lock
 from .pair_mapping import parse_pair_data
 from ..bootstrap import prepare_executor_id, prepare_cache_and_token_cache, create_web3_config, create_state_store, \
     create_execution_and_sync_model, create_lighter_key_management, resolve_deployment_file, create_client, configure_default_chain, \
@@ -51,6 +52,7 @@ from eth_defi.compat import native_datetime_utc_now
 
 @app.command()
 @shared_options.with_json_rpc_options()
+@with_state_lock(read_only=lambda options: options["simulate"])
 def perform_test_trade(
     id: str = shared_options.id,
     name: Optional[str] = shared_options.name,

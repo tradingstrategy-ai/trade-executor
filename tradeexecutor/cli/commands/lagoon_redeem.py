@@ -27,6 +27,7 @@ from typer import Option
 from tradeexecutor.cli.bootstrap import prepare_cache_and_token_cache, prepare_executor_id, read_lighter_pool_account, resolve_deployment_file
 from tradeexecutor.cli.commands import shared_options
 from tradeexecutor.cli.commands.app import app
+from tradeexecutor.cli.state_lock import with_state_lock
 from tradeexecutor.cli.commands.lagoon_utils import (
     create_lagoon_command_context,
     ensure_state_store_exists,
@@ -250,6 +251,7 @@ def _claim_leftover_redemptions(vault, hot_wallet, web3, share_token, lighter_ac
 
 @app.command()
 @shared_options.with_json_rpc_options()
+@with_state_lock(read_only=lambda options: options["simulate"])
 def lagoon_redeem(
     id: str = shared_options.id,
 

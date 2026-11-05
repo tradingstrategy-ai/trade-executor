@@ -51,6 +51,7 @@ from typer import Option
 from tradeexecutor.cli.bootstrap import backup_state, prepare_executor_id
 from tradeexecutor.cli.commands import shared_options
 from tradeexecutor.cli.commands.app import app
+from tradeexecutor.cli.state_lock import with_state_lock
 from tradeexecutor.cli.commands.lagoon_lighter_test_trade import (
     DEFAULT_LIGHTER_DEPOSIT_TIMEOUT,
     DEFAULT_LIGHTER_WITHDRAW_TIMEOUT,
@@ -521,6 +522,7 @@ def _resume_withdrawal(
 
 @app.command()
 @shared_options.with_json_rpc_options()
+@with_state_lock(read_only=lambda options: options["simulate"])
 def lighter_move_funds(
     id: str = shared_options.id,
     strategy_file: Path = shared_options.strategy_file,

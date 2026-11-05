@@ -8,6 +8,7 @@ from typing import Optional
 from eth_defi.hotwallet import HotWallet
 
 from .app import app
+from tradeexecutor.cli.state_lock import with_state_lock
 from ..backup import backup_state
 from ..bootstrap import prepare_executor_id, create_web3_config, create_sync_model
 from ..log import setup_logging
@@ -18,6 +19,7 @@ from tradeexecutor.strategy.account_correction import correct_accounts as _corre
 
 @app.command()
 @shared_options.with_json_rpc_options()
+@with_state_lock()
 def reset_deposits(
     id: str = shared_options.id,
     name: str = shared_options.name,

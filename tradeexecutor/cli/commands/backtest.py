@@ -28,12 +28,14 @@ from ..log import setup_logging
 from ..result import display_backtesting_results
 from . import shared_options
 from .app import app
+from tradeexecutor.cli.state_lock import with_state_lock
 from .shared_options import required_option
 
 logger = logging.getLogger(__name__)
 
 
 @app.command()
+@with_state_lock(default_suffix="-backtest")
 def backtest(
     id: str = shared_options.id,
     name: Optional[str] = shared_options.name,

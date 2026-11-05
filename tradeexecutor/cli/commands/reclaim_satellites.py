@@ -62,6 +62,7 @@ from tradeexecutor.cli.bootstrap import (
 )
 from tradeexecutor.cli.commands import shared_options
 from tradeexecutor.cli.commands.app import app
+from tradeexecutor.cli.state_lock import with_state_lock
 from tradeexecutor.cli.commands.lagoon_utils import (
     ensure_state_store_exists,
     sync_reserve_balance_to_state,
@@ -440,6 +441,7 @@ def _read_satellite_balances(web3config, satellite_vaults: dict) -> tuple[dict[i
 
 @app.command()
 @shared_options.with_json_rpc_options()
+@with_state_lock(read_only=lambda options: options["dry_run"] or options["simulate"])
 def lagoon_reclaim_satellites(
     id: str = shared_options.id,
 

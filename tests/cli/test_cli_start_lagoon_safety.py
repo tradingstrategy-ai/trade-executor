@@ -7,9 +7,11 @@ from unittest import mock
 
 import pytest
 
+from tradeexecutor.cli.commands import start as start_module
 from tradeexecutor.cli.loop import ExecutionLoop
 from tradeexecutor.cli.main import app
 from tradeexecutor.state.state import State
+from tradeexecutor.state.lock import StateFileLocked, state_file_lock
 from tradeexecutor.strategy.dummy import DummyExecutionModel
 from tradeexecutor.strategy.sync_model import DummySyncModel
 
@@ -27,18 +29,19 @@ class FakeWeb3Config:
         return self._default
 
 
+@pytest.mark.parametrize("interrupt", [False, True])
 def test_cli_start_enables_lagoon_frozen_position_safety_by_default(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    interrupt: bool,
 ) -> None:
     """CLI start enables the Lagoon frozen-position safety option by default.
 
     1. Patch CLI start-up so it runs offline with a fake Lagoon sync model.
     2. Run `start` without overriding the Lagoon frozen-position safety option.
-    3. Verify the fake Lagoon sync model receives the default enabled safety flag.
+    3. Verify the safety flag and lock ownership during execution and crash sleep.
+    4. Verify writer ownership is released when the command exits.
     """
-    from tradeexecutor.cli.commands import start as start_module
-
     class FakeLagoonVaultSyncModel(DummySyncModel):
         def __init__(self) -> None:
             self.abort_lagoon_settlement_on_frozen_positions = False
@@ -59,8 +62,22 @@ def test_cli_start_enables_lagoon_frozen_position_safety_by_default(
         return state
 
     def fake_run_with_state(self: ExecutionLoop, state: State) -> None:
-        # 3. Verify the fake Lagoon sync model receives the propagated safety flag.
+        """Check ownership; state is unused but required by the execution interface."""
+        # 3. Verify the safety flag and lock ownership during execution and crash sleep.
         assert self.sync_model.abort_lagoon_settlement_on_frozen_positions is True
+        with pytest.raises(StateFileLocked):
+            with state_file_lock(state_file):
+                pytest.fail("start released ownership before execution finished")
+        if interrupt:
+            raise KeyboardInterrupt("Exercise the crash-status sleep")
+
+    def fake_sleep(seconds: float) -> None:
+        """Check the crash-status wait without leaving the test sleeping."""
+        assert seconds == 3600 * 24 * 365
+        with pytest.raises(StateFileLocked):
+            with state_file_lock(state_file):
+                pytest.fail("start released ownership during crash-status sleep")
+        raise RuntimeError("Stop crash-status sleep")
 
     monkeypatch.setattr(start_module, "LagoonVaultSyncModel", FakeLagoonVaultSyncModel)
     monkeypatch.setattr(start_module, "create_web3_config", lambda **kwargs: FakeWeb3Config())
@@ -69,6 +86,9 @@ def test_cli_start_enables_lagoon_frozen_position_safety_by_default(
     monkeypatch.setattr(start_module, "create_client", lambda **kwargs: (object(), None))
     monkeypatch.setattr(ExecutionLoop, "setup", fake_setup)
     monkeypatch.setattr(ExecutionLoop, "run_with_state", fake_run_with_state)
+    # Avoid the indefinite crash wait and unrelated thread-stack output.
+    monkeypatch.setattr(start_module.time, "sleep", fake_sleep)
+    monkeypatch.setattr(start_module.faulthandler, "dump_traceback", mock.Mock())
 
     environment = {
         "STRATEGY_FILE": strategy_path.as_posix(),
@@ -85,4 +105,12 @@ def test_cli_start_enables_lagoon_frozen_position_safety_by_default(
 
     # 2. Run `start` without overriding the Lagoon frozen-position safety option.
     with mock.patch.dict("os.environ", environment, clear=True):
-        app(["start"], standalone_mode=False)
+        if interrupt:
+            with pytest.raises(RuntimeError, match="Stop crash-status sleep"):
+                app(["start"], standalone_mode=False)
+        else:
+            app(["start"], standalone_mode=False)
+
+    # 4. Verify writer ownership is released when the command exits.
+    with state_file_lock(state_file):
+        pass

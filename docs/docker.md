@@ -94,6 +94,20 @@ Stop the live service before any command that may write state. The maintenance
 shell is a separate one-off container; opening it does not stop the running
 executor or prevent concurrent state writes.
 
+Updated state-changing commands also acquire an exclusive kernel lock beside
+the state JSON, for example `state/hyper-ai.json.lock`. The service and one-off
+Compose containers use the existing shared state-directory mount, so a second
+writer exits immediately with status 1 and instructions to stop the other
+process. `compose exec` and host maintenance using the same directory share
+this protection. Use compatible filesystem permissions for all writers.
+
+Keep the stop → maintenance → validate → restart workflow. Restart existing
+daemons using the updated image before relying on locking: older binaries and
+unmodified external scripts do not honour advisory locks. Ownership releases
+automatically on process exit or death; the empty lock file stays and is safe
+to reuse. **Never delete lock files or clear the state directory while writers
+may be running**, as this could allow concurrent ownership of different inodes.
+
 ```shell
 docker compose stop hyper-ai
 docker compose run --entrypoint /bin/bash hyper-ai --

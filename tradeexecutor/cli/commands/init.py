@@ -28,6 +28,7 @@ from tradeexecutor.ethereum.lighter.idle_collateral import refresh_lighter_idle_
 from tradeexecutor.exchange_account.lighter import create_executor_lighter_session
 
 from .app import app
+from tradeexecutor.cli.state_lock import with_state_lock
 from ..bootstrap import (
     prepare_executor_id,
     create_web3_config,
@@ -82,6 +83,7 @@ def _read_lagoon_deployment_block(
 
 @app.command()
 @shared_options.with_json_rpc_options()
+@with_state_lock()
 def init(
     id: str = shared_options.id,
     name: str = shared_options.name,

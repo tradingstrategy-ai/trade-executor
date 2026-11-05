@@ -98,6 +98,7 @@ import sys
 from decimal import Decimal
 from pathlib import Path
 
+import click
 from eth_defi.compat import native_datetime_utc_now
 from eth_defi.erc_4626.classification import create_vault_instance_autodetect
 from eth_defi.erc_4626.vault_protocol.gains.vault import OstiumVault, OstiumVersion
@@ -115,6 +116,7 @@ from tradeexecutor.ethereum.vault.settlement_retry import check_and_resolve_vaul
 from tradeexecutor.ethereum.vault.vault_utils import translate_vault_to_trading_pair
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.state import State
+from tradeexecutor.cli.bootstrap import locked_state_file
 from tradeexecutor.state.trade import TradeStatus
 from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
 from tradeexecutor.strategy.generic.generic_router import GenericRouting
@@ -614,9 +616,10 @@ try:
                 if not confirm(f"Deposit {amount} USDC into Ostium vault via trade-executor?"):
                     sys.exit(0)
                 # Execute deposit — state is saved to STATE_FILE for later claim
-                do_test_trade(
-                    web3, hot_wallet, vault, arb_usdc, amount, state_file_path, is_live=True,
-                )
+                with locked_state_file(state_file_path) as canonical_state_file:
+                    do_test_trade(
+                        web3, hot_wallet, vault, arb_usdc, amount, canonical_state_file, is_live=True,
+                    )
                 print(f"\nDeposit request submitted. The trade is vault_settlement_pending.")
                 print(f"Settlement happens off-chain every ~24h.")
                 print(f"After settlement, claim with:")
@@ -624,7 +627,8 @@ try:
 
             elif action == "claim":
                 # Load saved state and run settlement retry to claim
-                do_claim(web3, hot_wallet, vault, arb_usdc, state_file_path)
+                with locked_state_file(state_file_path) as canonical_state_file:
+                    do_claim(web3, hot_wallet, vault, arb_usdc, canonical_state_file)
 
             elif action == "redeem":
                 print("ERROR: Live redeem not yet supported as standalone — use the start CLI command")
@@ -633,6 +637,9 @@ try:
             print(f"Unknown ACTION: {action}. Use: status, deposit, claim, redeem, simulate_all")
             sys.exit(1)
 
+except click.ClickException as exc:
+    exc.show()
+    sys.exit(exc.exit_code)
 finally:
     if anvil_launch is not None:
         print("\nShutting down Anvil fork...")

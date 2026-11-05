@@ -7,6 +7,7 @@ from typer import Option
 
 from . import shared_options
 from .app import app
+from tradeexecutor.cli.state_lock import with_state_lock
 from ..bootstrap import prepare_executor_id
 from ...ethereum.vault.hypercore_dust_claim import (
     DEFAULT_MAX_CLAIM_USDC,
@@ -16,6 +17,7 @@ from ...ethereum.vault.hypercore_dust_claim import (
 
 @app.command()
 @shared_options.with_json_rpc_options()
+@with_state_lock()
 def claim_hypercore_vault_dust(
     id: str = shared_options.id,
     strategy_file: Path = shared_options.strategy_file,

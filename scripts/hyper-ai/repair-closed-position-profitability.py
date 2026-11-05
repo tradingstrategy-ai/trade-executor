@@ -3,18 +3,25 @@
 The command previews changes by default.  Pass ``--write`` to create a backup
 and atomically replace the local state file.
 
-Usage::
+Local development::
 
     source .local-test.env && poetry run python scripts/hyper-ai/repair-closed-position-profitability.py state/hyper-ai.json
     source .local-test.env && poetry run python scripts/hyper-ai/repair-closed-position-profitability.py state/hyper-ai.json --write
+
+For production, follow ``docs/docker.md``: stop the executor, open its deployment
+Compose shell and confirm the authoritative state file. Use the script shipped
+in the deployed image without sourcing ``.local-test.env``. Preview first,
+confirm the numbered backup after writing, then repeat the preview before
+restarting the executor and checking its state endpoint.
 """
 
 import argparse
 from pathlib import Path
 
+import click
 from tabulate import tabulate
 
-from tradeexecutor.cli.bootstrap import backup_state
+from tradeexecutor.cli.bootstrap import backup_state, locked_state_file
 from tradeexecutor.state.repair import repair_hypercore_closed_position_profitability
 from tradeexecutor.state.state import State
 
@@ -49,68 +56,73 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    if not args.state_file.is_file():
-        parser.error(f"State file does not exist: {args.state_file}")
+    with locked_state_file(args.state_file, enabled=args.write) as args.state_file:
+        if not args.state_file.is_file():
+            parser.error(f"State file does not exist: {args.state_file}")
 
-    selected_ids = set(args.position_ids) if args.position_ids else None
-    state = State.read_json_file(args.state_file)
-    try:
-        repairs = repair_hypercore_closed_position_profitability(
-            state,
-            position_ids=selected_ids,
-        )
-    except ValueError as e:
-        parser.error(str(e))
-
-    rows = [
-        (
-            repair.position_id,
-            repair.symbol,
-            format_pct(repair.old_profitability),
-            format_pct(repair.new_profitability),
-            format_usd(repair.old_profit_usd),
-            format_usd(repair.new_profit_usd),
-        )
-        for repair in repairs
-    ]
-    if rows:
-        print(
-            tabulate(
-                rows,
-                headers=(
-                    "position",
-                    "pair",
-                    "old return",
-                    "new return",
-                    "old PnL",
-                    "new PnL",
-                ),
+        selected_ids = set(args.position_ids) if args.position_ids else None
+        state = State.read_json_file(args.state_file)
+        try:
+            repairs = repair_hypercore_closed_position_profitability(
+                state,
+                position_ids=selected_ids,
             )
-        )
-    else:
-        print("No closed Hypercore profitability records need repair.")
+        except ValueError as e:
+            parser.error(str(e))
 
-    if args.write and repairs:
-        store, state = backup_state(
-            args.state_file,
-            backup_suffix="hypercore-profitability-backup",
-        )
-        written_repairs = repair_hypercore_closed_position_profitability(
-            state,
-            position_ids=selected_ids,
-        )
-        assert written_repairs == repairs, (
-            "State file changed between preview and write"
-        )
-        store.sync(state)
-        print(f"Repaired {len(repairs)} position(s) in {args.state_file}.")
-    elif args.write:
-        print("State file was not changed.")
-    else:
-        print(
-            f"Preview only: {len(repairs)} position(s) would be repaired; pass --write to apply."
-        )
+        rows = [
+            (
+                repair.position_id,
+                repair.symbol,
+                format_pct(repair.old_profitability),
+                format_pct(repair.new_profitability),
+                format_usd(repair.old_profit_usd),
+                format_usd(repair.new_profit_usd),
+            )
+            for repair in repairs
+        ]
+        if rows:
+            print(
+                tabulate(
+                    rows,
+                    headers=(
+                        "position",
+                        "pair",
+                        "old return",
+                        "new return",
+                        "old PnL",
+                        "new PnL",
+                    ),
+                )
+            )
+        else:
+            print("No closed Hypercore profitability records need repair.")
+
+        if args.write and repairs:
+            store, state = backup_state(
+                args.state_file,
+                backup_suffix="hypercore-profitability-backup",
+            )
+            written_repairs = repair_hypercore_closed_position_profitability(
+                state,
+                position_ids=selected_ids,
+            )
+            assert written_repairs == repairs, (
+                "State file changed between preview and write"
+            )
+            store.sync(state)
+            print(f"Repaired {len(repairs)} position(s) in {args.state_file}.")
+        elif args.write:
+            print("State file was not changed.")
+        else:
+            print(
+                f"Preview only: {len(repairs)} position(s) would be repaired; pass --write to apply."
+            )
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except click.ClickException as exc:
+        exc.show()
+        raise SystemExit(exc.exit_code)

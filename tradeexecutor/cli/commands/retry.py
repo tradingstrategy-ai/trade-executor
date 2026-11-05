@@ -26,11 +26,13 @@ from tradeexecutor.utils.timer import timed_task
 from tradeexecutor.cli.commands import shared_options
 
 from .app import app
+from tradeexecutor.cli.state_lock import with_state_lock
 from eth_defi.compat import native_datetime_utc_now
 
 
 @app.command()
 @shared_options.with_json_rpc_options()
+@with_state_lock()
 def retry(
     id: str = shared_options.id,
     name: Optional[str] = shared_options.name,

@@ -34,6 +34,7 @@ from tradingstrategy.timebucket import TimeBucket
 from . import shared_options
 
 from .app import app
+from tradeexecutor.cli.state_lock import with_state_lock
 from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_execution_and_sync_model, resolve_deployment_file, \
     create_state_store, create_client, configure_default_chain
 from ..log import setup_logging
@@ -142,6 +143,7 @@ def calculate_console_indicators(
 
 @app.command()
 @shared_options.with_json_rpc_options()
+@with_state_lock()
 def console(
     id: str = typer.Option(None, envvar="EXECUTOR_ID", help="Executor id used when programmatically referring to this instance. If not given, take the base of --strategy-file."),
 

@@ -19,6 +19,7 @@ from typer import Option
 
 from . import shared_options
 from .app import app
+from tradeexecutor.cli.state_lock import with_state_lock
 from tradeexecutor.cli.bootstrap import prepare_executor_id, backup_state
 from tradeexecutor.state.correct_history import (
     DEFAULT_NAV_SYNC_MIN_COMPONENT_CHANGE,
@@ -34,6 +35,7 @@ from tradeexecutor.state.correct_history import (
 
 
 @app.command()
+@with_state_lock()
 def correct_history(
     id: str = shared_options.id,
     strategy_file: Path = shared_options.strategy_file,

@@ -50,6 +50,7 @@ from tradeexecutor.strategy.account_correction import (
     UnknownTokenPositionFix,
 )
 from .app import app
+from tradeexecutor.cli.state_lock import with_state_lock
 from ..bootstrap import prepare_executor_id, create_web3_config, create_sync_model, create_client, backup_state, create_execution_and_sync_model, resolve_deployment_file, configure_default_chain, create_state_store
 from ..double_position import check_double_position
 from ..log import setup_logging
@@ -622,6 +623,7 @@ def _recover_hypercore_transit_balances(
 
 @app.command()
 @shared_options.with_json_rpc_options()
+@with_state_lock(read_only=lambda options: options["dry_run"])
 def correct_accounts(
     id: str = shared_options.id,
 

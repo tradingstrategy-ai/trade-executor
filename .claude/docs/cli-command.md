@@ -399,6 +399,35 @@ Examples:
 
 ## State-saving patterns
 
+State writers must acquire ownership at the command boundary, before loading
+state, backing it up or broadcasting transactions:
+
+```python
+from tradeexecutor.cli.state_lock import with_state_lock
+
+@app.command()
+@shared_options.with_json_rpc_options()
+@with_state_lock(read_only=lambda options: options["simulate"])
+def my_command(...):
+    ...
+```
+
+Only skip locking for modes which actually never persist state. Omit the
+`read_only` predicate for commands that always write. `backtest` uses
+`default_suffix="-backtest"` for its default output path. The wrapper supplies
+the canonical state path and releases ownership after command cleanup. Helpers
+must reuse the command's store without acquiring the same lock again. Scripts
+use `locked_state_file()` around their complete working-state lifecycle.
+
+When auditing writer coverage, follow scripts that delegate to recovery helpers,
+even if the script contains no direct state save. Lock the script entry point;
+the same helper may also be called from an already-locked console session.
+
+Contention exits immediately with status 1. Lock files remain beside the state
+JSON; kernel ownership is released automatically when the process dies. Never
+delete a lock file to bypass a running writer. See
+[state persistence](../../docs/state-persistence.md#exclusive-writer-ownership).
+
 If a command mutates state:
 
 - usually resolve and log the target path first

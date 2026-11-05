@@ -11,6 +11,7 @@ from typer import Option
 from tradeexecutor.cli.bootstrap import prepare_executor_id
 from tradeexecutor.cli.commands import shared_options
 from tradeexecutor.cli.commands.app import app
+from tradeexecutor.cli.state_lock import with_state_lock
 from tradeexecutor.cli.log import setup_logging
 from tradeexecutor.cli.vault_trade.core import parse_vault_ids
 from tradeexecutor.cli.vault_trade.runner import VaultTestBatchRunner
@@ -113,6 +114,7 @@ def _complete_vault_test_report_rows(
 
 @app.command()
 @shared_options.with_json_rpc_options()
+@with_state_lock()
 def vault_test_trade(
     id: str = Option(
         ...,

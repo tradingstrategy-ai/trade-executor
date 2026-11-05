@@ -10,6 +10,7 @@ from typer import Option
 
 from . import shared_options
 from .app import app
+from tradeexecutor.cli.state_lock import with_state_lock
 from ..bootstrap import prepare_executor_id, prepare_cache_and_token_cache, create_web3_config, create_state_store, \
     create_execution_and_sync_model, resolve_deployment_file, create_client, configure_default_chain
 from .lagoon_utils import resolve_state_store
@@ -29,6 +30,7 @@ from eth_defi.compat import native_datetime_utc_now
 
 @app.command()
 @shared_options.with_json_rpc_options()
+@with_state_lock(read_only=lambda options: options["simulate"])
 def lagoon_settle(
     id: str = shared_options.id,
 

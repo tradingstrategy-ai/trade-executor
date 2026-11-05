@@ -985,15 +985,19 @@ def run_hyperliquid_cleanup(
     )
 
 
-def run_hyperliquid_cleanup_from_environment() -> HyperliquidCleanupReport:
+def run_hyperliquid_cleanup_from_environment(*, state_file: Path | None = None) -> HyperliquidCleanupReport:
     """Run clean-up using standard trade-executor environment variables.
+
+    The script entry point passes its locked canonical state path explicitly.
+    Console callers should pass ``store.path`` to use the session's locked state.
 
     Example how to call from console::
 
         from tradeexecutor.ethereum.vault.hyperliquid_cleanup import run_hyperliquid_cleanup_from_environment
-        run_hyperliquid_cleanup_from_environment()
+        run_hyperliquid_cleanup_from_environment(state_file=store.path)
     """
-    state_file = Path(os.environ["STATE_FILE"])
+    if state_file is None:
+        state_file = Path(os.environ["STATE_FILE"])
     strategy_file = Path(os.environ["STRATEGY_FILE"])
     private_key = os.environ["PRIVATE_KEY"]
     json_rpc_hyperliquid = os.environ["JSON_RPC_HYPERLIQUID"]

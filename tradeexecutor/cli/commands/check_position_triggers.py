@@ -7,6 +7,7 @@ from eth_defi.compat import native_datetime_utc_now
 from eth_defi.hotwallet import HotWallet
 
 from .app import app
+from tradeexecutor.cli.state_lock import with_state_lock
 from ..bootstrap import prepare_executor_id, create_web3_config, create_state_store, create_client, create_execution_and_sync_model, resolve_deployment_file
 from ..log import setup_logging
 from ...strategy.approval import UncheckedApprovalModel
@@ -22,6 +23,7 @@ from ...strategy.universe_model import UniverseOptions
 
 @app.command()
 @shared_options.with_json_rpc_options()
+@with_state_lock()
 def check_position_triggers(
     id: str = shared_options.id,
 

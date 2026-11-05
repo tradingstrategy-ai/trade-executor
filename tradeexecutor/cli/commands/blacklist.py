@@ -17,6 +17,7 @@ from eth_defi.hotwallet import HotWallet
 from tabulate import tabulate
 
 from .app import app
+from tradeexecutor.cli.state_lock import with_state_lock
 from ..blacklist import display_blacklist
 from ..bootstrap import prepare_executor_id, create_web3_config, create_sync_model, create_state_store, create_client
 from ..log import setup_logging
@@ -32,6 +33,7 @@ from ...strategy.universe_model import UniverseOptions
 
 @app.command()
 @shared_options.with_json_rpc_options()
+@with_state_lock(read_only=lambda options: not (options["add_token"] or options["remove_token"]))
 def blacklist(
     id: str = shared_options.id,
 

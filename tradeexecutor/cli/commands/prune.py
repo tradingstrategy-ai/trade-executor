@@ -13,11 +13,13 @@ from typing import Optional
 
 from . import shared_options
 from .app import app
+from tradeexecutor.cli.state_lock import with_state_lock
 from tradeexecutor.cli.bootstrap import prepare_executor_id, backup_state
 from tradeexecutor.state.prune import prune_closed_positions
 
 
 @app.command()
+@with_state_lock()
 def prune_state(
     id: str = shared_options.id,
     strategy_file: Path = shared_options.strategy_file,

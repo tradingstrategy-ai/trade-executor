@@ -23,7 +23,45 @@ from tradeexecutor.ethereum.vault import hyperliquid_cleanup
 from tradeexecutor.ethereum.vault import hypercore_transit_recovery
 from tradeexecutor.state.repair import RepairResult
 from tradeexecutor.state.state import State
+from tradeexecutor.state.lock import state_file_lock
 from tradeexecutor.state.store import JSONFileStore
+
+
+def test_hyperliquid_cleanup_environment_state_override(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Use the caller's locked path without reacquiring console ownership.
+
+    1. Supply environment settings and a different explicitly selected state path.
+    2. Invoke the environment adapter while owning the selected state's lock.
+    3. Verify explicit selection and the existing environment default both delegate.
+    """
+    # 1. Supply environment settings and a different explicitly selected state path.
+    selected = tmp_path / "locked.json"
+    fallback = tmp_path / "environment.json"
+    for key, value in {
+        "STATE_FILE": str(fallback),
+        "STRATEGY_FILE": "unused.py",
+        "PRIVATE_KEY": "unused",
+        "JSON_RPC_HYPERLIQUID": "unused",
+        "VAULT_ADDRESS": "unused",
+        "VAULT_ADAPTER_ADDRESS": "unused",
+    }.items():
+        monkeypatch.setenv(key, value)
+    # Mock execution because this test checks path delegation, without RPC or trades.
+    execute = MagicMock()
+    monkeypatch.setattr(hyperliquid_cleanup, "run_hyperliquid_cleanup", execute)
+
+    # 2. Invoke the environment adapter while owning the selected state's lock.
+    with state_file_lock(selected):
+        result = hyperliquid_cleanup.run_hyperliquid_cleanup_from_environment(state_file=selected)
+
+    # 3. Verify explicit selection and the existing environment default both delegate.
+    assert result is execute.return_value
+    assert execute.call_args.kwargs["state_file"] == selected
+    hyperliquid_cleanup.run_hyperliquid_cleanup_from_environment()
+    assert execute.call_args.kwargs["state_file"] == fallback
 
 
 def test_hyperliquid_cleanup_recovers_stranded_safe_balances(

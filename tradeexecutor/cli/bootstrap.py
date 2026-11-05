@@ -5,11 +5,14 @@ import json
 import logging
 import os
 import shutil
+from collections.abc import Iterator
+from contextlib import contextmanager, nullcontext
 from decimal import Decimal
 from pathlib import Path
 from typing import Optional, Tuple, Set, cast
 
 import pandas as pd
+import click
 from eth_typing import HexAddress
 
 from eth_defi.compat import native_datetime_utc_now
@@ -77,6 +80,7 @@ from tradeexecutor.state.metadata import Metadata, OnChainData
 from tradeexecutor.state.deployment_info import DeploymentInfo, DeploymentInfoChange
 from tradeexecutor.state.state import State
 from tradeexecutor.state.store import JSONFileStore, SimulateStore
+from tradeexecutor.state.lock import StateFileLocked, state_file_lock
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.generic.generic_pricing_model import (
     EthereumGenericPricingFactory,
@@ -877,6 +881,21 @@ def create_approval_model(approval_type: ApprovalType) -> ApprovalModel:
         return CLIApprovalModel()
     else:
         raise NotImplementedError()
+
+
+@contextmanager
+def locked_state_file(path: Path | str | None, *, enabled: bool = True) -> Iterator[Path | None]:
+    """Hold writer ownership, presenting contention as an operator-facing CLI error.
+
+    Non-file stores pass None. Read-only modes still receive the canonical path.
+    """
+    canonical = Path(path).resolve() if path is not None else None
+    context = state_file_lock(canonical) if enabled and canonical is not None else nullcontext(canonical)
+    try:
+        with context as resolved:
+            yield resolved
+    except StateFileLocked as exc:
+        raise click.ClickException(str(exc)) from exc
 
 
 def create_state_store(

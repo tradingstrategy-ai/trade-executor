@@ -1,6 +1,14 @@
 """Clean up Hyperliquid closed vault positions with stranded Safe balances.
 
-Use the console command.
+Run from the deployment's stopped Docker Compose service, following
+``docs/docker.md``. Confirm the state mount and use the script shipped in the
+deployed image. Compose supplies the environment; do not source local test
+settings there. Confirm the repair backup and account validation before
+restarting the executor. Inspect the proposed actions before confirming;
+``AUTO_APPROVE`` bypasses that confirmation.
+
+The console command can also run the helper below; its session already holds
+the state lock.
 
 Console usage
 -------------
@@ -24,14 +32,24 @@ Console usage
     )
 """
 
+import os
+
+import click
+
+from tradeexecutor.cli.bootstrap import locked_state_file
 from tradeexecutor.ethereum.vault.hyperliquid_cleanup import \
     run_hyperliquid_cleanup_from_environment
 
 
 def main() -> None:
     """Run the Hyperliquid clean-up flow from environment variables."""
-    run_hyperliquid_cleanup_from_environment()
+    with locked_state_file(os.environ["STATE_FILE"]) as state_file:
+        run_hyperliquid_cleanup_from_environment(state_file=state_file)
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except click.ClickException as exc:
+        exc.show()
+        raise SystemExit(exc.exit_code)
