@@ -1,11 +1,9 @@
 # Reliable multichain account checks and bounded corrections
 
-Approved on 5 November 2026. Implementation record follows below.
+Approved on 5 November 2026. Implemented in [PR #1706](https://github.com/tradingstrategy-ai/trade-executor/pull/1706).
 
 ## Objective and scope
 Make check-accounts and correct-accounts trustworthy for the existing Arbitrum Lagoon hub and Ethereum satellite deployment. Reuse state, balance readers, deployment metadata and simulation harness. Manual recovery is acceptable: refuse ambiguous operations rather than infer economic outcomes from wallet balances. Preserve historical NB05 universe and existing specialised HyperCore recovery. No production transactions, new recovery ledger, dependency upgrade, general token-discovery service or automatic satellite cleanup.
-
-Baseline findings before implementation: check-accounts forces one RPC and does not attach web3config. correct-accounts already selects primary chain and attaches web3config through its execution factory; its existing two-chain test is a hot-wallet/token test, not complete Lagoon coverage. The shared reader falls back to hub RPC. Pool holdings are omitted from generic checking; existing refresh_lighter_idle_collateral already validates account ownership, holdings and stable API snapshot. Pending vault escrow and allocated bridge capital already have correct wallet projections. Signed negative USD differences are incorrectly labelled low value. Correction has reserve-only skip paths and one hub transfer builder. The old failed-mint test changes balances without a real message and expects a recoverable transfer to disappear from NAV; do not treat it as real lifecycle evidence.
 
 ## Implementation contract
 
@@ -60,56 +58,6 @@ parallelism and timeout instructions. Keep missing provider access explicit.
 
 ## Deferred issues
 No exhaustive scanning of hundreds of tokens, different-Safe topology, cross-chain atomic snapshot coordinator, automatic entitlement recovery, general satellite token disposal, new persistence/checkpoint layer, arbitrary historical balance API or universal transaction replay. Provide explicit limits/refusals and existing manual recovery instructions. No changes to the actual NB05 allocation policy.
-
-## Completion and review
-
-Completion requires no false clean result for material or incomplete observations,
-no erased entitlement, and no authoritative state mutation from failed ordinary
-correction. The verification record below distinguishes passing coverage from
-external validation gaps.
-
-Claude CLI `claude-fable-5-1` completed the approved plan review with a successful
-terminal result (`end_turn`, `completed`, `is_error=false`). Raw review:
-`/tmp/multichain-account-plan-fable51.jsonl`. Its accepted corrections are included
-in the implementation contract, gap table and coverage groups above.
-
-## Simplification review
-
-Checked against the implemented command helpers, state/store callbacks, shared
-vault lifecycle and fork driver. The scope needs no additional runtime framework.
-Manual recovery remains sufficient for ambiguous exceptional operations.
-
-| Finding | Evidence and decision |
-| --- | --- |
-| Repeated requirements obscured current work | The implementation instructions, reviewer bullets and gap table repeated the same rules. Consolidated the contract and kept the detailed gap table and verification evidence. Labelled the old defect description as baseline history. |
-| Validation wording could expand into duplicate lifecycle matrices | Three command scenarios already share the existing driver; queued Upshift uses its existing test. Keep those assertions and the original regression evidence. Subsequent changes run affected checks, with broader lifecycle coverage only when the changed behaviour warrants it. |
-| Large-universe fixture used brittle source rewriting | The implementation follow-up replaces function-name string replacement with `strategies/test_only/multi_vault_account_checks.py`, a static inspection strategy calling the existing `expand_account_check_universe`. The test copies this fixture using its existing driver. No parser, configuration knob or fixture framework was added. |
-| Repeated validation has distinct safety purposes | Early custody checks precede side effects; universe-aware checks cover newly discovered assets. Final pool/investor reads detect changes during confirmation. Keep these boundaries rather than caching an earlier clean result. |
-| A copied state may look expensive | The existing pool validator changes validity and valuation fields. A copy isolates read-only inspection. Manual commands do not justify a new snapshot schema or a separate pure-validation framework without measured cost. |
-| Recovery fixes are necessary within the bounded scope | The real interruption exposed lost expired IDs and an uncheckpointed receive. Existing `expired_positions` and the pre-broadcast callback fix them directly. Retain these fixes and hard-exit evidence; do not add a recovery registry or replay engine. |
-
-This review changes this plan only. It adds no implementation work to the
-completed deployment scope and does not rerun tests. Historical results below
-remain the results of the implementation run.
-
-### Independent Claude overengineering review
-
-Claude CLI `claude-fable-5-1` reviewed the current plan with tools disabled and
-completed successfully (`end_turn`, `completed`, `is_error=false`). Verdict:
-**no blocking overengineering found**. Raw review:
-`/tmp/claude-multichain-overengineering-review.jsonl`.
-
-| Reviewer finding | Checked outcome |
-| --- | --- |
-| Home-block handling could imply a speculative CLI option | Clarified group B: this is the existing internal `block_identifier` argument, not a new historical-balance feature. |
-| Crash hook could imply a test-only production branch | Clarified group C: the monkeypatch lives in the simulation harness; production uses the existing checkpoint callback. No new production test branch is needed. |
-| Pool refusal matrix could eventually be reduced | Optional only if maintenance cost appears. Keep the currently passing per-boundary command assertions required by the user. Missing RPC configuration and a configured provider failing during observation exercise different paths. |
-| A/D idempotency checks might duplicate deployment work | A, D and E already share the same settled scenario and deployment. No extra fixture or deployment can be removed on this basis. |
-| Source rewriting, copied state and early validation could be tidied | Source rewriting was optional maintenance at review time and is replaced by the static fixture in the implementation follow-up. Shared-validator mutation and distinct early/final safety boundaries justify the copy and validation passes; avoid refactoring them without a demonstrated benefit. |
-
-The review applied two wording clarifications. The subsequent implementation
-follow-up also completes the static-fixture cleanup. Runtime accounting behaviour,
-acceptance coverage and historical test results remain as recorded below.
 
 ## Implementation breakdown
 
@@ -168,112 +116,77 @@ the dual-fork scenarios ran in parallel with separate deployments and state.
 External validation gaps: the legacy single-chain low-value test could not
 construct its market-data universe because `tradingstrategy.ai/api/tvl` returned
 repeated HTTP 500 responses; its second case is already skipped. Three Derive
-credential-dependent cases were skipped. These are not passing results. Fixed
+cases carry an existing module-wide skip pending test-account/session-key setup
+for the Derive v3 migration. These are not passing results. Fixed
 Arbitrum/Ethereum archive access, the new low-value arithmetic checks, and the
 single-chain Lagoon/Upshift and simulated exchange-account checks succeeded.
 
-`git diff --check` and targeted undefined-name/unused-import checks passed for
-the new helpers and tests. No production state, live deployment or remote branch
-was changed. The earlier Claude plan review's terminal result was rechecked:
-`claude-fable-5-1`, `end_turn`, `completed`, `is_error=false`.
+Additional compatibility checks passed for single-chain legacy deployment
+metadata, reclaimed vault trades, queued-investor observations during specialised
+HyperCore recovery, and exchange equity drift, missing readers and transport
+failures. Relevant logs are `/tmp/account-cleanup-upshift-final-tests.log`,
+`/tmp/account-cleanup-reclaim-tests.log`, `/tmp/account-cleanup-topup-tests.log`,
+`/tmp/account-cleanup-incident-tests.log` and
+`/tmp/account-cleanup-exchange-complete-tests.log`.
 
-The strengthened receive-crash scenario also passed separately (327 seconds):
-the process exited before booking success, with no test-side executor save;
-startup recovered the original pre-broadcast-checkpointed receive, independent
-NAV agreed, and the queued venue exits completed. Across the focused modules
-above, 81 distinct tests passed. The external API failure and four skips remain
-explicitly excluded from that count.
+After rebasing onto PR #1705's Lighter SDK retry changes, all three multichain
+command scenarios passed again in 348.52 seconds and its three SDK regressions
+passed. Logs: `/tmp/account-pr-rebase-multichain-tests.log` and
+`/tmp/account-pr-rebase-sdk-tests.log`. Repeated runs do not increase the original
+81 distinct-test count. Targeted static checks, shell syntax, documentation links
+and `git diff --check` also passed.
 
-## Implementation follow-up
+After removing the redundant reader conditional, the public exchange-account
+correction test passed again in 44.88 seconds:
+`/tmp/account-simplification-exchange-tests.log`.
 
-The reviewed plan is implemented in the worktree. The large-universe scenario
-now copies the static `strategies/test_only/multi_vault_account_checks.py`
-inspection fixture instead of rewriting strategy function names. It re-exports
-the base strategy settings and indicator hook, uses the existing universe
-expander, and places no orders on its synthetic untracked tokens.
+## Framework reuse and simplification review
 
-The affected fixed-block public-command scenario,
-`tests/lagoon/test_multichain_account_commands.py::test_settled_accounts_and_atomic_correction`,
-passed again in 322.54 seconds with this fixture. Normal strategy loading,
-targeted undefined-name/unused-import checks and `git diff --check` also passed.
-This reruns an existing case and does not increase the 81 distinct-test count.
-The previously recorded external API and credential validation gaps remain.
-
-## PR cleanup review
-
-Claude CLI `claude-opus-5-5` completed a read-only implementation review and
-identified four compatibility regressions. Its verdict was not ready pending
-fixes; that initial result is not a final approval. Raw review:
-`/tmp/claude-opus55-multichain-pr-review.jsonl`.
-
-| Finding | Correction and focused evidence |
+| Boundary | Existing mechanism and decision |
 | --- | --- |
-| Historical failed or reclaimed trades stayed pending forever | Treat confirmed failures as terminal, matching existing slot semantics. The shared reclaimed-deposit regression verifies that cash is restored and no assets remain excluded as pending. |
-| Normalised single-chain deployment reports lack a Safe field | Validate per-chain Safe metadata for coordinated multichain deployments. Single-chain custody still comes from the actual vault. Public Upshift commands now exercise a normalised report without `safe_address`; unknown or missing multichain metadata still refuses. |
-| Investor queues blocked specialised HyperCore recovery | Exclude incident, withdrawal and completed-top-up recovery from the ordinary investor gate. Real-Lagoon interrupted-deposit and completed-top-up tests simulate a queued investor observation while retaining actual fork custody and receipt validation. |
-| Moving exchange equity and virtual reserves prevented corrections | Preserve the existing API-only route for exchange positions, while checking actual Lagoon reserves and reserve-only custody. Final validation checks ERC-20/pool balances; exchange equity records the successful sync snapshot. The public Lighter regression includes drifting subsequent equity and a non-custodial virtual reserve. |
+| Ordinary corrections | Existing balance-update events and state store; stage in memory and save after validation. No additional journal or transaction framework. |
+| Pending operations | Existing trade statuses, tickets and settlement/retry paths. Commands refuse ambiguous corrections; they do not recover funds themselves. |
+| Pool inspection | Run the existing NAV validator on a copied state because it changes prices and validity. A separate validation framework would duplicate ownership, holdings and stable-observation rules. |
+| Early and final validation | Preflight checks recorded custody before side effects; universe-aware checks include configured assets; final reads catch changes during confirmation. These checks serve different purposes. |
+| Exchange read failures | The shared sync deliberately skips some non-Lighter API failures and exposes no strict mode. A local reader wrapper lets this command refuse stale equity without changing daemon policy. Removed the redundant conditional after the missing-reader guard. |
+| Integration setup | Reuse the existing driver and runbook. Three command scenarios own matching forks, executor state and fake sequencer; queued Upshift uses its existing test. The large-universe fixture calls the existing universe builder rather than rewriting strategy source. |
 
-The reviewer also recorded that it
-ran a disallowed no-op Python process while checking tool access. It reported no
-tests or file edits; this process deviation does not count as validation.
+The review history has been condensed here; the implementation contract and
+acceptance boundaries are unchanged. Comments explain money, escrow and restart
+invariants. No extra lifecycle matrix, routing abstraction or recovery framework
+is needed for this scope.
 
-Remaining scope limits: the receive checkpoint test covers startup retry, whose
-callback is wired by `start`. The initial inline CCTP receive and some manual
-recovery callers still have older checkpoint/wait behaviour; a crash there can
-require receipt-led manual recovery. No general receive/replay refactor is claimed.
-The runbook's new settled `check-accounts` step has syntax validation, but the
-shared deployment fixture exits before that final shell step; command coverage
-comes from the public-command tests. Block-height display assertions are distinct
-from inspection of the reader's per-chain block selection.
+## Independent reviews
 
-### Final cleanup outcome
+Claude CLI completed the plan and overengineering reviews with
+`claude-fable-5-1`; both ended successfully. Raw reviews:
+`/tmp/multichain-account-plan-fable51.jsonl` and
+`/tmp/claude-multichain-overengineering-review.jsonl`.
 
-The focused Opus 5.5 follow-up verified the terminal-failure, single-chain
-metadata and HyperCore recovery fixes. It then identified a swallowed-read gap
-in the exchange snapshot handling. The correction command now records failed
-reader calls locally, refuses them even when the shared daemon sync catches the
-error, and refuses a missing reader outright. Shared sync and client factories
-remain unchanged. Successful equity snapshots still tolerate later price movement.
-Multichain metadata must also cover every required custody chain.
+The `claude-opus-5-5` implementation review found compatibility regressions in
+terminal-failure classification, legacy metadata, specialised HyperCore recovery
+and exchange snapshots. These were corrected and covered by the focused checks
+above. Follow-up reviews found no blocking findings in the remaining metadata
+and failed/missing-reader fixes. Raw reviews:
+`/tmp/claude-opus55-multichain-pr-review.jsonl`,
+`/tmp/claude-opus55-multichain-pr-followup.jsonl`,
+`/tmp/claude-opus55-multichain-pr-final.jsonl` and
+`/tmp/claude-opus55-multichain-reader-closure.jsonl`.
+All completed with `end_turn`, `completed`, `is_error=false`; the final
+reader-guard review used supplied excerpts with tools disabled. Earlier reviewers
+ran disallowed no-op processes; those processes provide no test evidence.
 
-Final completed reviews found no blocking findings in these remaining fixes:
+## Remaining limits
 
-- `/tmp/claude-opus55-multichain-pr-final.jsonl`: failed-read handling and
-  metadata checks, with final log/current-test assertions left for verification.
-- `/tmp/claude-opus55-multichain-reader-closure.jsonl`: missing-reader guard
-  and both public-command failure assertions, with the integration rerun pending.
+The receive-crash test covers startup retry with the existing pre-broadcast
+callback. Initial inline CCTP receives and some manual recovery callers retain
+older checkpoint/wait behaviour; a crash there can require receipt-led manual
+recovery. Completed HyperCore top-up recovery retains its existing treatment of
+unrelated corrections: inspect preview and custody evidence if an externally
+settled but unbooked investor flow coexists.
 
-Both used `claude-opus-5-5` and ended with `end_turn`, `completed`,
-`is_error=false`. The first was a repository inspection; the final reader-guard
-closure reviewed supplied code excerpts with tools disabled. The pending test
-evidence was subsequently verified by the primary agent:
-
-| Cleanup check | Final result |
-| --- | --- |
-| Settled accounting and real bridge interruption scenarios | 2 passed in the dual-fork module rerun; the third scenario's missing-file harness setup failed before the CLI and was corrected separately |
-| Complete custody refusals, including missing artefact, missing chain and unknown slug | 1 passed in 253.93s: `/tmp/account-cleanup-custody-verified-tests.log` |
-| Exchange drift, virtual reserve, swallowed transport failure and absent reader | 1 passed in 44.12s: `/tmp/account-cleanup-exchange-complete-tests.log` |
-| Single-chain legacy metadata and queued Upshift resume | 1 passed: `/tmp/account-cleanup-upshift-final-tests.log` |
-| HyperCore completed top-up with queued investor observation | 2 passed: `/tmp/account-cleanup-topup-tests.log` |
-| HyperCore interrupted deposit with queued investor observation | 1 passed: `/tmp/account-cleanup-incident-tests.log` |
-| Shared vault settlement regressions | 26 passed; the precisely affected reclaim case also passed after its assertions were relocated |
-| Two-chain token accounting | 2 passed: `/tmp/account-cleanup-twochain-verified-tests.log` |
-| Arithmetic and confirmation | 5 passed: `/tmp/account-pr-cleanup-tests.log` |
-
-The earlier setup errors and successful `SystemExit(0)` caught incorrectly by
-the new legacy-metadata test are superseded by the specific passing logs above.
-The expanded missing-file test captures the deployment-derived environment before
-removing its artefact, so both real CLI entry points reach the intended refusal.
-No broader suite rerun or new live provider claim is implied by these results.
-
-Targeted static checks, normal helper/strategy loading, shell syntax,
-documentation links and `git diff --check` passed. Changed narrative text was
-reviewed for UK English, sentence-case headings and scope accuracy. Changelog and
-agent guidance were updated. The local PR description uses Why, Lessons learnt
-and Summary; no PR was created or pushed.
-
-Existing limits remain: unavailable historical market-data and external account
-credentials, manual recovery for older inline/manual CCTP crash windows, and
-non-atomic cross-chain observations. Completed HyperCore top-up recovery retains
-its existing treatment of unrelated corrections; operators must inspect preview
-and custody evidence if an externally settled but unbooked investor flow coexists.
+The runbook's settled account-check step has syntax validation. The shared
+fixture exits before that final shell step, so command coverage comes from the
+public-command tests. Cross-chain observations are not atomic. External market
+data, Derive account setup and live exchange-provider coverage remain validation
+gaps; simulated sequencer results do not establish live-provider compatibility.

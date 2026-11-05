@@ -1105,31 +1105,30 @@ def correct_accounts(
 
         if exchange_account_value_func is None:
             raise UncleanState("Exchange equity observation unavailable: no account reader was configured; no ordinary corrections saved")
-        if exchange_account_value_func:
-            failed_equity_reads: list[tuple[str, str]] = []
+        failed_equity_reads: list[tuple[str, str]] = []
 
-            def read_correction_equity(pair: TradingPairIdentifier, **kwargs) -> Decimal:
-                """Record failures even if a backend's shared sync swallows them."""
-                try:
-                    return exchange_account_value_func(pair, **kwargs)
-                except Exception as exc:
-                    # Keep transport details and credentials out of the report.
-                    failed_equity_reads.append((pair.get_ticker(), type(exc).__name__))
-                    raise
+        def read_correction_equity(pair: TradingPairIdentifier, **kwargs) -> Decimal:
+            """Record failures even if a backend's shared sync swallows them."""
+            try:
+                return exchange_account_value_func(pair, **kwargs)
+            except Exception as exc:
+                # Keep transport details and credentials out of the report.
+                failed_equity_reads.append((pair.get_ticker(), type(exc).__name__))
+                raise
 
-            exchange_sync_model = ExchangeAccountSyncModel(read_correction_equity, web3=web3)
-            ensure_routing_setup()
-            exchange_events = exchange_sync_model.sync_positions(
-                timestamp=native_datetime_utc_now(),
-                state=state,
-                strategy_universe=universe,
-                pricing_model=pricing_model,
-            )
-            if failed_equity_reads:
-                raise UncleanState(f"Exchange equity observation unavailable; no ordinary corrections saved: {failed_equity_reads}")
-            logger.info("Exchange account sync: %d balance update(s)", len(exchange_events))
-            for evt in exchange_events:
-                logger.info("  Position %d: %s (change: %s)", evt.position_id, evt.notes, evt.quantity)
+        exchange_sync_model = ExchangeAccountSyncModel(read_correction_equity, web3=web3)
+        ensure_routing_setup()
+        exchange_events = exchange_sync_model.sync_positions(
+            timestamp=native_datetime_utc_now(),
+            state=state,
+            strategy_universe=universe,
+            pricing_model=pricing_model,
+        )
+        if failed_equity_reads:
+            raise UncleanState(f"Exchange equity observation unavailable; no ordinary corrections saved: {failed_equity_reads}")
+        logger.info("Exchange account sync: %d balance update(s)", len(exchange_events))
+        for evt in exchange_events:
+            logger.info("  Position %d: %s (change: %s)", evt.position_id, evt.notes, evt.quantity)
 
     # Lighter's own close rule, then the owned/declared/tracked account check.
     # Both run before the preflight and the dry-run return, so a dry run
