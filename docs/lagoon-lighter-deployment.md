@@ -88,8 +88,8 @@ only the master key. Sub-accounts start empty.
 
 Lighter allows 2 `L2CreateSubAccount` requests per minute per L1 address, so
 deployment waits for the limit: four sub-accounts take at least a minute. Use an
-image released after 2026-11-05. `v1475` and earlier stop with HTTP 429 on the
-third sub-account.
+image later than `v1475` that includes eth-defi's `LighterSDKSession`. `v1475` and
+earlier stop with HTTP 429 on the third sub-account.
 
 If a deployment stops during Lighter activation, do not rerun it for the same
 vault. Creating sub-accounts is not idempotent and a rerun deploys new contracts.

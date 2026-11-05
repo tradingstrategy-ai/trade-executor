@@ -289,7 +289,7 @@ class FakeLighterCore:
         """Record a key registered by a real Safe ``changePubKey`` transaction."""
         self.get_account(account_index).api_keys[api_key_index] = expected_public_key
 
-    def create_lighter_sub_accounts(self, *, session: Any, l1_address: str, master_account_index: int, api_key_index: int, api_private_key: str, count: int, timeout: int = 300, api_url: str | None = None) -> list[int]:
+    def create_lighter_sub_accounts(self, *, session: Any, l1_address: str, master_account_index: int, api_key_index: int, api_private_key: str, count: int, timeout: int = 300) -> list[int]:
         """Create sub-accounts signed by the master key."""
         assert Web3.to_checksum_address(l1_address) == self.owner
         assert master_account_index == self.master_index

@@ -15,7 +15,7 @@ from pathlib import Path
 import lighter
 
 from eth_defi.lighter.api import LIGHTER_STATE_POLL_SECONDS
-from eth_defi.lighter.sdk import LighterAuthTokenManager, create_lighter_api_client, create_lighter_signer_client
+from eth_defi.lighter.sdk import LighterAuthTokenManager, create_lighter_signer_client, is_lighter_tx_accepted
 from eth_defi.lighter.transfer import (
     LighterTransferError,
     LighterTransferRecord,
@@ -179,7 +179,7 @@ async def request_lighter_withdrawal(
             route_type=client.ROUTE_PERP,
             amount=float(amount),
         )
-        if error or response is None:
+        if not is_lighter_tx_accepted(response, error):
             raise RuntimeError("Lighter secure withdrawal was rejected")
         request_id = str(response.tx_hash)
         logger.info("Lighter secure withdrawal accepted, request id %s", request_id)
@@ -216,20 +216,10 @@ async def wait_for_lighter_withdrawal_claimable(
         USDC amount that Lighter made claimable.
     """
     client = None
-    api_client = None
     try:
         client = create_lighter_signer_client(operator.account_index, operator.api_key_index, operator.api_private_key)
-        api_client = create_lighter_api_client()
-        transaction_api = lighter.TransactionApi(api_client)
-        token_generation = 0
-
-        def create_auth_token() -> tuple[str | None, object | None]:
-            nonlocal token_generation
-            token_generation += 1
-            logger.info("Creating Lighter withdrawal-history auth token generation %d", token_generation)
-            return client.create_auth_token_with_expiry(api_key_index=operator.api_key_index)
-
-        auth_manager = LighterAuthTokenManager(token_factory=create_auth_token)
+        transaction_api = lighter.TransactionApi(client.api_client)
+        auth_manager = create_lighter_auth_token_manager(client, operator.api_key_index)
         deadline = time.monotonic() + timeout
         while True:
             history = await auth_manager.call(
@@ -275,8 +265,6 @@ async def wait_for_lighter_withdrawal_claimable(
     except Exception as error:  # noqa: BLE001 - SDK exception types vary by release
         raise _public_sdk_error("withdrawal history", error) from None
     finally:
-        if api_client is not None:
-            await api_client.close()
         if client is not None:
             await client.close()
 

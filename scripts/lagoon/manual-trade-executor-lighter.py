@@ -86,7 +86,7 @@ from eth_defi.lighter.lagoon import (
     deposit_usdc_from_lagoon_safe_into_lighter,
 )
 from eth_defi.lighter.pubkey import MIN_API_KEY_INDEX
-from eth_defi.lighter.sdk import LighterAuthTokenManager, create_lighter_api_client, create_lighter_signer_client
+from eth_defi.lighter.sdk import LighterAuthTokenManager, create_lighter_api_client, create_lighter_signer_client, is_lighter_tx_accepted
 from eth_defi.lighter.session import LighterSession, create_lighter_session
 from eth_defi.lighter.valuation import (
     LighterEquity,
@@ -446,7 +446,7 @@ async def submit_market_order(
         client = create_lighter_signer_client(deployment.account_index, deployment.api_key_index, deployment.api_private_key)
         (
             _transaction,
-            _response,
+            response,
             error,
         ) = await client.create_market_order_limited_slippage(
             market_index=ETH_PERP_MARKET_INDEX,
@@ -456,7 +456,7 @@ async def submit_market_order(
             is_ask=is_ask,
             reduce_only=reduce_only,
         )
-        if error:
+        if not is_lighter_tx_accepted(response, error):
             raise TutorialError("Lighter order was rejected")
     except TutorialError:
         raise
@@ -482,7 +482,6 @@ async def request_secure_withdrawal(
     helper, so an expired token can never resubmit the withdrawal.
     """
     client = None
-    api_client = None
     try:
         client = create_lighter_signer_client(deployment.account_index, deployment.api_key_index, deployment.api_private_key)
         _transaction, response, error = await client.withdraw(
@@ -490,12 +489,11 @@ async def request_secure_withdrawal(
             route_type=client.ROUTE_PERP,
             amount=float(amount),
         )
-        if error or response is None:
+        if not is_lighter_tx_accepted(response, error):
             raise TutorialError("Lighter secure withdrawal was rejected")
         logger.info("Secure withdrawal accepted: %s", response.tx_hash)
 
-        api_client = create_lighter_api_client()
-        transaction_api = lighter.TransactionApi(api_client)
+        transaction_api = lighter.TransactionApi(client.api_client)
 
         auth_token_generations = 0
 
@@ -554,8 +552,6 @@ async def request_secure_withdrawal(
     finally:
         if client is not None:
             await client.close()
-        if api_client is not None:
-            await api_client.close()
 
 
 # ---------------------------------------------------------------------------

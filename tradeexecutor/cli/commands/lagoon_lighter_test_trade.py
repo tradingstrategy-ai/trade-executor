@@ -40,7 +40,8 @@ from eth_defi.lighter.lagoon import (
     claim_usdc_to_lagoon_safe_from_lighter,
     deposit_usdc_from_lagoon_safe_into_lighter,
 )
-from eth_defi.lighter.sdk import LighterAuthTokenManager, create_lighter_api_client, create_lighter_signer_client
+from eth_defi.lighter.sdk import create_lighter_api_client, create_lighter_signer_client, is_lighter_tx_accepted
+from eth_defi.lighter.transfer import create_lighter_auth_token_manager
 from eth_defi.lighter.session import LighterSession, create_lighter_session
 from eth_defi.lighter.valuation import (
     LighterEquity,
@@ -389,7 +390,7 @@ async def submit_lighter_order(
     client = None
     try:
         client = create_lighter_signer_client(operator.account_index, operator.api_key_index, operator.api_private_key)
-        _transaction, _response, error = await client.create_market_order_limited_slippage(
+        _transaction, response, error = await client.create_market_order_limited_slippage(
             market_index=ETH_PERP_MARKET_INDEX,
             client_order_index=int(time.time() * MILLISECONDS_PER_SECOND),
             base_amount=base_amount,
@@ -397,7 +398,7 @@ async def submit_lighter_order(
             is_ask=is_ask,
             reduce_only=reduce_only,
         )
-        if error:
+        if not is_lighter_tx_accepted(response, error):
             raise LighterTestTradeError("Lighter market order was rejected")
     except LighterTestTradeError:
         raise
@@ -451,7 +452,7 @@ async def request_lighter_withdrawal(
             route_type=client.ROUTE_PERP,
             amount=float(amount),
         )
-        if error or response is None:
+        if not is_lighter_tx_accepted(response, error):
             raise LighterWithdrawalRejected("Lighter secure withdrawal was rejected")
         transaction_id = str(response.tx_hash)
         logger.info("Secure Lighter withdrawal accepted: %s", transaction_id)
@@ -479,29 +480,10 @@ async def wait_for_lighter_withdrawal_claimable(
     requires an EOA private key that the Safe contract cannot provide.
     """
     client = None
-    api_client = None
     try:
         client = create_lighter_signer_client(operator.account_index, operator.api_key_index, operator.api_private_key)
-
-        api_client = create_lighter_api_client()
-        transaction_api = lighter.TransactionApi(api_client)
-        token_generation = 0
-
-        def create_auth_token() -> tuple[str | None, object | None]:
-            """Create a short-lived token without exposing its value."""
-            nonlocal token_generation
-            token_generation += 1
-            action = "Creating" if token_generation == 1 else "Rotating"
-            logger.info(
-                "%s Lighter auth token for withdrawal history (generation %d)",
-                action,
-                token_generation,
-            )
-            return client.create_auth_token_with_expiry(
-                api_key_index=operator.api_key_index,
-            )
-
-        auth_manager = LighterAuthTokenManager(token_factory=create_auth_token)
+        transaction_api = lighter.TransactionApi(client.api_client)
+        auth_manager = create_lighter_auth_token_manager(client, operator.api_key_index)
         deadline = time.monotonic() + timeout
         while True:
             history = await auth_manager.call(
@@ -532,8 +514,6 @@ async def wait_for_lighter_withdrawal_claimable(
     finally:
         if client is not None:
             await client.close()
-        if api_client is not None:
-            await api_client.close()
 
 
 def _get_lighter_positions(state: State) -> list[TradingPosition]:
