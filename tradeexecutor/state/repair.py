@@ -511,6 +511,42 @@ def repair_trade(portfolio: Portfolio, t: TradeExecution) -> TradeExecution:
             f"HyperCore trade #{t.trade_id} has capital at risk; reconcile its live custody before changing reserves",
         )
 
+    return _repair_trade_accounting(portfolio, t)
+
+
+def repair_unmined_exchange_deposit(portfolio: Portfolio, t: TradeExecution, note: str) -> TradeExecution:
+    """Repair an exchange-account deposit proven never to have left the Safe.
+
+    :py:func:`repair_trade` refuses exchange-account transfers, because a failed or
+    silent transaction does not prove where the funds are. The caller must hold
+    that proof: see :py:func:`tradeexecutor.ethereum.lighter.transfer_verification.recover_unmined_lighter_deposits`.
+
+    :param portfolio:
+        Portfolio holding the trade.
+    :param t:
+        Broadcast deposit whose capital is still allocated to it.
+    :param note:
+        Evidence for the repair, saved on the trade.
+    :return:
+        The counter-trade.
+    """
+    assert t.is_external_account_transfer() and t.is_buy(), f"Not an exchange-account deposit: {t}"
+    assert t.get_status() == TradeStatus.broadcasted, f"Expected a broadcast trade: {t}"
+    counter_trade = _repair_trade_accounting(portfolio, t)
+    t.add_note(note)
+    return counter_trade
+
+
+def _repair_trade_accounting(portfolio: Portfolio, t: TradeExecution) -> TradeExecution:
+    """Make the counter-trade of a trade that moved nothing, and return its capital.
+
+    :param portfolio:
+        Portfolio holding the trade.
+    :param t:
+        Trade to repair.
+    :return:
+        The counter-trade.
+    """
     p = portfolio.get_position_by_id(t.position_id)
 
     c = make_counter_trade(portfolio, p, t)

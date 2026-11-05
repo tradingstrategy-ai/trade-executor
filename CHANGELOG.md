@@ -2,6 +2,10 @@
 
 ## 0.2
 
+- Recover Lighter deposits that were broadcast but never mined in `repair`: rebroadcast while the nonce is free, and return the reserves only when the transaction that consumed the nonce is proven to have moved nothing out of the Safe (2026-11-05)
+- Store gas used and gas price the right way round on the main execution path; they were swapped, which left their product correct but showed wrong gas figures in reports (2026-11-05)
+- Estimate gas for Lighter approvals, L1 withdrawals and claims, and make 400,000 the whole limit of a Lighter deposit, so hot wallets are no longer asked to hold 5 to 10 times the real cost up front (2026-11-05)
+- Report the Etherscan status of the trading module after `lagoon-deploy-vault`, because deployment never submits the module for verification (2026-11-05)
 - Lower the Lighter deposit gas limit to 400,000, because the 1,500,000 total transaction limit stopped a 3,000 USDC deposit whose hot wallet could afford its real cost of about 200,000 gas (2026-11-05)
 - Complete Lighter withdrawals that its relayer claims for the Safe, in routing, `lighter-move-funds`, the test trade and pool redemptions, instead of timing out or failing the trade on our reverted claim, and document Lighter's sub-account limits (2026-11-05).
 - Send every Lighter SDK call through eth-defi's retrying session, so sub-account creation waits out Lighter's 2-per-minute limit that stopped a four-sub-account deployment, and treat a non-200 `sendTx` code as a rejected Lighter order or withdrawal (2026-11-05).

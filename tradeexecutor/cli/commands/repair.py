@@ -16,7 +16,7 @@ from ...ethereum.vault.hypercore_withdrawal_recovery import clear_rejected_first
 from ...ethereum.velvet.execution import VelvetExecution
 from ...ethereum.velvet.vault import VelvetVaultSyncModel
 from ...ethereum.velvet.velvet_enso_routing import VelvetEnsoRouting
-from ...ethereum.lighter.transfer_verification import reconcile_verified_lighter_transfers
+from ...ethereum.lighter.transfer_verification import reconcile_verified_lighter_transfers, recover_unmined_lighter_deposits
 from ...exchange_account.lighter_operator import load_lighter_signers
 from ...state.repair import repair_trades, repair_tx_not_generated, repair_zero_quantity
 from ...state.trade import has_unresolved_hypercore_accounting
@@ -154,6 +154,15 @@ def repair(
         state_file = f"state/{id}.json"
 
     store, state = backup_state(state_file, unit_testing=unit_testing)
+    if isinstance(sync_model, LagoonVaultSyncModel):
+        recover_unmined_lighter_deposits(
+            state,
+            web3,
+            safe_address=sync_model.get_token_storage_address(),
+            interactive=not auto_approve,
+            save=lambda: store.sync(state),
+        )
+
     reconciled_transfers = reconcile_verified_lighter_transfers(
         state,
         web3,

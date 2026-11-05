@@ -339,6 +339,17 @@ status and saved hashes, exits 1 and still prints the balance table. Then:
   reconciles it from the `WithdrawPending` event, including when our own claim
   reverted because the relayer went first. A withdrawal saved by an earlier release
   has no baseline, so run `lighter-move-funds` for it instead.
+- **Deposit broadcast but never mined:** `repair` handles it, as it can send
+  transactions, while `correct-accounts` leaves it pending. If the deposit's nonce is
+  still free, `repair` rebroadcasts the stored transactions unchanged, and stops and
+  says how much ETH is needed if the wallet cannot cover the gas limit. Fund it with an
+  incoming transfer, because anything sent from the hot wallet consumes the nonce. If
+  another transaction took the nonce, `repair` finds that transaction at a finalized
+  block and reads its effects. When it moved no reserve token out of the Safe, the trade
+  is repaired and its reserves returned. Finality takes about 15 minutes on Ethereum.
+  Anything less certain stays pending with the reason in the log, including a reverted
+  approval, a consumer that moved the Safe's USDC, and failed reads. This covers
+  Ethereum exchange-account deposits, not pool trades.
 - **Transfer the halted cycle never started:** `correct-accounts` or
   `repair` expires it. Execution starts each transfer just before submitting
   it, so a still-planned transfer moved no funds.
