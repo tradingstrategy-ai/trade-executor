@@ -78,7 +78,6 @@ from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
 from eth_defi.hotwallet import HotWallet
 from eth_defi.lighter.api import LIGHTER_MIN_MAINNET_USDC, wait_for_lighter_collateral
 from eth_defi.lighter.constants import (
-    LIGHTER_API_URL,
     LIGHTER_ETHEREUM_DEPLOYMENT_CHAIN_ID,
     LIGHTER_USDC_ETHEREUM,
 )
@@ -87,7 +86,7 @@ from eth_defi.lighter.lagoon import (
     deposit_usdc_from_lagoon_safe_into_lighter,
 )
 from eth_defi.lighter.pubkey import MIN_API_KEY_INDEX
-from eth_defi.lighter.sdk import LighterAuthTokenManager
+from eth_defi.lighter.sdk import LighterAuthTokenManager, create_lighter_api_client, create_lighter_signer_client
 from eth_defi.lighter.session import LighterSession, create_lighter_session
 from eth_defi.lighter.valuation import (
     LighterEquity,
@@ -413,9 +412,7 @@ async def resolve_eth_order(
     requested_notional: Decimal | None,
 ) -> tuple[int, Decimal, int, Decimal]:
     """Resolve a valid ETH order size from Lighter's public market metadata."""
-    api_client = lighter.ApiClient(
-        configuration=lighter.Configuration(host=LIGHTER_API_URL)
-    )
+    api_client = create_lighter_api_client()
     try:
         response = await lighter.OrderApi(api_client).order_book_details(
             market_id=ETH_PERP_MARKET_INDEX
@@ -446,13 +443,7 @@ async def submit_market_order(
     """Submit one bounded-slippage order without logging signed SDK objects."""
     client = None
     try:
-        client = lighter.SignerClient(
-            url=LIGHTER_API_URL,
-            account_index=deployment.account_index,
-            api_private_keys={deployment.api_key_index: deployment.api_private_key},
-        )
-        if client.check_client():
-            raise TutorialError("Lighter API key was rejected")
+        client = create_lighter_signer_client(deployment.account_index, deployment.api_key_index, deployment.api_private_key)
         (
             _transaction,
             _response,
@@ -464,7 +455,6 @@ async def submit_market_order(
             max_slippage=float(max_slippage),
             is_ask=is_ask,
             reduce_only=reduce_only,
-            api_key_index=deployment.api_key_index,
         )
         if error:
             raise TutorialError("Lighter order was rejected")
@@ -494,24 +484,17 @@ async def request_secure_withdrawal(
     client = None
     api_client = None
     try:
-        client = lighter.SignerClient(
-            url=LIGHTER_API_URL,
-            account_index=deployment.account_index,
-            api_private_keys={deployment.api_key_index: deployment.api_private_key},
-        )
+        client = create_lighter_signer_client(deployment.account_index, deployment.api_key_index, deployment.api_private_key)
         _transaction, response, error = await client.withdraw(
             asset_id=client.ASSET_ID_USDC,
             route_type=client.ROUTE_PERP,
             amount=float(amount),
-            api_key_index=deployment.api_key_index,
         )
         if error or response is None:
             raise TutorialError("Lighter secure withdrawal was rejected")
         logger.info("Secure withdrawal accepted: %s", response.tx_hash)
 
-        api_client = lighter.ApiClient(
-            configuration=lighter.Configuration(host=LIGHTER_API_URL)
-        )
+        api_client = create_lighter_api_client()
         transaction_api = lighter.TransactionApi(api_client)
 
         auth_token_generations = 0

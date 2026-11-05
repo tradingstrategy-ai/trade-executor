@@ -2,6 +2,7 @@
 
 ## 0.2
 
+- Send every Lighter SDK call through eth-defi's retrying session, so sub-account creation waits out Lighter's 2-per-minute limit that stopped a four-sub-account deployment, and short rate limits no longer fail transfers, withdrawals or reads (2026-11-05).
 - Include idle Lighter pool collateral in Lagoon NAV before subscriptions, consume it within pool investment budgets, and cover Lighter, Atoma and Upshift strategy execution and recovery through simulated `start` cycles (2026-11-04).
 - Copy eth-defi's `migration` package into the Docker build so the image builds again with the current `deps/web3-ethereum-defi` pin; the v1474 tag has no image (2026-11-04).
 - Retry the guarded Lagoon settlement simulation with exponential backoff for 10 minutes when it reports no matching posted NAV, which a lagging RPC node can cause, and log the read provider on each retry. A failure after the budget still stops the executor (2026-11-04).

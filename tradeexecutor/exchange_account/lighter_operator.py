@@ -15,8 +15,7 @@ from pathlib import Path
 import lighter
 
 from eth_defi.lighter.api import LIGHTER_STATE_POLL_SECONDS
-from eth_defi.lighter.constants import LIGHTER_API_URL
-from eth_defi.lighter.sdk import LighterAuthTokenManager, create_lighter_signer_client
+from eth_defi.lighter.sdk import LighterAuthTokenManager, create_lighter_api_client, create_lighter_signer_client
 from eth_defi.lighter.transfer import (
     LighterTransferError,
     LighterTransferRecord,
@@ -174,16 +173,11 @@ async def request_lighter_withdrawal(
     """
     client = None
     try:
-        client = lighter.SignerClient(
-            url=LIGHTER_API_URL,
-            account_index=operator.account_index,
-            api_private_keys={operator.api_key_index: operator.api_private_key},
-        )
+        client = create_lighter_signer_client(operator.account_index, operator.api_key_index, operator.api_private_key)
         _transaction, response, error = await client.withdraw(
             asset_id=client.ASSET_ID_USDC,
             route_type=client.ROUTE_PERP,
             amount=float(amount),
-            api_key_index=operator.api_key_index,
         )
         if error or response is None:
             raise RuntimeError("Lighter secure withdrawal was rejected")
@@ -224,12 +218,8 @@ async def wait_for_lighter_withdrawal_claimable(
     client = None
     api_client = None
     try:
-        client = lighter.SignerClient(
-            url=LIGHTER_API_URL,
-            account_index=operator.account_index,
-            api_private_keys={operator.api_key_index: operator.api_private_key},
-        )
-        api_client = lighter.ApiClient(configuration=lighter.Configuration(host=LIGHTER_API_URL))
+        client = create_lighter_signer_client(operator.account_index, operator.api_key_index, operator.api_private_key)
+        api_client = create_lighter_api_client()
         transaction_api = lighter.TransactionApi(api_client)
         token_generation = 0
 
@@ -359,7 +349,6 @@ async def request_lighter_funding_transfer(
             to_account_index=to_account_index,
             amount=amount,
             fee=fee,
-            api_key_index=operator.api_key_index,
         )
         return LighterFundingRequest(tx_hash=tx_hash, fee=fee)
 
