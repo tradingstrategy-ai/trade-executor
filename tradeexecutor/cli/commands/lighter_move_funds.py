@@ -33,11 +33,12 @@ from eth_defi.lighter.constants import (
 from eth_defi.lighter.lagoon import (
     claim_usdc_to_lagoon_safe_from_lighter,
     deposit_usdc_from_lagoon_safe_into_lighter,
-    fetch_lighter_pending_balance,
+    fetch_lighter_withdrawal_baseline,
     request_usdc_withdrawal_from_lighter_account,
-    wait_for_lighter_pending_balance,
+    wait_for_lighter_withdrawal,
 )
 from eth_defi.lighter.session import LighterSession, create_lighter_session
+from eth_defi.confirmation import Reverted
 from eth_defi.lighter.valuation import (
     LighterEquity,
     fetch_lighter_account_by_index,
@@ -79,6 +80,7 @@ from tradeexecutor.exchange_account.state import (
     create_exchange_account_transfer,
 )
 from tradeexecutor.exchange_account.sync_model import ExchangeAccountSyncModel
+from tradeexecutor.ethereum.lighter.transfer_verification import get_lighter_relayer_payout
 from tradeexecutor.ethereum.lighter.lighter_routing import ensure_lighter_l1_withdrawal_mined
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.position import TradingPosition
@@ -417,7 +419,8 @@ def _resume_withdrawal(
 
     An API-key withdrawal waits for its withdrawal-history row. A key-free
     L1 ``withdraw`` waits for the Safe's onchain pending balance to grow by
-    the requested amount.
+    the requested amount. Lighter's relayer may claim either kind first, and
+    then there is nothing left for us to claim.
     """
     metadata = trade.other_data or {}
     if metadata.get("direction") != "withdraw":
@@ -433,6 +436,8 @@ def _resume_withdrawal(
     safe_now = usdc.fetch_balance_of(vault.safe_address)
     if safe_now - safe_before == amount:
         logger.info("Detected an already claimed Lighter withdrawal; completing accounting")
+        # An automatic withdrawal is still started if its claim was never prepared.
+        _mark_transfer_broadcasted(state, store, trade)
         equity_after = fetch_lighter_total_equity(session, account_index)
         _complete_transfer(
             state=state,
@@ -451,12 +456,13 @@ def _resume_withdrawal(
     if metadata.get("lighter_withdrawal_method") == "l1_withdraw":
         if metadata.get("lighter_withdrawal_request_id"):
             ensure_lighter_l1_withdrawal_mined(vault.web3, trade)
-        pending_before = Decimal(str(metadata["lighter_pending_balance_before_usdc"]))
-        wait_for_lighter_pending_balance(
+        wait_for_lighter_withdrawal(
             vault.web3,
             owner=vault.safe_address,
             usdc=usdc,
-            minimum=pending_before + amount,
+            amount=amount,
+            pending_before=Decimal(str(metadata["lighter_pending_balance_before_usdc"])),
+            from_block=int(metadata["lighter_withdrawal_from_block"]),
             timeout=withdraw_timeout,
         )
         claimable = amount
@@ -472,20 +478,32 @@ def _resume_withdrawal(
     if claimable != amount:
         raise LighterMoveFundsError("Lighter claimable withdrawal amount differs from the saved request")
     _append_transfer_metadata(trade, lighter_claimable_usdc=str(claimable))
-    hot_wallet.sync_nonce(vault.web3)
-    claim_tx_hash = claim_usdc_to_lagoon_safe_from_lighter(
-        vault.web3,
-        hot_wallet,
-        vault=vault,
-        usdc=usdc,
-        claimable_usdc=claimable,
-    )
-    safe_after = usdc.fetch_balance_of(vault.safe_address)
-    _append_transfer_metadata(
-        trade,
-        lighter_claim_tx_hash=claim_tx_hash,
-        claimed_safe_credit=str(safe_after - safe_now),
-    )
+    claim_tx_hash = None
+    if get_lighter_relayer_payout(vault.web3, trade) is None:
+        hot_wallet.sync_nonce(vault.web3)
+        try:
+            claim_tx_hash = claim_usdc_to_lagoon_safe_from_lighter(
+                vault.web3,
+                hot_wallet,
+                vault=vault,
+                usdc=usdc,
+                claimable_usdc=claimable,
+            )
+        except (Reverted, RuntimeError):
+            # Lighter's relayer claiming first also reverts our claim.
+            if get_lighter_relayer_payout(vault.web3, trade) is None:
+                raise
+    if claim_tx_hash is None:
+        logger.info("Lighter's relayer paid the withdrawal of %s USDC", amount)
+        safe_after = safe_before + amount
+        _append_transfer_metadata(trade, lighter_relayer_paid_usdc=str(amount))
+    else:
+        safe_after = usdc.fetch_balance_of(vault.safe_address)
+        _append_transfer_metadata(
+            trade,
+            lighter_claim_tx_hash=claim_tx_hash,
+            claimed_safe_credit=str(safe_after - safe_now),
+        )
     _mark_transfer_broadcasted(state, store, trade)
     equity_after = fetch_lighter_total_equity(session, account_index)
     _complete_transfer(
@@ -739,15 +757,18 @@ def lighter_move_funds(
                     lighter_safe_address=vault.safe_address,
                 )
                 _start_transfer(state, store, trade)
+                from_block, pending_before = fetch_lighter_withdrawal_baseline(web3, owner=vault.safe_address, usdc=usdc)
+                _append_transfer_metadata(
+                    trade,
+                    lighter_withdrawal_from_block=from_block,
+                    lighter_pending_balance_before_usdc=str(pending_before),
+                )
                 if is_sub_account:
                     # Key-free L1 request through the guard; the proceeds join the
                     # Safe's pending balance, which the resume step waits for.
-                    _append_transfer_metadata(
-                        trade,
-                        lighter_withdrawal_method="l1_withdraw",
-                        lighter_pending_balance_before_usdc=str(fetch_lighter_pending_balance(web3, owner=vault.safe_address, usdc=usdc)),
-                    )
-                    store.sync(state)
+                    _append_transfer_metadata(trade, lighter_withdrawal_method="l1_withdraw")
+                store.sync(state)
+                if is_sub_account:
                     withdrawal_request_id = request_usdc_withdrawal_from_lighter_account(
                         web3,
                         hot_wallet,

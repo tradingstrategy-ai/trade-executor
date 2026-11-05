@@ -7,6 +7,7 @@ from decimal import Decimal
 
 from eth_defi.compat import native_datetime_utc_now
 from eth_defi.lighter.api import wait_for_lighter_collateral
+from eth_defi.lighter.lagoon import is_lighter_withdrawal_paid
 from eth_defi.lighter.session import LighterSession, create_lighter_session
 from eth_defi.lighter.transfer import LighterTransferRecord
 from eth_defi.lighter.valuation import fetch_lighter_total_equity
@@ -41,6 +42,38 @@ class LighterTransferVerification:
     metadata_updates: dict[str, str]
 
 
+def get_lighter_relayer_payout(web3: Web3, trade: TradeExecution) -> Decimal | None:
+    """Return a withdrawal Lighter's relayer has paid to the Safe, if any.
+
+    ``withdrawPendingBalance`` is permissionless, so the relayer can claim for us.
+    Our own claim then reverts, although the money has arrived, and a missing or
+    failed claim alone says nothing about the withdrawal. See
+    :py:mod:`eth_defi.lighter.lagoon`. Our own successful claim passes this check
+    too, so only call it when the trade has no successful claim.
+
+    :param web3:
+        Chain reader for ``WithdrawPending`` events.
+    :param trade:
+        Lighter withdrawal trade.
+    :return:
+        Paid USDC, or ``None`` if not paid yet, or if the trade predates this
+        evidence and has no baseline.
+    """
+    metadata = trade.other_data or {}
+    if trade.is_buy() or "lighter_withdrawal_from_block" not in metadata:
+        return None
+    amount = abs(trade.planned_quantity)
+    paid = is_lighter_withdrawal_paid(
+        web3,
+        owner=metadata["lighter_safe_address"],
+        usdc=fetch_erc20_details(web3, trade.reserve_currency.address, chain_id=trade.reserve_currency.chain_id),
+        amount=amount,
+        pending_before=Decimal(str(metadata["lighter_pending_balance_before_usdc"])),
+        from_block=int(metadata["lighter_withdrawal_from_block"]),
+    )
+    return amount if paid else None
+
+
 def verify_lighter_transfer(
     web3: Web3,
     trade: TradeExecution,
@@ -66,7 +99,15 @@ def verify_lighter_transfer(
     if trade.pair.get_exchange_account_protocol() != LIGHTER_PROTOCOL:
         raise ValueError("Expected a Lighter exchange-account transfer")
     transaction_receipts = receipts or _fetch_transaction_receipts(web3, trade)
-    if transaction_receipts is None:
+    if not transaction_receipts or any(receipt.get("status") != 1 for receipt in transaction_receipts):
+        payout = get_lighter_relayer_payout(web3, trade)
+        if payout is not None:
+            return LighterTransferVerification(
+                executed_amount=-payout,
+                executed_reserve=payout,
+                metadata_updates={"lighter_relayer_paid_usdc": str(payout), "lighter_protocol_fee_usdc": "0"},
+            )
+    if not transaction_receipts:
         return None
     if any(receipt.get("status") != 1 for receipt in transaction_receipts):
         raise LighterTransferVerificationError("Lighter custody transaction failed")

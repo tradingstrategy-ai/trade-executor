@@ -198,6 +198,8 @@ class FakeLighterCore:
         self.transfer_fee = transfer_fee
         #: Execute transfers immediately; set ``False`` to leave them pending.
         self.execute_transfers = True
+        #: Claim each withdrawal from a third-party account, as Lighter's relayer can.
+        self.relayer_claims = False
         self.owner: str | None = None
         self.accounts: dict[int, FakeLighterAccount] = {}
         self.transfers: dict[str, FakeLighterTransfer] = {}
@@ -248,6 +250,22 @@ class FakeLighterCore:
     def _credit_pending_balance(self, amount: Decimal) -> None:
         assert self.owner is not None, "Fake Lighter master account is not registered"
         credit_lighter_pending_balance_on_anvil(self.web3, self.owner, int(amount * _USDC_SCALE))
+        if self.relayer_claims:
+            self._claim_as_relayer(amount)
+
+    def _claim_as_relayer(self, amount: Decimal) -> None:
+        """Claim a pending withdrawal on the real contract, as Lighter's relayer does.
+
+        ``withdrawPendingBalance`` is permissionless and pays the owner, so anyone
+        can send it. The executor must then notice it has nothing left to claim.
+
+        :param amount:
+            USDC to claim for the Safe.
+        """
+        zk = get_deployed_contract(self.web3, "lighter/ZkLighter.json", LIGHTER_L1_CONTRACT)
+        claim = zk.functions.withdrawPendingBalance(self.owner, zk.functions.USDC_ASSET_INDEX().call(), int(amount * _USDC_SCALE))
+        tx_hash = claim.transact({"from": self.web3.eth.accounts[-1]})
+        assert wait_for_transaction_receipt_robust(self.web3, tx_hash)["status"] == 1, "Fake relayer claim reverted"
 
     def execute_pending_transfers(self) -> None:
         """Execute every submitted but not executed transfer."""

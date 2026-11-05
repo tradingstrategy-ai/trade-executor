@@ -67,6 +67,7 @@ from eth_defi.lighter.execution import (
     wait_for_claimable_withdrawal,
     wait_for_pool_shares,
 )
+from eth_defi.lighter.lagoon import fetch_lighter_withdrawal_baseline, is_lighter_withdrawal_paid
 from eth_defi.lighter.session import LighterSession
 from eth_defi.provider.receipt import wait_for_transaction_receipt_robust
 from eth_defi.token import TokenDetails, fetch_erc20_details
@@ -589,6 +590,9 @@ class LighterPoolRouting(RoutingModel):
                 # The history schema has no transaction hash: record every
                 # existing id so exactly one new row identifies this request.
                 data["withdrawal_baseline_ids"] = [str(row["id"]) for row in fetch_withdrawals(ctx.session, ctx.operator.account_index, signer.create_auth_token())]
+                from_block, pending_before = fetch_lighter_withdrawal_baseline(ctx.web3, owner=ctx.safe_address, usdc=ctx.usdc)
+                data["withdrawal_from_block"] = from_block
+                data["withdrawal_pending_before"] = str(pending_before)
                 self.checkpoint_state()
 
             def prepare(executor: LighterPoolExecutor) -> LighterOperation:
@@ -617,27 +621,74 @@ class LighterPoolRouting(RoutingModel):
 
         if data["phase"] == LighterPoolPhase.claim:
             claimable = Decimal(data["claimable_usdc"])
-            if "claim_tx_hash" not in data:
-                data["safe_balance_before_claim"] = str(ctx.usdc.fetch_balance_of(ctx.safe_address))
-                claim = ctx.tx_builder.sign_transaction(
-                    ctx.zk,
-                    ctx.zk.functions.withdrawPendingBalance(ctx.safe_address, ctx.zk.functions.USDC_ASSET_INDEX().call(), ctx.usdc.convert_to_raw(claimable)),
-                    gas_limit=LIGHTER_WITHDRAWAL_CLAIM_GAS_LIMIT,
-                    asset_deltas=[],
-                    notes=trade.notes,
-                )
-                trade.blockchain_transactions.append(claim)
-                data["claim_tx_hash"] = claim.tx_hash
-                self.checkpoint_state()
-            claim = next(tx for tx in trade.blockchain_transactions if tx.tx_hash == data["claim_tx_hash"])
-            _broadcast_and_confirm(ctx.web3, claim)
-            balance = ctx.usdc.fetch_balance_of(ctx.safe_address)
-            received = balance - Decimal(data["safe_balance_before_claim"])
-            assert received >= claimable - LIGHTER_COLLATERAL_TOLERANCE, (
-                f"Safe {ctx.safe_address} received {received} USDC from claiming {claimable}; halt and reconcile custody"
-            )
+            if "claim_tx_hash" not in data and self._is_withdrawal_paid(ctx, data, claimable):
+                logger.info("Lighter's relayer paid the pool withdrawal of %s USDC", claimable)
+                data["paid_by_relayer"] = True
+            else:
+                self._claim_withdrawal(ctx, trade, data, claimable)
             data["claimed_usdc"] = str(claimable)
             data["phase"] = LighterPoolPhase.complete.value
+
+    def _is_withdrawal_paid(self, ctx: LighterPoolContext, data: dict, claimable: Decimal) -> bool:
+        """Check whether Lighter's relayer has claimed a pool withdrawal for us.
+
+        :param ctx:
+            Pool execution context.
+        :param data:
+            Saved pool operation. Older operations have no baseline, so their
+            claim runs as before and a revert halts for reconciliation.
+        :param claimable:
+            Withdrawal amount.
+        :return:
+            ``True`` if a claim of our own would revert.
+        """
+        if "withdrawal_from_block" not in data:
+            return False
+        return is_lighter_withdrawal_paid(
+            ctx.web3,
+            owner=ctx.safe_address,
+            usdc=ctx.usdc,
+            amount=claimable,
+            pending_before=Decimal(data["withdrawal_pending_before"]),
+            from_block=int(data["withdrawal_from_block"]),
+        )
+
+    def _claim_withdrawal(self, ctx: LighterPoolContext, trade: TradeExecution, data: dict, claimable: Decimal) -> None:
+        """Send the saved Safe claim, and accept a loss of the race with Lighter's relayer.
+
+        :param ctx:
+            Pool execution context.
+        :param trade:
+            Pool redemption trade.
+        :param data:
+            Saved pool operation.
+        :param claimable:
+            Withdrawal amount.
+        """
+        if "claim_tx_hash" not in data:
+            data["safe_balance_before_claim"] = str(ctx.usdc.fetch_balance_of(ctx.safe_address))
+            claim = ctx.tx_builder.sign_transaction(
+                ctx.zk,
+                ctx.zk.functions.withdrawPendingBalance(ctx.safe_address, ctx.zk.functions.USDC_ASSET_INDEX().call(), ctx.usdc.convert_to_raw(claimable)),
+                gas_limit=LIGHTER_WITHDRAWAL_CLAIM_GAS_LIMIT,
+                asset_deltas=[],
+                notes=trade.notes,
+            )
+            trade.blockchain_transactions.append(claim)
+            data["claim_tx_hash"] = claim.tx_hash
+            self.checkpoint_state()
+        claim = next(tx for tx in trade.blockchain_transactions if tx.tx_hash == data["claim_tx_hash"])
+        try:
+            _broadcast_and_confirm(ctx.web3, claim)
+        except VaultRequestInvariantViolation:
+            if not self._is_withdrawal_paid(ctx, data, claimable):
+                raise
+            logger.info("Our pool withdrawal claim reverted because Lighter's relayer claimed first")
+            data["paid_by_relayer"] = True
+            return
+        balance = ctx.usdc.fetch_balance_of(ctx.safe_address)
+        received = balance - Decimal(data["safe_balance_before_claim"])
+        assert received >= claimable - LIGHTER_COLLATERAL_TOLERANCE, f"Safe {ctx.safe_address} received {received} USDC from claiming {claimable}; halt and reconcile custody"
 
     # ----- Helpers -----
 

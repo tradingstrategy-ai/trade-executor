@@ -26,7 +26,9 @@ from typing import Any
 import lighter
 import typer
 from eth_defi.compat import native_datetime_utc_now
+from eth_defi.confirmation import Reverted
 from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
+from eth_defi.hotwallet import HotWallet
 from eth_defi.lighter.api import (
     LIGHTER_MIN_MAINNET_USDC,
     fetch_lighter_withdrawal_delay,
@@ -38,6 +40,8 @@ from eth_defi.lighter.constants import (
 )
 from eth_defi.lighter.lagoon import (
     claim_usdc_to_lagoon_safe_from_lighter,
+    fetch_lighter_withdrawal_baseline,
+    is_lighter_withdrawal_paid,
     deposit_usdc_from_lagoon_safe_into_lighter,
 )
 from eth_defi.lighter.sdk import create_lighter_api_client, create_lighter_signer_client, is_lighter_tx_accepted
@@ -48,7 +52,8 @@ from eth_defi.lighter.valuation import (
     fetch_lighter_account_by_index,
     fetch_lighter_total_equity,
 )
-from eth_defi.token import fetch_erc20_details
+from eth_defi.token import TokenDetails, fetch_erc20_details
+from web3 import Web3
 from eth_defi.vault.base import VaultSpec
 from typer import Option
 
@@ -502,7 +507,8 @@ async def wait_for_lighter_withdrawal_claimable(
             ]
             if len(matches) > 1:
                 raise LighterTestTradeError("Ambiguous Lighter secure-withdrawal history")
-            if len(matches) == 1 and str(matches[0].status).lower() == "claimable":
+            # Lighter's relayer can claim first, so the row may skip claimable.
+            if len(matches) == 1 and str(matches[0].status).lower() in {"claimable", "completed"}:
                 return Decimal(str(matches[0].amount))
             if time.monotonic() >= deadline:
                 raise TimeoutError("Lighter withdrawal did not become claimable")
@@ -514,6 +520,61 @@ async def wait_for_lighter_withdrawal_claimable(
     finally:
         if client is not None:
             await client.close()
+
+
+def _claim_unless_paid(
+    web3: Web3,
+    hot_wallet: HotWallet,
+    vault: LagoonVault,
+    usdc: TokenDetails,
+    claimable: Decimal,
+    journal: dict[str, Any],
+) -> str | None:
+    """Claim a withdrawal to the Safe, unless Lighter's relayer has paid it.
+
+    The relayer can claim before us or while our claim is in flight, and then our
+    claim reverts although the money has arrived. See :py:mod:`eth_defi.lighter.lagoon`.
+
+    :param web3:
+        Ethereum connection.
+    :param hot_wallet:
+        Asset-manager wallet.
+    :param vault:
+        Lagoon vault whose Safe receives the withdrawal.
+    :param usdc:
+        Native Ethereum USDC.
+    :param claimable:
+        Withdrawal amount.
+    :param journal:
+        Test-trade journal holding the withdrawal baseline. A journal from an
+        earlier release has none, and every failure is then raised.
+    :return:
+        Claim transaction hash, or ``None`` if the relayer paid.
+    """
+
+    def is_paid() -> bool:
+        if "withdrawal_from_block" not in journal:
+            return False
+        return is_lighter_withdrawal_paid(
+            web3,
+            owner=vault.safe_address,
+            usdc=usdc,
+            amount=claimable,
+            pending_before=Decimal(str(journal["withdrawal_pending_before"])),
+            from_block=int(journal["withdrawal_from_block"]),
+        )
+
+    if is_paid():
+        logger.info("Lighter's relayer has paid the withdrawal, so there is nothing to claim")
+        return None
+    hot_wallet.sync_nonce(web3)
+    try:
+        return claim_usdc_to_lagoon_safe_from_lighter(web3, hot_wallet, vault=vault, usdc=usdc, claimable_usdc=claimable)
+    except (Reverted, RuntimeError):
+        if is_paid():
+            logger.info("Our claim reverted because Lighter's relayer claimed first")
+            return None
+        raise
 
 
 def _get_lighter_positions(state: State) -> list[TradingPosition]:
@@ -995,12 +1056,15 @@ def lagoon_lighter_test_trade(
                         withdrawal_delay,
                     )
                 withdrawal_requested_at = int(time.time())
+                from_block, pending_before = fetch_lighter_withdrawal_baseline(web3, owner=vault.safe_address, usdc=usdc)
                 _update_journal(
                     config,
                     journal,
                     "withdrawal_requested",
                     withdrawal_usdc=str(withdraw_amount),
                     withdrawal_requested_at=withdrawal_requested_at,
+                    withdrawal_from_block=from_block,
+                    withdrawal_pending_before=str(pending_before),
                 )
                 phase = "withdrawal_requested"
                 asyncio.run(request_lighter_withdrawal(operator, withdraw_amount))
@@ -1017,23 +1081,16 @@ def lagoon_lighter_test_trade(
                         int(journal["withdrawal_requested_at"]),
                     ),
                 )
-                hot_wallet.sync_nonce(web3)
-                claim_tx_hash = claim_usdc_to_lagoon_safe_from_lighter(
-                    web3,
-                    hot_wallet,
-                    vault=vault,
-                    usdc=usdc,
-                    claimable_usdc=claimable,
-                )
+                claim_tx_hash = _claim_unless_paid(web3, hot_wallet, vault, usdc, claimable, journal)
                 safe_after = usdc.fetch_balance_of(vault.safe_address)
-                if usdc.convert_to_raw(safe_after - safe_before) != usdc.convert_to_raw(claimable):
+                if claim_tx_hash and usdc.convert_to_raw(safe_after - safe_before) != usdc.convert_to_raw(claimable):
                     raise LighterTestTradeError("Safe did not receive the claimed Lighter withdrawal")
                 _update_journal(
                     config,
                     journal,
                     "withdrawn",
                     withdrawal_usdc=str(claimable),
-                    claim_tx_hash=claim_tx_hash,
+                    claim_tx_hash=claim_tx_hash or "paid by Lighter relayer",
                 )
                 phase = "withdrawn"
 
