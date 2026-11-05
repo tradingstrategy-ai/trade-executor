@@ -1,4 +1,7 @@
-"""console command.
+"""Explore and modify executor state through an interactive console.
+
+State writer ownership is acquired at the command boundary. See
+:func:`console` for non-writing modes and contention behaviour.
 
 - Open interactive IPython session within the trade-executor
 
@@ -9,10 +12,6 @@ To start a console in shell with `docker-compose.yml` set up:
 .. code-block:: shell
 
      docker-compose run $YOUR_CONTAINER_NAME console
-
-
-
-
 """
 import datetime
 import itertools
@@ -34,6 +33,7 @@ from tradingstrategy.timebucket import TimeBucket
 from . import shared_options
 
 from .app import app
+from tradeexecutor.cli.state_lock import with_state_lock
 from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_execution_and_sync_model, resolve_deployment_file, \
     create_state_store, create_client, configure_default_chain
 from ..log import setup_logging
@@ -142,6 +142,7 @@ def calculate_console_indicators(
 
 @app.command()
 @shared_options.with_json_rpc_options()
+@with_state_lock()
 def console(
     id: str = typer.Option(None, envvar="EXECUTOR_ID", help="Executor id used when programmatically referring to this instance. If not given, take the base of --strategy-file."),
 
@@ -189,6 +190,18 @@ def console(
 
         >>> web3.eth.get_balance(hot_wallet.address) / 10**18
 
+    A writing invocation exclusively owns the state file through cleanup. If
+    another writer owns it, the command exits with status 1 before loading state or
+    submitting transactions. Stop the daemon before running a writing command.
+
+    The whole interactive session owns the state file, including exploratory use, because its store is writable.
+
+    :param state_file:
+        Executor JSON path, resolved before locking and used for all state
+        operations. CLI option help describes the remaining arguments and
+        environment variables.
+    :raises click.ClickException:
+        Another writer owns the selected state file.
     """
 
     global logger

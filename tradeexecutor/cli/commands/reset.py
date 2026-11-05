@@ -1,5 +1,7 @@
-"""Reinitialise a strategy state.
+"""Reconstruct executor state from the strategy deployment history.
 
+State writer ownership is acquired at the command boundary. See
+:func:`reset` for non-writing modes and contention behaviour.
 """
 import os
 import shutil
@@ -9,6 +11,7 @@ from typing import Optional
 from eth_defi.hotwallet import HotWallet
 
 from .app import app
+from tradeexecutor.cli.state_lock import with_state_lock
 from ..backup import backup_state
 from ..bootstrap import prepare_executor_id, create_web3_config, create_sync_model, create_state_store
 from ..log import setup_logging
@@ -19,6 +22,7 @@ from . import shared_options
 
 @app.command()
 @shared_options.with_json_rpc_options()
+@with_state_lock()
 def reset(
     id: str = shared_options.id,
     name: str = shared_options.name,
@@ -41,6 +45,17 @@ def reset(
 
     This command will start the internal ledger accounting from the scratch.
     All strategy live execution history is lost.
+
+    A writing invocation exclusively owns the state file through cleanup. If
+    another writer owns it, the command exits with status 1 before loading state or
+    submitting transactions. Stop the daemon before running a writing command.
+
+    :param state_file:
+        Executor JSON path, resolved before locking and used for all state
+        operations. CLI option help describes the remaining arguments and
+        environment variables.
+    :raises click.ClickException:
+        Another writer owns the selected state file.
     """
 
     global logger

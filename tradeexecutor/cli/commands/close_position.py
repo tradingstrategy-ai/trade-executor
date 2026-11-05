@@ -1,4 +1,7 @@
-"""close-position command.
+"""Close a selected position or the executor test-trade positions.
+
+State writer ownership is acquired at the command boundary. See
+:func:`close_position` for non-writing modes and contention behaviour.
 
 Manually force close position with high slippage:
 
@@ -17,6 +20,7 @@ from typer import Option
 from eth_defi.compat import native_datetime_utc_now
 
 from .app import app
+from tradeexecutor.cli.state_lock import with_state_lock
 from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_state_store, \
     create_execution_and_sync_model, resolve_deployment_file, create_client
 from ..log import setup_logging
@@ -37,6 +41,7 @@ from eth_defi.compat import native_datetime_utc_now
 
 @app.command()
 @shared_options.with_json_rpc_options()
+@with_state_lock(read_only=lambda options: options["simulate"])
 def close_position(
     id: str = shared_options.id,
 
@@ -79,6 +84,19 @@ def close_position(
     - Syncs the latest reserve deposits and redemptions
 
     - Closes any position that's open currently
+
+    A writing invocation exclusively owns the state file through cleanup. If
+    another writer owns it, the command exits with status 1 before loading state or
+    submitting transactions. Stop the daemon before running a writing command.
+
+    Simulation does not acquire writer ownership or save state.
+
+    :param state_file:
+        Executor JSON path, resolved before locking and used for all state
+        operations. CLI option help describes the remaining arguments and
+        environment variables.
+    :raises click.ClickException:
+        Another writer owns the selected state file.
     """
     id = prepare_executor_id(id, strategy_file)
 
@@ -138,6 +156,13 @@ def close_position(
 
     if simulate:
         def break_sync(x):
+            """Reject accidental persistence from the simulated execution path.
+
+            :param x:
+                Unused state argument required by the store sync interface.
+            :raises NotImplementedError:
+                Every call is refused so fork-only transactions cannot be saved.
+            """
             raise NotImplementedError("Cannot save state when simulating")
         store.sync = break_sync
 

@@ -1,11 +1,13 @@
-"""CLI command to prune balance updates from closed positions.
+"""Remove unnecessary closed-position history from executor state.
+
+State writer ownership is acquired at the command boundary. See
+:func:`prune_state` for non-writing modes and contention behaviour.
 
 Example:
 
 .. code-block:: shell
 
     docker compose run base-ath prune-state
-
 """
 
 from pathlib import Path
@@ -13,11 +15,13 @@ from typing import Optional
 
 from . import shared_options
 from .app import app
+from tradeexecutor.cli.state_lock import with_state_lock
 from tradeexecutor.cli.bootstrap import prepare_executor_id, backup_state
 from tradeexecutor.state.prune import prune_closed_positions
 
 
 @app.command()
+@with_state_lock()
 def prune_state(
     id: str = shared_options.id,
     strategy_file: Path = shared_options.strategy_file,
@@ -37,6 +41,17 @@ def prune_state(
     5. Report pruning statistics
 
     Only closed positions are affected - open positions are left unchanged.
+
+    A writing invocation exclusively owns the state file through cleanup. If
+    another writer owns it, the command exits with status 1 before loading state or
+    submitting transactions. Stop the daemon before running a writing command.
+
+    :param state_file:
+        Executor JSON path, resolved before locking and used for all state
+        operations. CLI option help describes the remaining arguments and
+        environment variables.
+    :raises click.ClickException:
+        Another writer owns the selected state file.
     """
 
     # Prepare executor ID

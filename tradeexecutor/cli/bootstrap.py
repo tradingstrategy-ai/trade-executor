@@ -1,15 +1,24 @@
-"""Command line application initialisation helpers."""
+"""Shared initialisation and resource setup for executor CLI commands.
+
+Commands pass parsed settings here to construct state stores, providers and
+execution models. :func:`locked_state_file` supplies command-lifetime writer
+ownership and translates contention into an operator-facing CLI error. State
+stores and recovery helpers reuse that ownership without acquiring it again.
+"""
 
 import datetime
 import json
 import logging
 import os
 import shutil
+from collections.abc import Iterator
+from contextlib import contextmanager, nullcontext
 from decimal import Decimal
 from pathlib import Path
 from typing import Optional, Tuple, Set, cast
 
 import pandas as pd
+import click
 from eth_typing import HexAddress
 
 from eth_defi.compat import native_datetime_utc_now
@@ -19,7 +28,7 @@ from eth_defi.gas import GasPriceMethod
 from eth_defi.hotwallet import HotWallet
 from web3 import Web3
 
-from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
+from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault, LagoonSatelliteVault
 from eth_defi.vault.base import VaultSpec
 from eth_defi.velvet import VelvetVault
 from tradeexecutor.ethereum.lagoon.execution import LagoonExecution
@@ -71,12 +80,14 @@ from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_valuation import (
 )
 from tradeexecutor.ethereum.velvet.execution import VelvetExecution
 from tradeexecutor.ethereum.velvet.vault import VelvetVaultSyncModel
-from tradeexecutor.ethereum.web3config import Web3Config, get_rpc_env_var_name
+from tradeexecutor.ethereum.web3config import TEST_CHAIN_IDS, Web3Config, get_rpc_env_var_name
+from tradeexecutor.ethereum.token_cache import get_default_token_cache
 from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 from tradeexecutor.state.metadata import Metadata, OnChainData
 from tradeexecutor.state.deployment_info import DeploymentInfo, DeploymentInfoChange
 from tradeexecutor.state.state import State
 from tradeexecutor.state.store import JSONFileStore, SimulateStore
+from tradeexecutor.state.lock import StateFileLocked, state_file_lock
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.generic.generic_pricing_model import (
     EthereumGenericPricingFactory,
@@ -709,7 +720,53 @@ def create_execution_and_sync_model(
     deployment_file: "Path | None" = None,
     lighter_key_management: LighterKeyManagement | None = None,
 ) -> Tuple[ExecutionModel, SyncModel, ValuationModelFactory, PricingModelFactory]:
-    """Set up the wallet sync and execution mode for the command line client."""
+    """Construct execution, accounting and pricing components from CLI settings.
+
+    Live modes share one wallet and provider configuration across execution and
+    synchronisation. Lagoon deployments also load satellite vaults so the same
+    execution model can route and value cross-chain positions. Settings must
+    already be parsed by the command entry point.
+
+    :param asset_management_mode:
+        Deployment mode selecting live, dummy or legacy backtest components.
+    :param private_key:
+        Signer key required for live trading; unused in dummy and backtest modes.
+    :param web3config:
+        Configured providers and default chain selected by the command.
+    :param confirmation_timeout:
+        Maximum time to wait for transaction confirmation.
+    :param confirmation_block_count:
+        Required confirmation depth for executed transactions.
+    :param max_slippage:
+        Default execution slippage tolerance as a fraction.
+    :param min_gas_balance:
+        Minimum signer gas balance, or None to use the execution model's policy.
+    :param vault_address:
+        Managed vault address for vault-based deployments.
+    :param vault_adapter_address:
+        Adapter or trading-strategy module authorised to execute vault trades.
+    :param vault_payment_forwarder_address:
+        Optional payment forwarder used by the selected vault integration.
+    :param routing_hint:
+        Strategy routing choice used to select execution and pricing models.
+    :param unit_testing:
+        Enable the existing test-specific provider and model behaviour.
+    :param token_cache:
+        Shared token metadata cache, when provided by the command.
+    :param deployment_file:
+        State-sibling deployment artefact containing satellite module addresses.
+        See :func:`resolve_deployment_file` for the canonical location.
+    :param lighter_key_management:
+        Explicit Lighter signer records and transfer timeouts for live execution.
+    :return:
+        For live and dummy modes, a tuple of execution model, sync model,
+        valuation-model factory and pricing-model factory. The legacy backtest
+        setup branch currently returns None.
+    :raises RuntimeError:
+        The requested asset-management mode is unsupported.
+    :raises AssertionError:
+        Required live credentials or the confirmation-timeout type are invalid.
+    """
 
     assert isinstance(confirmation_timeout, datetime.timedelta), (
         f"Got {confirmation_timeout}"
@@ -782,10 +839,6 @@ def create_execution_and_sync_model(
         if isinstance(execution_model, LagoonExecution):
             satellite_modules = resolve_satellite_modules(deployment_file)
             if satellite_modules:
-                from eth_defi.erc_4626.vault_protocol.lagoon.vault import (
-                    LagoonSatelliteVault,
-                )
-
                 # The Safe address is shared across all chains (CREATE2)
                 safe_address = sync_model.vault.safe_address
                 satellite_vaults = {}
@@ -871,6 +924,15 @@ def configure_lighter_pool_nav(sync_model: LagoonVaultSyncModel, deployment_file
 
 
 def create_approval_model(approval_type: ApprovalType) -> ApprovalModel:
+    """Select how proposed trades receive operator approval.
+
+    :param approval_type:
+        Parsed CLI approval policy: unchecked execution or interactive approval.
+    :return:
+        Approval model implementing the selected policy.
+    :raises NotImplementedError:
+        The requested approval policy has no implementation.
+    """
     if approval_type == ApprovalType.unchecked:
         return UncheckedApprovalModel()
     elif approval_type == ApprovalType.cli:
@@ -879,9 +941,53 @@ def create_approval_model(approval_type: ApprovalType) -> ApprovalModel:
         raise NotImplementedError()
 
 
+@contextmanager
+def locked_state_file(path: Path | str | None, *, enabled: bool = True) -> Iterator[Path | None]:
+    """Hold state-file ownership and report contention as a clean CLI failure.
+
+    Keep the context open from before the first working-state read until all
+    saves and cleanup finish. The underlying lock is released on context exit
+    or process death; its file is retained for later writers.
+
+    :param path:
+        State JSON path, resolved to an absolute path before use. Pass ``None``
+        for a non-file store; no lock is created in that case.
+    :param enabled:
+        Whether to acquire writer ownership. False is for non-writing modes;
+        a supplied path is still resolved and yielded without acquiring a lock.
+    :return:
+        A context manager yielding the canonical :class:`pathlib.Path`, or
+        ``None`` for a non-file store. Use the yielded path for state operations.
+    :raises click.ClickException:
+        Another writer holds the lock. The message identifies both paths and
+        tells the operator to stop the other process; the CLI exits with code 1.
+    :raises OSError:
+        A filesystem operation fails for a reason other than lock contention.
+    """
+    canonical = Path(path).resolve() if path is not None else None
+    context = state_file_lock(canonical) if enabled and canonical is not None else nullcontext(canonical)
+    try:
+        with context as resolved:
+            yield resolved
+    except StateFileLocked as exc:
+        raise click.ClickException(str(exc)) from exc
+
+
 def create_state_store(
     state_file: Path, simulate: bool = False
 ) -> JSONFileStore | SimulateStore:
+    """Construct the existing state backend for a command's execution mode.
+
+    This factory does not acquire ownership. Writing callers must already hold
+    :func:`locked_state_file` across loading, execution and saving.
+
+    :param state_file:
+        State JSON path, normally the canonical path yielded by the writer lock.
+    :param simulate:
+        Select a store whose sync callback does not persist simulated changes.
+    :return:
+        A JSONFileStore for writing, or a non-writing SimulateStore.
+    """
     if simulate:
         return SimulateStore(state_file)
     return JSONFileStore(state_file)
@@ -955,8 +1061,6 @@ def prepare_token_cache(
     :return:
         Initialised token disk cache instance
     """
-
-    from tradeexecutor.ethereum.token_cache import get_default_token_cache
 
     assert cache_path, "cache_path must be provided"
     assert cache_path.exists(), (
@@ -1339,6 +1443,20 @@ def configure_default_chain(
     web3config: Web3Config,
     mod: StrategyModuleInformation,
 ):
+    """Select a provider matching the strategy's declared default chain.
+
+    This prevents a multichain command from using an arbitrary provider for
+    vault calls. Existing single-chain and Anvil-fork selection rules are kept;
+    legacy strategy metadata uses the historical BNB Chain default.
+
+    :param web3config:
+        Provider configuration updated in place, or None to skip selection.
+    :param mod:
+        Loaded strategy metadata supplying its default chain, when available.
+    :raises RuntimeError:
+        A declared default chain has neither a configured provider nor the
+        supported local Anvil-fork connection.
+    """
     if web3config is not None:
         if isinstance(mod, StrategyModuleInformation):
             # This path is not enabled for legacy strategy modules
@@ -1391,11 +1509,15 @@ def check_universe_chains_have_rpc(
 
     :param universe:
         Trading universe with chains to check.
+    :return:
+        None. Missing RPC configuration is reported through an exception. Checks
+        are skipped without a provider configuration or on configured test chains.
+    :raises RuntimeError:
+        A required chain has no usable RPC configuration, including its supported
+        execution-chain mapping for non-EVM vault protocols.
     """
     if web3config is None:
         return
-
-    from tradeexecutor.ethereum.web3config import TEST_CHAIN_IDS, get_rpc_env_var_name
 
     configured_chains = set(web3config.connections.keys())
 
@@ -1521,14 +1643,16 @@ def check_universe_contracts_resolve(
     :param execution_model:
         Execution model; satellite vaults and the primary chain are read from it.
 
+    :return:
+        None after validation. Empty configurations and test-chain providers
+        skip the contract-resolution checks.
+
     :raises RuntimeError:
         With actionable guidance when a chain is unconfigured or a contract does
         not resolve on-chain.
     """
     if web3config is None or universe is None:
         return
-
-    from tradeexecutor.ethereum.web3config import TEST_CHAIN_IDS
 
     configured_chains = set(web3config.connections.keys())
 
@@ -1559,6 +1683,16 @@ def check_universe_contracts_resolve(
     errors: list[str] = []
 
     def _has_code(chain_id_value: int, address: str) -> bool | None:
+        """Check contract bytecode on the requested configured chain.
+
+        :param chain_id_value:
+            Numeric chain identifier used to select a provider.
+        :param address:
+            Contract address converted to checksum form before the RPC call.
+        :return:
+            True for non-empty bytecode, False for no code, or None when the
+            chain lacks a provider and its configuration error is handled elsewhere.
+        """
         # Returns True/False, or None when the chain has no RPC
         # (already reported by check_universe_chains_have_rpc()).
         try:

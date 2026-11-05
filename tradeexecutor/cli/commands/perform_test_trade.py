@@ -1,4 +1,7 @@
-"""perform-test-trade command
+"""Exercise selected trading routes with small test trades.
+
+State writer ownership is acquired at the command boundary. See
+:func:`perform_test_trade` for non-writing modes and contention behaviour.
 
 To test a spot trading pair:
 
@@ -7,8 +10,6 @@ To test a spot trading pair:
     cli.main(args=["perform-test-trade", "--pair", "(arbitrum, vault, gmUSDC, USDC)"], standalone_mode=False)
 
 To test a vault:
-
-
 """
 
 import datetime
@@ -21,6 +22,7 @@ from eth_defi.compat import native_datetime_utc_now
 from tradingstrategy.chain import ChainId
 
 from .app import app
+from tradeexecutor.cli.state_lock import with_state_lock
 from .pair_mapping import parse_pair_data
 from ..bootstrap import prepare_executor_id, prepare_cache_and_token_cache, create_web3_config, create_state_store, \
     create_execution_and_sync_model, create_lighter_key_management, resolve_deployment_file, create_client, configure_default_chain, \
@@ -51,6 +53,7 @@ from eth_defi.compat import native_datetime_utc_now
 
 @app.command()
 @shared_options.with_json_rpc_options()
+@with_state_lock(read_only=lambda options: options["simulate"])
 def perform_test_trade(
     id: str = shared_options.id,
     name: Optional[str] = shared_options.name,
@@ -148,6 +151,19 @@ def perform_test_trade(
     other unresolved trades require reconciliation before another test.
     An interrupted Lighter withdrawal must still be claimed into the Safe
     as described in README-Lighter.md.
+
+    A writing invocation exclusively owns the state file through cleanup. If
+    another writer owns it, the command exits with status 1 before loading state or
+    submitting transactions. Stop the daemon before running a writing command.
+
+    Simulation does not acquire writer ownership or save state.
+
+    :param state_file:
+        Executor JSON path, resolved before locking and used for all state
+        operations. CLI option help describes the remaining arguments and
+        environment variables.
+    :raises click.ClickException:
+        Another writer owns the selected state file.
     """
 
     if close_only:
@@ -259,6 +275,12 @@ def perform_test_trade(
         state = store.load()
 
     def sync_state() -> None:
+        """Checkpoint the command's state before a real transaction is broadcast.
+
+        The closure reuses the store and writer ownership held by the command.
+        Simulation skips persistence because its transaction hashes exist only
+        on the local fork.
+        """
         if not simulate:
             store.sync(state)
 

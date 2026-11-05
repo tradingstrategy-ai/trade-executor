@@ -2,6 +2,7 @@
 
 ## 0.2
 
+- Refuse concurrent state writers using kernel locks beside executor state files, with automatic release after process death and shared Docker Compose mount support (2026-11-05).
 - Lower the Lighter deposit gas limit to 400,000, because the 1,500,000 total transaction limit stopped a 3,000 USDC deposit whose hot wallet could afford its real cost of about 200,000 gas (2026-11-05)
 - Complete Lighter withdrawals that its relayer claims for the Safe, in routing, `lighter-move-funds`, the test trade and pool redemptions, instead of timing out or failing the trade on our reverted claim, and document Lighter's sub-account limits (2026-11-05).
 - Send every Lighter SDK call through eth-defi's retrying session, so sub-account creation waits out Lighter's 2-per-minute limit that stopped a four-sub-account deployment, and treat a non-200 `sendTx` code as a rejected Lighter order or withdrawal (2026-11-05).

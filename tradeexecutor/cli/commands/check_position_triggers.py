@@ -1,4 +1,8 @@
-"""Command to check position triggers, mainly used in testing at the moment."""
+"""Evaluate and execute stop-loss and take-profit triggers.
+
+State writer ownership is acquired at the command boundary. See
+:func:`check_position_triggers` for non-writing modes and contention behaviour.
+"""
 import datetime
 from pathlib import Path
 from typing import Optional
@@ -7,6 +11,7 @@ from eth_defi.compat import native_datetime_utc_now
 from eth_defi.hotwallet import HotWallet
 
 from .app import app
+from tradeexecutor.cli.state_lock import with_state_lock
 from ..bootstrap import prepare_executor_id, create_web3_config, create_state_store, create_client, create_execution_and_sync_model, resolve_deployment_file
 from ..log import setup_logging
 from ...strategy.approval import UncheckedApprovalModel
@@ -22,6 +27,7 @@ from ...strategy.universe_model import UniverseOptions
 
 @app.command()
 @shared_options.with_json_rpc_options()
+@with_state_lock()
 def check_position_triggers(
     id: str = shared_options.id,
 
@@ -51,9 +57,24 @@ def check_position_triggers(
     test_evm_uniswap_v2_init_code_hash: Optional[str] = shared_options.test_evm_uniswap_v2_init_code_hash,
     unit_testing: bool = shared_options.unit_testing,
 ):
-    """Check that state internal ledger matches on chain balances.
+    """Evaluate and execute stop-loss and take-profit triggers.
 
-    - Print out differences between actual on-chain balances and expected state balances
+    Loads the executor state, builds current routing and pricing, and asks the
+    strategy runner to evaluate position triggers. Approved trigger trades may be
+    submitted on-chain; this command does not save the resulting state ledger.
+
+    A writing invocation exclusively owns the state file through cleanup. If
+    another writer owns it, the command exits with status 1 before loading state or
+    submitting transactions. Stop the daemon before running a writing command.
+
+    Ownership is required because trigger checks can submit real trades.
+
+    :param state_file:
+        Executor JSON path, resolved before locking and used for all state
+        operations. CLI option help describes the remaining arguments and
+        environment variables.
+    :raises click.ClickException:
+        Another writer owns the selected state file.
     """
 
     global logger

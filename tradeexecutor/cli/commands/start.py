@@ -1,4 +1,7 @@
-"""start command
+"""Run the strategy executor daemon and its state lifecycle.
+
+The daemon owns its state file across startup, execution and shutdown.
+See :func:`start` for simulation, backtest-output and crash-status behaviour.
 
 TODO: Restructure and move backtesting related functionality to a separate command
 """
@@ -22,9 +25,11 @@ from tradingstrategy.timebucket import TimeBucket
 
 from . import shared_options
 from .app import app
+from tradeexecutor.cli.bootstrap import locked_state_file
 from ..bootstrap import prepare_executor_id, prepare_cache_and_token_cache, create_web3_config, create_state_store, \
     create_execution_and_sync_model, create_lighter_key_management, resolve_deployment_file, log_multichain_deployment_information, update_strategy_file_deployment_info, refresh_lagoon_guard_migration_state, create_metadata, create_approval_model, create_client, configure_default_chain
 from ...exchange_account.derive import DeriveNetwork
+from ...exchange_account.utils import create_derive_value_func_from_credentials, resolve_derive_addresses
 from ..log import setup_logging, setup_discord_logging, setup_logstash_logging, setup_file_logging, setup_telegram_logging, setup_sentry_logging
 from ..loop import ExecutionLoop
 from ..result import display_backtesting_results
@@ -50,6 +55,12 @@ from ...strategy.strategy_cycle_trigger import StrategyCycleTrigger
 from ...strategy.strategy_module import read_strategy_module
 from ...strategy.universe_model import UniverseOptions
 from ...utils.timer import timed_task
+
+# ipdb is a development dependency; production images can still run the daemon.
+try:
+    import ipdb
+except ImportError:
+    ipdb = None
 
 try:
     from ...webhook.server import create_webhook_server
@@ -227,7 +238,21 @@ def start(
     html_report: Optional[Path] = shared_options.html_report,
     cache_path: Optional[Path] = shared_options.cache_path,
 ):
-    """Launch Trade Executor instance."""
+    """Run the strategy executor daemon and its state lifecycle.
+
+    Acquire state-file ownership before state-dependent startup and retain it
+    through execution, crash handling and shutdown. A conflicting daemon or
+    maintenance writer causes an immediate CLI failure outside the crash handlers.
+
+    Ownership continues during crash-status sleep and is released after daemon cleanup. Non-writing simulation and non-file stores skip locking; a backtest output reset still takes the lock.
+
+    :param state_file:
+        Executor JSON path, resolved before locking and used for all state
+        operations. CLI option help describes the remaining arguments and
+        environment variables.
+    :raises click.ClickException:
+        Another writer owns the selected state file.
+    """
     global logger
 
     started_at = native_datetime_utc_now()
@@ -302,554 +327,556 @@ def start(
         http_logging=True,
     )
 
-    try:
+    reset_backtest_state = False
+    if not state_file:
+        if asset_management_mode != AssetManagementMode.backtest:
+            state_file = Path(f"state/{id}.json")
+        elif not unit_testing:
+            # Backtests without an explicit output start from a clean state.
+            state_file = Path(f"state/{id}-backtest.json")
+            reset_backtest_state = True
 
-        if not state_file:
-            if asset_management_mode != AssetManagementMode.backtest:
-                state_file = f"state/{id}.json"
-            else:
-                # Backtest generates a state file for the web frontend
-                # TODO: Avoid legacy unit test issues
-                if not unit_testing:
-                    state_file = Path(f"state/{id}-backtest.json")
-                    if state_file.exists():
-                        os.remove(state_file)
+    # Contention must escape the crash-status sleep handlers below.
+    with locked_state_file(state_file, enabled=not simulate or reset_backtest_state) as state_file:
+        try:
+            if reset_backtest_state and state_file.exists():
+                os.remove(state_file)
 
-        cache_path, token_cache = prepare_cache_and_token_cache(
-            id,
-            cache_path,
-            unit_testing=unit_testing,
-        )
-
-        if asset_management_mode.is_live_trading() or asset_management_mode == AssetManagementMode.dummy:
-            web3config = create_web3_config(
-                gas_price_method=gas_price_method,
+            cache_path, token_cache = prepare_cache_and_token_cache(
+                id,
+                cache_path,
                 unit_testing=unit_testing,
-                simulate=simulate,
-                **rpc_kwargs,
             )
 
-            if not web3config.has_any_connection():
-                raise RuntimeError("Live trading requires that you pass JSON-RPC connection to one of the networks")
-        else:
-            web3config = None
+            if asset_management_mode.is_live_trading() or asset_management_mode == AssetManagementMode.dummy:
+                web3config = create_web3_config(
+                    gas_price_method=gas_price_method,
+                    unit_testing=unit_testing,
+                    simulate=simulate,
+                    **rpc_kwargs,
+                )
 
-        # TODO: This strategy file is reloaded again in ExecutionLoop.run()
-        # We do an extra hop here, because we need to know chain_id associated with the strategy,
-        # because there is an inversion of control issue for passing web3 connection around.
-        # Clean this up in the future versions, by changing the order of initialzation.
-        mod = read_strategy_module(strategy_file)
-
-        # Overwrite name, short and long descriptions from the strategy file
-        # and ignore legacy env config
-        if mod.name:
-            name = mod.name
-        if mod.short_description:
-            short_description = mod.short_description
-        if mod.long_description:
-            long_description = mod.long_description
-        if mod.icon:
-            icon_url = mod.icon
-
-        configure_default_chain(
-            web3config,
-            mod,
-        )
-
-        if min_gas_balance:
-            min_gas_balance = Decimal(min_gas_balance)
-
-        if confirmation_timeout == 60 and web3config.get_default().eth.chain_id == 1:
-            # TODO: Haack
-            # Ethereum mainnet needs much longer confirmation timeout,
-            # don't let the default 60 seconds slip in
-            confirmation_timeout = 900
-
-        confirmation_timeout = datetime.timedelta(seconds=confirmation_timeout)
-
-        if unit_testing:
-            # Do not let Ganache to wait for too long
-            # because likely Ganache has simply crashed on background
-            confirmation_timeout = datetime.timedelta(seconds=60)
-
-        logger.info("Transaction confirmation timeout set to %s", confirmation_timeout)
-
-        max_slippage = configure_max_slippage_tolerance(max_slippage, mod)
-
-        assert web3config is not None, "Web3 RPC configuration failed?"
-
-        deployment_file = resolve_deployment_file(id, state_file)
-        log_multichain_deployment_information(deployment_file)
-
-        lighter_key_management = _create_lighter_key_management(
-            asset_management_mode=asset_management_mode,
-            strategy_parameters=mod.parameters or {},
-            operator_record_file=lighter_operator_record_file,
-            sub_account_operator_record_files=lighter_sub_account_operator_record_files,
-            withdrawal_timeout=lighter_withdrawal_timeout,
-            transfer_timeout=lighter_transfer_timeout,
-        )
-
-        execution_model, sync_model, valuation_model_factory, pricing_model_factory = create_execution_and_sync_model(
-            asset_management_mode=asset_management_mode,
-            private_key=private_key,
-            web3config=web3config,
-            confirmation_timeout=confirmation_timeout,
-            confirmation_block_count=confirmation_block_count,
-            max_slippage=max_slippage,
-            min_gas_balance=min_gas_balance,
-            vault_address=vault_address,
-            vault_adapter_address=vault_adapter_address,
-            vault_payment_forwarder_address=vault_payment_forwarder_address,
-            routing_hint=mod.trade_routing,
-            unit_testing=unit_testing,
-            token_cache=token_cache,
-            # Auto-discover satellite modules from the deployment artifact next to
-            # the state file.
-            deployment_file=deployment_file,
-            lighter_key_management=lighter_key_management,
-        )
-
-        # TODO: Unit test hack
-        execution_model.disable_broadcast = disable_broadcast
-        if isinstance(sync_model, LagoonVaultSyncModel):
-            # Keep the CLI dry-run promise coherent: Lagoon NAV posting bypasses
-            # ExecutionModel.execute_trades(), so it needs the same switch.
-            sync_model.disable_broadcast = disable_broadcast
-
-        # Wire up exchange account value function if Derive credentials provided
-        derive_addresses = None
-        if derive_session_private_key:
-            from ...exchange_account.utils import create_derive_value_func_from_credentials, resolve_derive_addresses
-            account_value_func = create_derive_value_func_from_credentials(
-                derive_session_private_key=derive_session_private_key,
-                derive_owner_private_key=derive_owner_private_key,
-                derive_wallet_address=derive_wallet_address,
-                derive_network=derive_network,
-            )
-            execution_model.account_value_func = account_value_func
-            derive_addresses = resolve_derive_addresses(
-                derive_session_private_key=derive_session_private_key,
-                derive_owner_private_key=derive_owner_private_key,
-                derive_wallet_address=derive_wallet_address,
-                derive_network=derive_network,
-            )
-            logger.info("Exchange account value function configured for Derive, addresses: %s", derive_addresses)
-
-        approval_model = create_approval_model(approval_type)
-
-        if state_file:
-            store = create_state_store(Path(state_file), simulate=simulate)
-        else:
-            # Backtests do not have persistent state
-            if asset_management_mode == AssetManagementMode.backtest:
-                logger.info("This backtest run won't create a state file")
-                store = NoneStore(State())
+                if not web3config.has_any_connection():
+                    raise RuntimeError("Live trading requires that you pass JSON-RPC connection to one of the networks")
             else:
-                raise RuntimeError("Does not know how to set up a state file for this run")
+                web3config = None
 
-        # Pass vault metadata to HTTP API
-        if asset_management_mode.is_vault():
-            match sync_model:
-                case EnzymeVaultSyncModel():
-                    vault = sync_model.vault
-                case VelvetVaultSyncModel():
-                    vault = sync_model.vault
-                case LagoonVaultSyncModel():
-                    vault = sync_model.vault
-                case _:
-                    raise NotImplementedError(f"Vault not implemented: {asset_management_mode}")
-        else:
-            vault = None
+            # TODO: This strategy file is reloaded again in ExecutionLoop.run()
+            # We do an extra hop here, because we need to know chain_id associated with the strategy,
+            # because there is an inversion of control issue for passing web3 connection around.
+            # Clean this up in the future versions, by changing the order of initialzation.
+            mod = read_strategy_module(strategy_file)
 
-        if http_enabled:
-            # We need to have the results from the previous backtest run
-            # to be used with the web frontend
-            if asset_management_mode.is_live_trading() and not unit_testing:
-                if not backtest_result:
-                    backtest_result = Path(f"state/{id}-backtest.json")
+            # Overwrite name, short and long descriptions from the strategy file
+            # and ignore legacy env config
+            if mod.name:
+                name = mod.name
+            if mod.short_description:
+                short_description = mod.short_description
+            if mod.long_description:
+                long_description = mod.long_description
+            if mod.icon:
+                icon_url = mod.icon
 
-                if not backtest_result.exists():
-                    logger.warning(f"Previous backtest results are needed to show them on the web.\n" 
-                                   f"The BACKTEST_RESULT file {backtest_result.absolute()} does not exist.")
-                    backtest_result = None
-
-        if not html_report and backtest_result:
-            html_report = Path(f"state/{id}-backtest.html")
-
-        if not notebook_report and backtest_result:
-            notebook_report = Path(f"state/{id}-backtest.ipynb")
-
-        fees = dict(
-            management_fee=mod.management_fee,
-            trading_strategy_protocol_fee=mod.trading_strategy_protocol_fee,
-            strategy_developer_fee=mod.strategy_developer_fee,
-        )
-
-        metadata = create_metadata(
-            name,
-            short_description,
-            long_description,
-            icon_url,
-            asset_management_mode,
-            chain_id=mod.get_default_chain_id(),
-            vault=vault,
-            backtest_result=backtest_result,
-            backtest_notebook=notebook_report,
-            backtest_html=html_report,
-            key_metrics_backtest_cut_off_days=key_metrics_backtest_cut_off_days,
-            badges=badges,
-            tags=mod.tags,
-            hot_wallet=sync_model.get_hot_wallet(),
-            sort_priority=mod.sort_priority,
-            fees=fees,
-            derive_addresses=derive_addresses,
-        )
-
-        # Start the queue that relays info from the web server to the strategy executor
-        command_queue = Queue()
-
-        run_state = RunState()
-        run_state.version = VersionInfo.read_docker_version()
-        run_state.executor_id = id
-        run_state.hot_wallet_gas_warning_level = Decimal(gas_balance_warning_level)
-
-        # Set up read-only state sync
-        if not store.is_pristine():
-            run_state.read_only_state_copy = store.load()
-        store.on_save = run_state.on_save_hook
-
-        # Create our webhook server
-        if http_enabled:
-
-            assert create_webhook_server is not None, "Could not load tradeexecutor.webhook.server: check all extra packages have been installed"
-
-            server = create_webhook_server(
-                http_host,
-                http_port,
-                http_username,
-                http_password,
-                command_queue,
-                store,
-                metadata,
-                run_state,
+            configure_default_chain(
+                web3config,
+                mod,
             )
-        else:
-            logger.info("Web server disabled")
-            server = None
 
-        # Routing model comes usually from the strategy and hard-coded blockchain defaults,
-        # but for local dev chains it is dynamically constructed from the deployed contracts
-        routing_model: RoutingModel = None
+            if min_gas_balance:
+                min_gas_balance = Decimal(min_gas_balance)
 
-        client, routing_model = create_client(
-            mod=mod,
-            web3config=web3config,
-            trading_strategy_api_key=trading_strategy_api_key,
-            vault_pro_api_key=vault_pro_api_key,
-            cache_path=cache_path,
-            test_evm_uniswap_v2_factory=test_evm_uniswap_v2_factory,
-            test_evm_uniswap_v2_router=test_evm_uniswap_v2_router,
-            test_evm_uniswap_v2_init_code_hash=test_evm_uniswap_v2_init_code_hash,
-            clear_caches=clear_caches,
-            asset_management_mode=asset_management_mode,
-        )
+            if confirmation_timeout == 60 and web3config.get_default().eth.chain_id == 1:
+                # TODO: Haack
+                # Ethereum mainnet needs much longer confirmation timeout,
+                # don't let the default 60 seconds slip in
+                confirmation_timeout = 900
 
-        # Currently, all actions require us to have a valid API key
-        # might change in the future
-        if not client:
-            raise RuntimeError("Trading Strategy API key needed. Make sure to give --trading-strategy-api-key or set TRADING_STRATEGY_API_KEY env.")
+            confirmation_timeout = datetime.timedelta(seconds=confirmation_timeout)
 
-        tick_offset = datetime.timedelta(minutes=cycle_offset_minutes)
-
-        if max_data_delay_minutes:
-            max_data_delay = datetime.timedelta(minutes=max_data_delay_minutes)
-            logger.info(f"Maximum price feed delay is {max_data_delay}")
-        else:
-            logger.info(f"Maximum price feed delay is not set")
-            max_data_delay = None
-
-        stats_refresh_frequency = datetime.timedelta(minutes=stats_refresh_minutes)
-        position_trigger_check_frequency = datetime.timedelta(minutes=position_trigger_check_minutes)
-
-        logger.info("Loading strategy file %s", strategy_file)
-        strategy_factory = import_strategy_file(strategy_file)
-
-        logger.trade("%s (%s): trade execution starting", name, id)
-
-        universe_options = None
-        if backtest_start:
-
-            assert asset_management_mode == AssetManagementMode.backtest, f"Expected backtest mode, got {asset_management_mode}"
-
-            # We cannot have real-time triggered trades when doing backtestin
-            strategy_cycle_trigger = StrategyCycleTrigger.cycle_offset
-
-            # Running as a backtest
-            execution_context = ExecutionContext(
-                mode=ExecutionMode.backtesting,
-                timed_task_context_manager=timed_task,
-                engine_version=mod.trading_strategy_engine_version,
-            )
-        else:
             if unit_testing:
+                # Do not let Ganache to wait for too long
+                # because likely Ganache has simply crashed on background
+                confirmation_timeout = datetime.timedelta(seconds=60)
+
+            logger.info("Transaction confirmation timeout set to %s", confirmation_timeout)
+
+            max_slippage = configure_max_slippage_tolerance(max_slippage, mod)
+
+            assert web3config is not None, "Web3 RPC configuration failed?"
+
+            deployment_file = resolve_deployment_file(id, state_file)
+            log_multichain_deployment_information(deployment_file)
+
+            lighter_key_management = _create_lighter_key_management(
+                asset_management_mode=asset_management_mode,
+                strategy_parameters=mod.parameters or {},
+                operator_record_file=lighter_operator_record_file,
+                sub_account_operator_record_files=lighter_sub_account_operator_record_files,
+                withdrawal_timeout=lighter_withdrawal_timeout,
+                transfer_timeout=lighter_transfer_timeout,
+            )
+
+            execution_model, sync_model, valuation_model_factory, pricing_model_factory = create_execution_and_sync_model(
+                asset_management_mode=asset_management_mode,
+                private_key=private_key,
+                web3config=web3config,
+                confirmation_timeout=confirmation_timeout,
+                confirmation_block_count=confirmation_block_count,
+                max_slippage=max_slippage,
+                min_gas_balance=min_gas_balance,
+                vault_address=vault_address,
+                vault_adapter_address=vault_adapter_address,
+                vault_payment_forwarder_address=vault_payment_forwarder_address,
+                routing_hint=mod.trade_routing,
+                unit_testing=unit_testing,
+                token_cache=token_cache,
+                # Auto-discover satellite modules from the deployment artifact next to
+                # the state file.
+                deployment_file=deployment_file,
+                lighter_key_management=lighter_key_management,
+            )
+
+            # TODO: Unit test hack
+            execution_model.disable_broadcast = disable_broadcast
+            if isinstance(sync_model, LagoonVaultSyncModel):
+                # Keep the CLI dry-run promise coherent: Lagoon NAV posting bypasses
+                # ExecutionModel.execute_trades(), so it needs the same switch.
+                sync_model.disable_broadcast = disable_broadcast
+
+            # Wire up exchange account value function if Derive credentials provided
+            derive_addresses = None
+            if derive_session_private_key:
+                account_value_func = create_derive_value_func_from_credentials(
+                    derive_session_private_key=derive_session_private_key,
+                    derive_owner_private_key=derive_owner_private_key,
+                    derive_wallet_address=derive_wallet_address,
+                    derive_network=derive_network,
+                )
+                execution_model.account_value_func = account_value_func
+                derive_addresses = resolve_derive_addresses(
+                    derive_session_private_key=derive_session_private_key,
+                    derive_owner_private_key=derive_owner_private_key,
+                    derive_wallet_address=derive_wallet_address,
+                    derive_network=derive_network,
+                )
+                logger.info("Exchange account value function configured for Derive, addresses: %s", derive_addresses)
+
+            approval_model = create_approval_model(approval_type)
+
+            if state_file:
+                store = create_state_store(Path(state_file), simulate=simulate)
+            else:
+                # Backtests do not have persistent state
+                if asset_management_mode == AssetManagementMode.backtest:
+                    logger.info("This backtest run won't create a state file")
+                    store = NoneStore(State())
+                else:
+                    raise RuntimeError("Does not know how to set up a state file for this run")
+
+            # Pass vault metadata to HTTP API
+            if asset_management_mode.is_vault():
+                match sync_model:
+                    case EnzymeVaultSyncModel():
+                        vault = sync_model.vault
+                    case VelvetVaultSyncModel():
+                        vault = sync_model.vault
+                    case LagoonVaultSyncModel():
+                        vault = sync_model.vault
+                    case _:
+                        raise NotImplementedError(f"Vault not implemented: {asset_management_mode}")
+            else:
+                vault = None
+
+            if http_enabled:
+                # We need to have the results from the previous backtest run
+                # to be used with the web frontend
+                if asset_management_mode.is_live_trading() and not unit_testing:
+                    if not backtest_result:
+                        backtest_result = Path(f"state/{id}-backtest.json")
+
+                    if not backtest_result.exists():
+                        logger.warning(f"Previous backtest results are needed to show them on the web.\n"
+                                       f"The BACKTEST_RESULT file {backtest_result.absolute()} does not exist.")
+                        backtest_result = None
+
+            if not html_report and backtest_result:
+                html_report = Path(f"state/{id}-backtest.html")
+
+            if not notebook_report and backtest_result:
+                notebook_report = Path(f"state/{id}-backtest.ipynb")
+
+            fees = dict(
+                management_fee=mod.management_fee,
+                trading_strategy_protocol_fee=mod.trading_strategy_protocol_fee,
+                strategy_developer_fee=mod.strategy_developer_fee,
+            )
+
+            metadata = create_metadata(
+                name,
+                short_description,
+                long_description,
+                icon_url,
+                asset_management_mode,
+                chain_id=mod.get_default_chain_id(),
+                vault=vault,
+                backtest_result=backtest_result,
+                backtest_notebook=notebook_report,
+                backtest_html=html_report,
+                key_metrics_backtest_cut_off_days=key_metrics_backtest_cut_off_days,
+                badges=badges,
+                tags=mod.tags,
+                hot_wallet=sync_model.get_hot_wallet(),
+                sort_priority=mod.sort_priority,
+                fees=fees,
+                derive_addresses=derive_addresses,
+            )
+
+            # Start the queue that relays info from the web server to the strategy executor
+            command_queue = Queue()
+
+            run_state = RunState()
+            run_state.version = VersionInfo.read_docker_version()
+            run_state.executor_id = id
+            run_state.hot_wallet_gas_warning_level = Decimal(gas_balance_warning_level)
+
+            # Set up read-only state sync
+            if not store.is_pristine():
+                run_state.read_only_state_copy = store.load()
+            store.on_save = run_state.on_save_hook
+
+            # Create our webhook server
+            if http_enabled:
+
+                assert create_webhook_server is not None, "Could not load tradeexecutor.webhook.server: check all extra packages have been installed"
+
+                server = create_webhook_server(
+                    http_host,
+                    http_port,
+                    http_username,
+                    http_password,
+                    command_queue,
+                    store,
+                    metadata,
+                    run_state,
+                )
+            else:
+                logger.info("Web server disabled")
+                server = None
+
+            # Routing model comes usually from the strategy and hard-coded blockchain defaults,
+            # but for local dev chains it is dynamically constructed from the deployed contracts
+            routing_model: RoutingModel = None
+
+            client, routing_model = create_client(
+                mod=mod,
+                web3config=web3config,
+                trading_strategy_api_key=trading_strategy_api_key,
+                vault_pro_api_key=vault_pro_api_key,
+                cache_path=cache_path,
+                test_evm_uniswap_v2_factory=test_evm_uniswap_v2_factory,
+                test_evm_uniswap_v2_router=test_evm_uniswap_v2_router,
+                test_evm_uniswap_v2_init_code_hash=test_evm_uniswap_v2_init_code_hash,
+                clear_caches=clear_caches,
+                asset_management_mode=asset_management_mode,
+            )
+
+            # Currently, all actions require us to have a valid API key
+            # might change in the future
+            if not client:
+                raise RuntimeError("Trading Strategy API key needed. Make sure to give --trading-strategy-api-key or set TRADING_STRATEGY_API_KEY env.")
+
+            tick_offset = datetime.timedelta(minutes=cycle_offset_minutes)
+
+            if max_data_delay_minutes:
+                max_data_delay = datetime.timedelta(minutes=max_data_delay_minutes)
+                logger.info(f"Maximum price feed delay is {max_data_delay}")
+            else:
+                logger.info(f"Maximum price feed delay is not set")
+                max_data_delay = None
+
+            stats_refresh_frequency = datetime.timedelta(minutes=stats_refresh_minutes)
+            position_trigger_check_frequency = datetime.timedelta(minutes=position_trigger_check_minutes)
+
+            logger.info("Loading strategy file %s", strategy_file)
+            strategy_factory = import_strategy_file(strategy_file)
+
+            logger.trade("%s (%s): trade execution starting", name, id)
+
+            universe_options = None
+            if backtest_start:
+
+                assert asset_management_mode == AssetManagementMode.backtest, f"Expected backtest mode, got {asset_management_mode}"
+
+                # We cannot have real-time triggered trades when doing backtestin
+                strategy_cycle_trigger = StrategyCycleTrigger.cycle_offset
+
+                # Running as a backtest
                 execution_context = ExecutionContext(
-                    mode=ExecutionMode.unit_testing_trading,
+                    mode=ExecutionMode.backtesting,
                     timed_task_context_manager=timed_task,
                     engine_version=mod.trading_strategy_engine_version,
                 )
             else:
-                # Live trading
-                execution_context = ExecutionContext(
-                    mode=ExecutionMode.real_trading,
-                    timed_task_context_manager=timed_task,
-                    engine_version=mod.trading_strategy_engine_version,
-                )
+                if unit_testing:
+                    execution_context = ExecutionContext(
+                        mode=ExecutionMode.unit_testing_trading,
+                        timed_task_context_manager=timed_task,
+                        engine_version=mod.trading_strategy_engine_version,
+                    )
+                else:
+                    # Live trading
+                    execution_context = ExecutionContext(
+                        mode=ExecutionMode.real_trading,
+                        timed_task_context_manager=timed_task,
+                        engine_version=mod.trading_strategy_engine_version,
+                    )
+
+                if mod.parameters:
+                    universe_options = UniverseOptions.from_strategy_parameters_class(mod.parameters, execution_context)
+                    logger.info("UniverseOptions set to: %s", universe_options)
 
             if mod.parameters:
-                universe_options = UniverseOptions.from_strategy_parameters_class(mod.parameters, execution_context)
-                logger.info("UniverseOptions set to: %s", universe_options)
+                logger.trade(
+                    "Starting with strategy parameters:\n%s",
+                    dump_parameters(mod.parameters)
+                )
 
-        if mod.parameters:
-            logger.trade(
-                "Starting with strategy parameters:\n%s",
-                dump_parameters(mod.parameters)
+            logger.info(
+                "Starting %s, with execution mode: %s, unit testing is %s, version is %s",
+                name,
+                execution_context.mode.name,
+                unit_testing,
+                execution_context.engine_version,
             )
 
-        logger.info(
-            "Starting %s, with execution mode: %s, unit testing is %s, version is %s",
-            name,
-            execution_context.mode.name,
-            unit_testing,
-            execution_context.engine_version,
-        )
+        except Exception as e:
+            # Logging is set up is in this point, so we can log this exception that
+            # caused the start up to fail
+            logger.critical("Startup failed: %s", e)
+            logger.exception(e)
+            raise
 
-    except Exception as e:
-        # Logging is set up is in this point, so we can log this exception that
-        # caused the start up to fail
-        logger.critical("Startup failed: %s", e)
-        logger.exception(e)
-        raise
+        # Allow to do Python thread dump using a signal with
+        # docker-compose kill command
+        if not unit_testing:
+            faulthandler.enable()
 
-    # Allow to do Python thread dump using a signal with
-    # docker-compose kill command
-    if not unit_testing:
-        faulthandler.enable()
+        if simulate:
+            if not run_single_cycle:
+                raise RuntimeError("Simulation mode is only supported with --run-single-cycle at the moment")
 
-    if simulate:
-        if not run_single_cycle:
-            raise RuntimeError("Simulation mode is only supported with --run-single-cycle at the moment")
-        
-        logger.info("Simulating single cycle")
+            logger.info("Simulating single cycle")
 
-    # Force run a single cycle
-    if run_single_cycle:
-        max_cycles = 1
-        sync_treasury_on_startup = True
-        trade_immediately = True
-    else:
-        logger.info("No immediate trade set up, max cycles is %s", max_cycles)
+        # Force run a single cycle
+        if run_single_cycle:
+            max_cycles = 1
+            sync_treasury_on_startup = True
+            trade_immediately = True
+        else:
+            logger.info("No immediate trade set up, max cycles is %s", max_cycles)
 
-    # Trip wire for Velvet integration, as Velvet needs its special Enso path
-    if asset_management_mode == AssetManagementMode.velvet:
-        assert isinstance(execution_model, VelvetExecution), f"Got: {execution_model}"
-        assert isinstance(sync_model, VelvetVaultSyncModel), f"Got: {sync_model}"
-        assert routing_model is None, f"Got: {routing_model}"
+        # Trip wire for Velvet integration, as Velvet needs its special Enso path
+        if asset_management_mode == AssetManagementMode.velvet:
+            assert isinstance(execution_model, VelvetExecution), f"Got: {execution_model}"
+            assert isinstance(sync_model, VelvetVaultSyncModel), f"Got: {sync_model}"
+            assert routing_model is None, f"Got: {routing_model}"
 
-    if isinstance(sync_model, LagoonVaultSyncModel):
-        # The strategy's cash policy, not signer availability, selects this:
-        # a pool strategy also supplies the operator record.
-        lighter_cash_management = bool((mod.parameters or {}).get("lighter_cash_management", False))
-        sync_model.defer_redemption_without_reserve_liquidity = lighter_cash_management
-        sync_model.abort_lagoon_settlement_on_frozen_positions = abort_lagoon_settlement_on_frozen_positions
-    elif abort_lagoon_settlement_on_frozen_positions:
-        logger.warning(
-            "--abort-lagoon-settlement-on-frozen-positions only applies to Lagoon vaults; "
-            "ignoring it for sync model %s",
-            type(sync_model).__name__,
-        )
-
-
-    if stats_refresh_unit_testing and not unit_testing:
-        logger.warning(
-            "--stats-refresh-unit-testing only applies in unit testing mode; "
-            "ignoring it for execution mode %s",
-            execution_context.mode.name,
-        )
-
-    loop = ExecutionLoop(
-        name=name,
-        command_queue=command_queue,
-        execution_model=execution_model,
-        execution_context=execution_context,
-        sync_model=sync_model,
-        approval_model=approval_model,
-        pricing_model_factory=pricing_model_factory,
-        valuation_model_factory=valuation_model_factory,
-        store=store,
-        client=client,
-        strategy_factory=strategy_factory,
-        reset=reset_state,
-        max_cycles=max_cycles,
-        debug_dump_file=debug_dump_file,
-        backtest_start=backtest_start,
-        backtest_end=backtest_end,
-        backtest_stop_loss_time_frame_override=backtest_stop_loss_time_frame_override,
-        backtest_candle_time_frame_override=backtest_candle_time_frame_override,
-        stop_loss_check_frequency=stop_loss_check_frequency,
-        cycle_duration=cycle_duration,
-        tick_offset=tick_offset,
-        max_data_delay=max_data_delay,
-        trade_immediately=trade_immediately,
-        stats_refresh_frequency=stats_refresh_frequency,
-        stats_refresh_unit_testing=stats_refresh_unit_testing,
-        position_trigger_check_frequency=position_trigger_check_frequency,
-        run_state=run_state,
-        strategy_cycle_trigger=strategy_cycle_trigger,
-        routing_model=routing_model,
-        metadata=metadata,
-        check_accounts=check_accounts,
-        sync_treasury_on_startup=sync_treasury_on_startup,
-        create_indicators=mod.create_indicators,
-        before_strategy_tick=mod.before_strategy_tick,
-        after_strategy_tick=mod.after_strategy_tick,
-        parameters=mod.parameters,
-        visualisation=visualisation,
-        max_price_impact=mod.get_max_price_impact(),
-        universe_options=universe_options,
-        create_charts=mod.create_charts,
-    )
-
-    # Crash gracefully at startup if our main loop cannot set itself up
-    try:
-        state = loop.init_state()
-        deployment_info_updated = update_strategy_file_deployment_info(state, deployment_file)
         if isinstance(sync_model, LagoonVaultSyncModel):
-            vault = getattr(sync_model, "vault", None)
-            if vault is not None:
-                deployment_info_updated |= refresh_lagoon_guard_migration_state(state, vault)
-
-        if deployment_info_updated:
-            logger.info("Updated strategy-file deployment information in the state")
-            store.sync(state)
-
-        state = loop.setup()
-    except Exception as e:
-        logger.error("trade-executor crashed on initialisation: %s", e)
-        raise e
-
-    if preload_webhook_data:
-        if not http_enabled:
-            logger.warning("PRELOAD_WEBHOOK_DATA requested, but HTTP_ENABLED=false. Skipping webhook preload.")
-        elif not execution_context.mode.is_live_trading():
+            # The strategy's cash policy, not signer availability, selects this:
+            # a pool strategy also supplies the operator record.
+            lighter_cash_management = bool((mod.parameters or {}).get("lighter_cash_management", False))
+            sync_model.defer_redemption_without_reserve_liquidity = lighter_cash_management
+            sync_model.abort_lagoon_settlement_on_frozen_positions = abort_lagoon_settlement_on_frozen_positions
+        elif abort_lagoon_settlement_on_frozen_positions:
             logger.warning(
-                "PRELOAD_WEBHOOK_DATA requested, but execution mode %s is not live trading. Skipping webhook preload.",
+                "--abort-lagoon-settlement-on-frozen-positions only applies to Lagoon vaults; "
+                "ignoring it for sync model %s",
+                type(sync_model).__name__,
+            )
+
+
+        if stats_refresh_unit_testing and not unit_testing:
+            logger.warning(
+                "--stats-refresh-unit-testing only applies in unit testing mode; "
+                "ignoring it for execution mode %s",
                 execution_context.mode.name,
             )
-        else:
-            logger.info("Preloading webhook data before the first live cycle")
-            try:
-                loop.preload_webhook_data(state)
-            except Exception:
-                if server is not None:
-                    server.shutdown()
-                raise
 
-    try:
-        loop.run_with_state(state)
+        loop = ExecutionLoop(
+            name=name,
+            command_queue=command_queue,
+            execution_model=execution_model,
+            execution_context=execution_context,
+            sync_model=sync_model,
+            approval_model=approval_model,
+            pricing_model_factory=pricing_model_factory,
+            valuation_model_factory=valuation_model_factory,
+            store=store,
+            client=client,
+            strategy_factory=strategy_factory,
+            reset=reset_state,
+            max_cycles=max_cycles,
+            debug_dump_file=debug_dump_file,
+            backtest_start=backtest_start,
+            backtest_end=backtest_end,
+            backtest_stop_loss_time_frame_override=backtest_stop_loss_time_frame_override,
+            backtest_candle_time_frame_override=backtest_candle_time_frame_override,
+            stop_loss_check_frequency=stop_loss_check_frequency,
+            cycle_duration=cycle_duration,
+            tick_offset=tick_offset,
+            max_data_delay=max_data_delay,
+            trade_immediately=trade_immediately,
+            stats_refresh_frequency=stats_refresh_frequency,
+            stats_refresh_unit_testing=stats_refresh_unit_testing,
+            position_trigger_check_frequency=position_trigger_check_frequency,
+            run_state=run_state,
+            strategy_cycle_trigger=strategy_cycle_trigger,
+            routing_model=routing_model,
+            metadata=metadata,
+            check_accounts=check_accounts,
+            sync_treasury_on_startup=sync_treasury_on_startup,
+            create_indicators=mod.create_indicators,
+            before_strategy_tick=mod.before_strategy_tick,
+            after_strategy_tick=mod.after_strategy_tick,
+            parameters=mod.parameters,
+            visualisation=visualisation,
+            max_price_impact=mod.get_max_price_impact(),
+            universe_options=universe_options,
+            create_charts=mod.create_charts,
+        )
 
-        # Display summary stats for terminal backtest runs
-        if backtest_start:
-            # TODO: Hack. Refactor Backtest to its own command / class,
-            # Confusion how state should be passed from the execution loop to here
-            if hasattr(store, "state"):
-                display_backtesting_results(store.state)
+        # Crash gracefully at startup if our main loop cannot set itself up
+        try:
+            state = loop.init_state()
+            deployment_info_updated = update_strategy_file_deployment_info(state, deployment_file)
+            if isinstance(sync_model, LagoonVaultSyncModel):
+                vault = getattr(sync_model, "vault", None)
+                if vault is not None:
+                    deployment_info_updated |= refresh_lagoon_guard_migration_state(state, vault)
+
+            if deployment_info_updated:
+                logger.info("Updated strategy-file deployment information in the state")
+                store.sync(state)
+
+            state = loop.setup()
+        except Exception as e:
+            logger.error("trade-executor crashed on initialisation: %s", e)
+            raise e
+
+        if preload_webhook_data:
+            if not http_enabled:
+                logger.warning("PRELOAD_WEBHOOK_DATA requested, but HTTP_ENABLED=false. Skipping webhook preload.")
+            elif not execution_context.mode.is_live_trading():
+                logger.warning(
+                    "PRELOAD_WEBHOOK_DATA requested, but execution mode %s is not live trading. Skipping webhook preload.",
+                    execution_context.mode.name,
+                )
             else:
-                state = store.load()
-                display_backtesting_results(state)
+                logger.info("Preloading webhook data before the first live cycle")
+                try:
+                    loop.preload_webhook_data(state)
+                except Exception:
+                    if server is not None:
+                        server.shutdown()
+                    raise
 
-            if isinstance(store, JSONFileStore):
-                logger.info("Wrote backtest result to %s", store.path.absolute())
+        try:
+            loop.run_with_state(state)
 
-        if run_single_cycle:
-            if len(state.portfolio.frozen_positions) > 0:
-                logger.error("After single cycle run, we have frozen positions")
-                for p in state.portfolio.frozen_positions.values():
-                    logger.error("Position: %s", p)
+            # Display summary stats for terminal backtest runs
+            if backtest_start:
+                # TODO: Hack. Refactor Backtest to its own command / class,
+                # Confusion how state should be passed from the execution loop to here
+                if hasattr(store, "state"):
+                    display_backtesting_results(store.state)
+                else:
+                    state = store.load()
+                    display_backtesting_results(state)
 
-    except KeyboardInterrupt as e:
-
-        # CTRL+C shutdown or watch dog crash
-        # Watchdog detected a process has hung: Watched worker live_cycle did not report back in time. Threshold seconds 4500.0, but it has been 4503.594225645065 seconds. Shutting down.
-        logger.error("trade-executor %s killed by watchdog or CTRL+C requested: %s. Shutting down.", id, e)
-        logger.error("If you are running manually press CTRL+C again to quit")
-
-        # Unwind the traceback and notify the webserver about the failure
-        run_state.set_fail()
-
-        logger.exception(e)
-
-        stop_watchdog()
-
-        # Dump all threads to stderr in order to see the stuck threads
-        faulthandler.dump_traceback()
-
-        # Spend the rest of the time idling
-        time.sleep(3600*24*365)
-
-    except Exception as e:
-
-        logger.error("trade-executor %s execution loop crashed", id)
-
-        # Unwind the traceback and notify the webserver about the failure
-        run_state.set_fail()
-
-        stop_watchdog()
-
-        logger.exception(e)
-
-        # Save state on known good exceptions we know are causing headache
-        # for automated execution due to unstability of the blockchains.
-        # eth_defi.confirmation.ConfirmationTimedOut
-        if should_save_failed_execution(e):
-            logger.error("Saving state with aborted execution: %s", e)
-            store.sync(state)
-
-        # Debug exceptions in production
-        if port_mortem_debugging:
-            import ipdb
-            ipdb.post_mortem()
-
-        running_time = native_datetime_utc_now() - started_at
-
-        if (server is None) or (running_time < datetime.timedelta(seconds=http_wait_good_startup_seconds)):
-            # Only terminate the process if the webhook server is not running,
-            # otherwise the user can read the crash status from /status endpoint
-            logger.error(
-                "Raising the error and crashing away, running time was %s Run-time version was:\n%s",
-                running_time,
-                run_state.version
-            )
-            raise
-        else:
+                if isinstance(store, JSONFileStore):
+                    logger.info("Wrote backtest result to %s", store.path.absolute())
 
             if run_single_cycle:
+                if len(state.portfolio.frozen_positions) > 0:
+                    logger.error("After single cycle run, we have frozen positions")
+                    for p in state.portfolio.frozen_positions.values():
+                        logger.error("Position: %s", p)
+
+        except KeyboardInterrupt as e:
+
+            # CTRL+C shutdown or watch dog crash
+            # Watchdog detected a process has hung: Watched worker live_cycle did not report back in time. Threshold seconds 4500.0, but it has been 4503.594225645065 seconds. Shutting down.
+            logger.error("trade-executor %s killed by watchdog or CTRL+C requested: %s. Shutting down.", id, e)
+            logger.error("If you are running manually press CTRL+C again to quit")
+
+            # Unwind the traceback and notify the webserver about the failure
+            run_state.set_fail()
+
+            logger.exception(e)
+
+            stop_watchdog()
+
+            # Dump all threads to stderr in order to see the stuck threads
+            faulthandler.dump_traceback()
+
+            # Spend the rest of the time idling
+            time.sleep(3600*24*365)
+
+        except Exception as e:
+
+            logger.error("trade-executor %s execution loop crashed", id)
+
+            # Unwind the traceback and notify the webserver about the failure
+            run_state.set_fail()
+
+            stop_watchdog()
+
+            logger.exception(e)
+
+            # Save state on known good exceptions we know are causing headache
+            # for automated execution due to unstability of the blockchains.
+            # eth_defi.confirmation.ConfirmationTimedOut
+            if should_save_failed_execution(e):
+                logger.error("Saving state with aborted execution: %s", e)
+                store.sync(state)
+
+            # Debug exceptions in production
+            if port_mortem_debugging:
+                if ipdb is None:
+                    raise ImportError("Post-mortem debugging requires the ipdb development dependency")
+                ipdb.post_mortem()
+
+            running_time = native_datetime_utc_now() - started_at
+
+            if (server is None) or (running_time < datetime.timedelta(seconds=http_wait_good_startup_seconds)):
+                # Only terminate the process if the webhook server is not running,
+                # otherwise the user can read the crash status from /status endpoint
                 logger.error(
-                    "run_single_cycle active - exiting after a crash"
+                    "Raising the error and crashing away, running time was %s Run-time version was:\n%s",
+                    running_time,
+                    run_state.version
                 )
                 raise
             else:
 
-                # Execution is dead.
-                # Sleep forever, let the webhook still serve the requests.
-                logger.error(
-                    "Main loop terminated. Entering to the web server wait mode. Run-time version was:\n%s",
-                    run_state.version,
-                )
+                if run_single_cycle:
+                    logger.error(
+                        "run_single_cycle active - exiting after a crash"
+                    )
+                    raise
+                else:
 
-                if not skip_crash_sleep:
-                    time.sleep(3600*24*365)
-    finally:
-        if server:
-            logger.info("Closing the web server")
-            server.close()
+                    # Execution is dead.
+                    # Sleep forever, let the webhook still serve the requests.
+                    logger.error(
+                        "Main loop terminated. Entering to the web server wait mode. Run-time version was:\n%s",
+                        run_state.version,
+                    )
+
+                    if not skip_crash_sleep:
+                        time.sleep(3600*24*365)
+        finally:
+            if server:
+                logger.info("Closing the web server")
+                server.close()

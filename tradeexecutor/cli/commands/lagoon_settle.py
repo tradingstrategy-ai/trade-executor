@@ -1,4 +1,7 @@
-"""lagoon-settle command.
+"""Settle Lagoon NAV and pending investor subscriptions or redemptions.
+
+State writer ownership is acquired at the command boundary. See
+:func:`lagoon_settle` for non-writing modes and contention behaviour.
 
 - Works in theory with any other similar vault, but has not been tested
 """
@@ -10,6 +13,7 @@ from typer import Option
 
 from . import shared_options
 from .app import app
+from tradeexecutor.cli.state_lock import with_state_lock
 from ..bootstrap import prepare_executor_id, prepare_cache_and_token_cache, create_web3_config, create_state_store, \
     create_execution_and_sync_model, resolve_deployment_file, create_client, configure_default_chain
 from .lagoon_utils import resolve_state_store
@@ -29,6 +33,7 @@ from eth_defi.compat import native_datetime_utc_now
 
 @app.command()
 @shared_options.with_json_rpc_options()
+@with_state_lock(read_only=lambda options: options["simulate"])
 def lagoon_settle(
     id: str = shared_options.id,
 
@@ -66,6 +71,19 @@ def lagoon_settle(
     - Updates vault NAV
     - Syncs the latest reserve deposits and redemptions
     - Optionally syncs lending interest rates before valuation (default: True)
+
+    A writing invocation exclusively owns the state file through cleanup. If
+    another writer owns it, the command exits with status 1 before loading state or
+    submitting transactions. Stop the daemon before running a writing command.
+
+    Simulation does not acquire writer ownership or save state.
+
+    :param state_file:
+        Executor JSON path, resolved before locking and used for all state
+        operations. CLI option help describes the remaining arguments and
+        environment variables.
+    :raises click.ClickException:
+        Another writer owns the selected state file.
     """
     id = prepare_executor_id(id, strategy_file)
 
@@ -128,6 +146,13 @@ def lagoon_settle(
 
     if simulate:
         def break_sync(x):
+            """Reject accidental persistence from the simulated settlement path.
+
+            :param x:
+                Unused state argument required by the store sync interface.
+            :raises NotImplementedError:
+                Every call is refused so fork-only settlement cannot be saved.
+            """
             raise NotImplementedError("Cannot save state when simulating")
         store.sync = break_sync
 

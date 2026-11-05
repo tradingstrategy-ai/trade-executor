@@ -1,6 +1,8 @@
 
-"""Reset account balances.
+"""Reset the deposit scan checkpoint before account reconciliation.
 
+State writer ownership is acquired at the command boundary. See
+:func:`reset_deposits` for non-writing modes and contention behaviour.
 """
 from pathlib import Path
 from typing import Optional
@@ -8,6 +10,7 @@ from typing import Optional
 from eth_defi.hotwallet import HotWallet
 
 from .app import app
+from tradeexecutor.cli.state_lock import with_state_lock
 from ..backup import backup_state
 from ..bootstrap import prepare_executor_id, create_web3_config, create_sync_model
 from ..log import setup_logging
@@ -18,6 +21,7 @@ from tradeexecutor.strategy.account_correction import correct_accounts as _corre
 
 @app.command()
 @shared_options.with_json_rpc_options()
+@with_state_lock()
 def reset_deposits(
     id: str = shared_options.id,
     name: str = shared_options.name,
@@ -38,6 +42,17 @@ def reset_deposits(
 
     Resets account balances from on-chain data. This includes reserve and spot market balances.
     Does not lose trade history, but lose any unprocessed deposit and redemption events.
+
+    A writing invocation exclusively owns the state file through cleanup. If
+    another writer owns it, the command exits with status 1 before loading state or
+    submitting transactions. Stop the daemon before running a writing command.
+
+    :param state_file:
+        Executor JSON path, resolved before locking and used for all state
+        operations. CLI option help describes the remaining arguments and
+        environment variables.
+    :raises click.ClickException:
+        Another writer owns the selected state file.
     """
 
     id = prepare_executor_id(id, strategy_file)

@@ -1,4 +1,8 @@
-"""Repair interrupted trades and inconsistent position state."""
+"""Repair interrupted trades and inconsistent executor position state.
+
+State writer ownership is acquired at the command boundary. See
+:func:`repair` for non-writing modes and contention behaviour.
+"""
 import datetime
 from pathlib import Path
 from typing import Optional
@@ -8,6 +12,7 @@ from eth_defi.compat import native_datetime_utc_now
 
 from . import shared_options
 from .app import app
+from tradeexecutor.cli.state_lock import with_state_lock
 from ..bootstrap import prepare_executor_id, create_execution_and_sync_model, resolve_deployment_file, prepare_cache, create_web3_config, create_client, configure_default_chain, backup_state
 from ..log import setup_logging
 from ...ethereum.lagoon.vault import LagoonVaultSyncModel
@@ -35,6 +40,7 @@ from ...utils.timer import timed_task
 
 @app.command()
 @shared_options.with_json_rpc_options()
+@with_state_lock()
 def repair(
     id: str = shared_options.id,
     name: Optional[str] = shared_options.name,
@@ -88,6 +94,17 @@ def repair(
     Review ``correct-accounts --dry-run`` before any live recovery.
 
     See also check-accounts and correct-accounts commands.
+
+    A writing invocation exclusively owns the state file through cleanup. If
+    another writer owns it, the command exits with status 1 before loading state or
+    submitting transactions. Stop the daemon before running a writing command.
+
+    :param state_file:
+        Executor JSON path, resolved before locking and used for all state
+        operations. CLI option help describes the remaining arguments and
+        environment variables.
+    :raises click.ClickException:
+        Another writer owns the selected state file.
     """
 
     id = prepare_executor_id(id, strategy_file)

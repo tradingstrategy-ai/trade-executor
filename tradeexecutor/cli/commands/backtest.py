@@ -1,4 +1,7 @@
-"""backtest CLI command
+"""Backtest a strategy and export its resulting state and reports.
+
+State writer ownership is acquired at the command boundary. See
+:func:`backtest` for non-writing modes and contention behaviour.
 
 To read generated cprofile reports:
 
@@ -7,11 +10,9 @@ To read generated cprofile reports:
     import pstats
     p = pstats.Stats('backtest.cprof')
     p.strip_dirs().sort_stats('cumulative').print_stats(10)
-
-
-
 """
 
+import cProfile
 import logging
 import os
 from pathlib import Path
@@ -28,12 +29,14 @@ from ..log import setup_logging
 from ..result import display_backtesting_results
 from . import shared_options
 from .app import app
+from tradeexecutor.cli.state_lock import with_state_lock
 from .shared_options import required_option
 
 logger = logging.getLogger(__name__)
 
 
 @app.command()
+@with_state_lock(default_suffix="-backtest")
 def backtest(
     id: str = shared_options.id,
     name: Optional[str] = shared_options.name,
@@ -77,6 +80,17 @@ def backtest(
     - Writes the resulting Jupyter Notebook report,
       as it is being used by the webhook server to display backtest results
 
+    A writing invocation exclusively owns the state file through cleanup. If
+    another writer owns it, the command exits with status 1 before loading state or
+    submitting transactions. Stop the daemon before running a writing command.
+
+    Ownership covers output deletion, calculation and the final state export.
+
+    :param state_file:
+        Output state JSON path; defaults to state/{id}-backtest.json. It is
+        resolved before locking. CLI option help describes the remaining inputs.
+    :raises click.ClickException:
+        Another writer owns the selected state file.
     """
     global logger
 
@@ -129,6 +143,11 @@ def backtest(
     print(f"Starting backtesting for {strategy_file}")
 
     def loop():
+        """Run the configured backtest behind one callable for optional profiling.
+
+        :return:
+            Backtest result containing the simulated state and strategy universe.
+        """
         nonlocal trading_strategy_api_key
         nonlocal vault_pro_api_key
         nonlocal cache_path
@@ -145,7 +164,6 @@ def backtest(
         return result
 
     if python_profile_report:
-        import cProfile
         profiler = cProfile.Profile()
         print("Preparing to profile the backtest execution")
         result = profiler.runcall(loop)

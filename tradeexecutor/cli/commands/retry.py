@@ -1,4 +1,8 @@
-"""retry command"""
+"""Retry failed executor trade execution and save the resulting state.
+
+State writer ownership is acquired at the command boundary. See
+:func:`retry` for non-writing modes and contention behaviour.
+"""
 
 import datetime
 from pathlib import Path
@@ -26,11 +30,13 @@ from tradeexecutor.utils.timer import timed_task
 from tradeexecutor.cli.commands import shared_options
 
 from .app import app
+from tradeexecutor.cli.state_lock import with_state_lock
 from eth_defi.compat import native_datetime_utc_now
 
 
 @app.command()
 @shared_options.with_json_rpc_options()
+@with_state_lock()
 def retry(
     id: str = shared_options.id,
     name: Optional[str] = shared_options.name,
@@ -62,6 +68,17 @@ def retry(
     """Retry a failed trade.
 
     Attempt to rebroadcast failed trades and unfreeze the position
+
+    A writing invocation exclusively owns the state file through cleanup. If
+    another writer owns it, the command exits with status 1 before loading state or
+    submitting transactions. Stop the daemon before running a writing command.
+
+    :param state_file:
+        Executor JSON path, resolved before locking and used for all state
+        operations. CLI option help describes the remaining arguments and
+        environment variables.
+    :raises click.ClickException:
+        Another writer owns the selected state file.
     """
 
     id = prepare_executor_id(id, strategy_file)

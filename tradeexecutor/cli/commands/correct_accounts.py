@@ -1,5 +1,7 @@
-"""Correct accounting errors in the internal state.
+"""Reconcile executor accounting against live account balances.
 
+State writer ownership is acquired at the command boundary. See
+:func:`correct_accounts` for non-writing modes and contention behaviour.
 """
 import calendar
 import datetime
@@ -46,10 +48,13 @@ from tradeexecutor.strategy.account_correction import (
     check_accounts,
     correct_accounts as _correct_accounts,
     create_missing_exchange_account_positions,
+    create_missing_vault_positions,
+    create_missing_cctp_bridge_positions,
     preflight_state_for_account_correction,
     UnknownTokenPositionFix,
 )
 from .app import app
+from tradeexecutor.cli.state_lock import with_state_lock
 from ..bootstrap import prepare_executor_id, create_web3_config, create_sync_model, create_client, backup_state, create_execution_and_sync_model, resolve_deployment_file, configure_default_chain, create_state_store
 from ..double_position import check_double_position
 from ..log import setup_logging
@@ -67,6 +72,7 @@ from ...state.repair import close_hypercore_dust_positions
 from ...state.position import TradingPosition
 from ...state.identifier import TradingPairIdentifier
 from ...state.state import State, UncleanState
+from ...state.valuation import ValuationUpdate
 from ...state.trade import (
     HYPERCORE_ACCOUNTING_RECONCILIATION_REQUIRED_KEY,
     HYPERCORE_DEPOSIT_CAPITAL_AT_RISK_KEY,
@@ -85,7 +91,7 @@ from ...strategy.execution_model import AssetManagementMode
 from . import shared_options
 from ...strategy.run_state import RunState
 from ...strategy.strategy_module import StrategyModuleInformation, read_strategy_module
-from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
+from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel, translate_trading_pair
 from ...strategy.universe_model import UniverseOptions
 from ...utils.blockchain import get_block_timestamp
 
@@ -297,6 +303,21 @@ def _sync_hypercore_vault_positions(
 ) -> bool:
     """Auto-create and mark Hypercore vault positions from the Hyperliquid API.
 
+    Reconcile vault positions against the Safe's live HyperCore holdings before
+    reserve corrections. Missing live holdings may become tracked positions;
+    positions already withdrawn on-chain can be closed without inventing sale
+    proceeds. The caller must retain writer ownership while this mutates state.
+
+    :param asset_management_mode:
+        Managed deployment mode; non-vault modes return without changes.
+    :param universe:
+        Strategy universe containing HyperCore vault pairs, or None to skip.
+    :param sync_model:
+        Vault sync model used to obtain the Safe's token-storage address.
+    :param web3:
+        Configured HyperEVM provider; its chain ID selects mainnet or testnet.
+    :param state:
+        Loaded executor state whose portfolio and valuation records may change.
     :return:
         True if any phantom positions were closed (zero-proceeds repair).
         The caller should ensure the reserve balance correction runs
@@ -307,8 +328,6 @@ def _sync_hypercore_vault_positions(
     if not asset_management_mode.is_vault() or universe is None:
         return False
 
-    from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair
-
     has_vault_pairs = any(
         translate_trading_pair(p).is_hyperliquid_vault()
         for p in universe.data_universe.pairs.iterate_pairs()
@@ -318,9 +337,6 @@ def _sync_hypercore_vault_positions(
 
     safe_address = sync_model.get_token_storage_address()
     chain_id = web3.eth.chain_id
-
-    from tradeexecutor.strategy.account_correction import create_missing_vault_positions
-    from tradeexecutor.state.valuation import ValuationUpdate
 
     is_testnet = chain_id == 998
     api_url = HYPERLIQUID_TESTNET_API_URL if is_testnet else HYPERLIQUID_API_URL
@@ -622,6 +638,7 @@ def _recover_hypercore_transit_balances(
 
 @app.command()
 @shared_options.with_json_rpc_options()
+@with_state_lock(read_only=lambda options: options["dry_run"])
 def correct_accounts(
     id: str = shared_options.id,
 
@@ -717,6 +734,19 @@ def correct_accounts(
     after final account checks; dry-run previews the same in-memory result.
 
     An old state file is automatically backed up.
+
+    A writing invocation exclusively owns the state file through cleanup. If
+    another writer owns it, the command exits with status 1 before loading state or
+    submitting transactions. Stop the daemon before running a writing command.
+
+    The --dry-run preview does not acquire writer ownership or save state.
+
+    :param state_file:
+        Executor JSON path, resolved before locking and used for all state
+        operations. CLI option help describes the remaining arguments and
+        environment variables.
+    :raises click.ClickException:
+        Another writer owns the selected state file.
     """
 
     global logger
@@ -1023,8 +1053,6 @@ def correct_accounts(
 
     # Auto-create CCTP bridge positions from universe before corrections
     # (so newly created positions are included in the on-chain balance check)
-    from tradeexecutor.strategy.account_correction import create_missing_cctp_bridge_positions
-
     logger.info("Checking for missing CCTP bridge positions in universe...")
     created_bridge_trades = create_missing_cctp_bridge_positions(
         strategy_universe=universe,

@@ -31,7 +31,6 @@ active perp positions, because that requires manual review.
 
 import datetime
 import logging
-import os
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
@@ -56,6 +55,7 @@ from tradeexecutor.cli.bootstrap import (backup_state, create_client,
                                          prepare_executor_id)
 from tradeexecutor.cli.log import setup_logging
 from tradeexecutor.ethereum.lagoon.vault import LagoonVaultSyncModel
+from tradeexecutor.ethereum.vault import hypercore_transit_recovery
 from tradeexecutor.ethereum.vault.hypercore_transit_recovery import (
     BALANCE_TIMEOUT,
     BALANCE_TOLERANCE,
@@ -588,10 +588,23 @@ def _broadcast_bound_call(
     bound_func,
     gas_limit: int = SAFE_GAS_LIMIT,
 ) -> str:
-    """Broadcast a single Safe/module transaction and assert success."""
-    from tradeexecutor.ethereum.vault.hypercore_transit_recovery import broadcast_bound_call
+    """Submit a Safe/module call through the shared HyperCore recovery helper.
 
-    return broadcast_bound_call(web3, hot_wallet, bound_func, gas_limit=gas_limit)
+    Delegating keeps transaction confirmation and success checks consistent
+    with other transit-recovery actions. The caller owns the executor state lock.
+
+    :param web3:
+        Configured HyperEVM provider used to submit and confirm the transaction.
+    :param hot_wallet:
+        Signer authorised to execute the bound Safe/module call.
+    :param bound_func:
+        Prepared contract function, including its call arguments.
+    :param gas_limit:
+        Gas allowance passed to the shared broadcast helper.
+    :return:
+        Transaction hash returned after the shared helper confirms success.
+    """
+    return hypercore_transit_recovery.broadcast_bound_call(web3, hot_wallet, bound_func, gas_limit=gas_limit)
 
 
 def _execute_perp_to_spot(
@@ -982,42 +995,4 @@ def run_hyperliquid_cleanup(
         executed_action_kinds=executed_action_kinds,
         accounts_clean=accounts_clean,
         state_saved=state_saved,
-    )
-
-
-def run_hyperliquid_cleanup_from_environment() -> HyperliquidCleanupReport:
-    """Run clean-up using standard trade-executor environment variables.
-
-    Example how to call from console::
-
-        from tradeexecutor.ethereum.vault.hyperliquid_cleanup import run_hyperliquid_cleanup_from_environment
-        run_hyperliquid_cleanup_from_environment()
-    """
-    state_file = Path(os.environ["STATE_FILE"])
-    strategy_file = Path(os.environ["STRATEGY_FILE"])
-    private_key = os.environ["PRIVATE_KEY"]
-    json_rpc_hyperliquid = os.environ["JSON_RPC_HYPERLIQUID"]
-    vault_address = os.environ["VAULT_ADDRESS"]
-    vault_adapter_address = os.environ["VAULT_ADAPTER_ADDRESS"]
-    trading_strategy_api_key = os.environ.get("TRADING_STRATEGY_API_KEY", "")
-    network = os.environ.get("NETWORK", "mainnet")
-    auto_approve = os.environ.get("AUTO_APPROVE", "").lower() in {"1", "true", "yes"}
-    cache_path = (
-        Path(os.environ["CACHE_PATH"]) if os.environ.get("CACHE_PATH") else None
-    )
-    unit_testing = os.environ.get("UNIT_TESTING", "").lower() in {"1", "true", "yes"}
-    log_level = os.environ.get("LOG_LEVEL", "info")
-    return run_hyperliquid_cleanup(
-        state_file=state_file,
-        strategy_file=strategy_file,
-        private_key=private_key,
-        json_rpc_hyperliquid=json_rpc_hyperliquid,
-        vault_address=vault_address,
-        vault_adapter_address=vault_adapter_address,
-        trading_strategy_api_key=trading_strategy_api_key,
-        network=network,
-        auto_approve=auto_approve,
-        cache_path=cache_path,
-        unit_testing=unit_testing,
-        log_level=log_level,
     )
