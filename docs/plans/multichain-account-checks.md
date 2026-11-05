@@ -112,6 +112,10 @@ the dual-fork scenarios ran in parallel with separate deployments and state.
 | `tests/hyperliquid/test_correct_accounts_hypercore.py` | 1 passed |
 | `tests/hyperliquid/test_correct_accounts_vault_dust_writeoff.py` | 4 passed |
 | `tests/lagoon/test_lagoon_lighter_sub_account_corrections_e2e.py` | 1 passed, preserving verified transfer recovery and requiring unchanged ordinary state on failed final validation |
+| `tests/erc_4626/test_atoma_async_cli.py::test_atoma_start_blackbox` | 1 passed; pending and claimable requests report incomplete, then inspection passes after claim |
+| `tests/erc_4626/test_vault_async_cli_commands.py::test_ostium_v15_check_accounts_cli` | 1 passed; pending inspection names the trade and preserves state; the previous clean-result expectation reproduced locally before correction |
+| `tests/lagoon/test_lighter_move_funds.py::test_cli_lighter_move_funds_records_safe_and_lighter_custody` | 1 passed with normal deployment metadata and the existing settlement cursor acknowledging its directly booked initial subscription |
+| `tests/mainnet_fork/test_hyper_ai_completed_top_up.py::test_correct_accounts_completed_top_up` | 1 passed; unrelated historical investor logs are mocked to avoid public-RPC range limits, while deposit receipts remain real |
 
 External validation gaps: the legacy single-chain low-value test could not
 construct its market-data universe because `tradingstrategy.ai/api/tvl` returned

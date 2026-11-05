@@ -58,7 +58,7 @@ def anvil() -> Iterator[AnvilLaunch]:
 
 @pytest.fixture()
 def top_up_cli(anvil: AnvilLaunch, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, dict, list[dict]]:
-    """Copy production accounting and mock only HyperCore's unavailable fork state."""
+    """Replay deposit evidence without HyperCore or unrelated investor history."""
     source = Path(os.environ.get("HYPER_AI_TOP_UP_STATE", Path(__file__).parents[1] / "hyperliquid/state/hyper-ai-oct8-top-up.json"))
     state_file = tmp_path / "hyper-ai.json"
     shutil.copy2(source, state_file)
@@ -91,6 +91,11 @@ def top_up_cli(anvil: AnvilLaunch, tmp_path: Path, monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(hypercore_vault, "fetch_user_vault_equity", vault_equity)
     monkeypatch.setattr(multichain_balance, "fetch_user_vault_equity", vault_equity)
     monkeypatch.setattr(hypercore_transit_recovery, "execute_hypercore_transit_recovery_actions", no_transfer)
+    # This incident fixture already isolates reserve movements above. Replaying
+    # its unrelated lifetime investor logs can exceed the public RPC's range
+    # limits and test deadline. Real discovery is covered by the dual-fork
+    # account-command tests; keep deposit receipts and current queue reads real.
+    monkeypatch.setattr(LagoonVaultSyncModel, "_fetch_lagoon_settlements", lambda self, start_block, end_block: [])
     for name in tuple(os.environ):
         if name.startswith("JSON_RPC_"):
             monkeypatch.delenv(name)
