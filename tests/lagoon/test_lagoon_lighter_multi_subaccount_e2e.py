@@ -163,7 +163,7 @@ def test_cli_lagoon_lighter_multi_subaccount_lifecycle(
     6. Interrupt the next funding transfer, check ``start`` refuses to continue, and reconcile it with ``correct-accounts``.
     7. Credit sub-account 1 with profit, lock its margin and check its withdrawal is capped to free collateral; withdraw from sub-account 2 with ``lighter-move-funds``.
     8. Request a redemption larger than the Safe while the master is empty and check it is funded from a sub-account.
-    9. Drain every account for a full redemption, including a master API withdrawal, and redeem with ``lagoon-redeem``.
+    9. Drain every account for a full redemption, with Lighter's relayer claiming each withdrawal, including a master API withdrawal, and redeem with ``lagoon-redeem``.
     10. Sweep stray USDC and ETH from the emptied Safe back to the deployer, as the mainnet tutorial does.
     """
     deployer = Account.from_key(DEPLOYER_PRIVATE_KEY)
@@ -361,6 +361,8 @@ def test_cli_lagoon_lighter_multi_subaccount_lifecycle(
     assert vault.fetch_nav() == pytest.approx(nav_before_settlement / 2, abs=Decimal("0.000002"))
 
     # 9. Drain every account for a full redemption, including a master API withdrawal, and redeem with lagoon-redeem.
+    # Lighter's relayer claims every withdrawal here, so the Safe is paid with no claim from the executor.
+    fake_lighter_core.relayer_claims = True
     assert_transaction_success_with_explanation(web3_ethereum, vault.finalise_redeem(deployer.address).transact({"from": deployer.address}))
     safe_cash = usdc.fetch_balance_of(safe_address)
     master_before = fake_lighter_core.get_account(MASTER_INDEX).collateral
@@ -382,6 +384,9 @@ def test_cli_lagoon_lighter_multi_subaccount_lifecycle(
     assert usdc.fetch_raw_balance_of(safe_address) <= 2
     state = State.read_json_file(state_file)
     assert not any(trade.is_exchange_account_transfer_pending() for trade in state.portfolio.get_all_trades())
+    relayer_paid = [trade for trade in state.portfolio.get_all_trades() if "lighter_relayer_paid_usdc" in trade.other_data]
+    assert sorted(Decimal(trade.other_data["lighter_relayer_paid_usdc"]) for trade in relayer_paid) == sorted([safe_cash, sub_balances[sub_1], sub_balances[sub_2]])
+    assert all(trade.is_success() and not trade.blockchain_transactions for trade in relayer_paid)
 
     # 10. Sweep stray USDC and ETH from the emptied Safe back to the deployer, as the mainnet tutorial does.
     stray_tx = usdc.contract.functions.transfer(safe_address, usdc.convert_to_raw(Decimal(3))).transact({"from": USDC_WHALE[1]})

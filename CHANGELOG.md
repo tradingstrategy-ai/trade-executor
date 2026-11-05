@@ -2,6 +2,7 @@
 
 ## 0.2
 
+- Complete Lighter withdrawals that its relayer claims for the Safe, in routing, `lighter-move-funds`, the test trade and pool redemptions, instead of timing out or failing the trade on our reverted claim, and document Lighter's sub-account limits (2026-11-05).
 - Send every Lighter SDK call through eth-defi's retrying session, so sub-account creation waits out Lighter's 2-per-minute limit that stopped a four-sub-account deployment, and treat a non-200 `sendTx` code as a rejected Lighter order or withdrawal (2026-11-05).
 - Include idle Lighter pool collateral in Lagoon NAV before subscriptions, consume it within pool investment budgets, and cover Lighter, Atoma and Upshift strategy execution and recovery through simulated `start` cycles (2026-11-04).
 - Copy eth-defi's `migration` package into the Docker build so the image builds again with the current `deps/web3-ethereum-defi` pin; the v1474 tag has no image (2026-11-04).

@@ -13,8 +13,8 @@ from eth_defi.lighter.constants import LIGHTER_L1_CONTRACT
 from eth_defi.lighter.lagoon import (
     LIGHTER_L1_WITHDRAW_GAS_LIMIT,
     LIGHTER_ROUTE_PERP,
-    fetch_lighter_pending_balance,
-    wait_for_lighter_pending_balance,
+    fetch_lighter_withdrawal_baseline,
+    wait_for_lighter_withdrawal,
 )
 from eth_defi.lighter.session import LighterSession
 from eth_defi.lighter.transfer import LighterTransferError
@@ -40,6 +40,7 @@ from tradeexecutor.exchange_account.state import (
 from tradeexecutor.ethereum.lighter.transfer_verification import (
     LighterTransferVerificationError,
     get_lighter_funding_evidence,
+    get_lighter_relayer_payout,
     verify_lighter_funding,
     verify_lighter_transfer,
 )
@@ -59,7 +60,7 @@ LIGHTER_APPROVAL_GAS_LIMIT = 500_000
 LIGHTER_DEPOSIT_GAS_LIMIT = 1_000_000
 #: Gas limit for a Lighter pending withdrawal claim wrapped by Lagoon.
 LIGHTER_WITHDRAWAL_CLAIM_GAS_LIMIT = 1_000_000
-#: Default maximum wait for a secure or L1 Lighter withdrawal to become claimable.
+#: Default maximum wait for a secure or L1 Lighter withdrawal to arrive or become claimable.
 #:
 #: A live sub-account L1 withdrawal took about 29 minutes, so leave margin.
 DEFAULT_LIGHTER_WITHDRAWAL_TIMEOUT_SECONDS = 60 * 60
@@ -89,7 +90,7 @@ class LighterKeyManagement:
     #: through the Safe, and the sub-account keys stay with the external traders.
     sub_account_operator_records: dict[int, LighterOperatorRecord] = field(default_factory=dict)
 
-    #: Maximum wait for Lighter to make a secure or L1 withdrawal claimable.
+    #: Maximum wait for a secure or L1 withdrawal to arrive or become claimable.
     withdrawal_timeout: int = DEFAULT_LIGHTER_WITHDRAWAL_TIMEOUT_SECONDS
 
     #: Maximum wait for a transfer between accounts to appear in history.
@@ -144,6 +145,8 @@ def ensure_lighter_l1_withdrawal_mined(web3: Web3, trade: TradeExecution) -> Non
         receipt = wait_for_transaction_receipt_robust(web3, tx_hash)
     if receipt["status"] != 1:
         raise RuntimeError(f"Lighter L1 withdrawal request {tx_hash} reverted")
+    # A request saved by an earlier release has no baseline block.
+    trade.other_data.setdefault("lighter_withdrawal_from_block", receipt["blockNumber"])
     logger.info("Lighter L1 withdrawal request for account %s mined: %s", trade.pair.get_exchange_account_id(), tx_hash)
 
 
@@ -298,7 +301,9 @@ class LighterRouting(RoutingModel):
             _find_receipt(receipts, transaction)
             for transaction in trade.blockchain_transactions
         ]
-        if any(receipt.get("status") != 1 for receipt in transaction_receipts):
+        if any(receipt.get("status") != 1 for receipt in transaction_receipts) and get_lighter_relayer_payout(web3, trade) is None:
+            # A reverted claim is only a failure if the money has not arrived:
+            # Lighter's relayer claiming first also reverts it.
             report_failure(
                 native_datetime_utc_now(),
                 state,
@@ -483,7 +488,8 @@ class LighterRouting(RoutingModel):
         proceeds to the Safe's onchain pending balance once the batch is
         proven. The executor waits for that balance and prepares the same
         Safe claim as a master withdrawal, so verification and accounting
-        are shared.
+        are shared. Lighter's relayer may claim first, in which case there is
+        nothing left to send.
 
         The signed request and its hash are checkpointed before broadcast. A
         restart finds the pending trade, broadcasts the same signed request
@@ -501,7 +507,7 @@ class LighterRouting(RoutingModel):
         amount = abs(trade.planned_quantity)
         zk = get_deployed_contract(web3, "lighter/ZkLighter.json", self.lighter_contract)
         if not trade.other_data.get("lighter_withdrawal_request_id"):
-            pending_before = fetch_lighter_pending_balance(web3, owner=vault.safe_address, usdc=usdc, zk_lighter=self.lighter_contract)
+            from_block, pending_before = fetch_lighter_withdrawal_baseline(web3, owner=vault.safe_address, usdc=usdc, zk_lighter=self.lighter_contract)
             # USDC has a Lighter tick size of one raw unit, so base amount equals raw USDC.
             request_tx = routing_state.tx_builder.sign_transaction(
                 zk,
@@ -521,23 +527,49 @@ class LighterRouting(RoutingModel):
                 "lighter_withdrawal_request_signed_tx": HexBytes(request_tx.signed_bytes).to_0x_hex(),
                 "lighter_withdrawal_requested_at": int(time.time()),
                 "lighter_pending_balance_before_usdc": str(pending_before),
+                "lighter_withdrawal_from_block": from_block,
                 "lighter_safe_balance_before_claim": str(self._get_safe_balance(routing_state, trade)),
                 "lighter_safe_address": vault.safe_address,
             })
             self.checkpoint_state()
         ensure_lighter_l1_withdrawal_mined(web3, trade)
 
-        wait_for_lighter_pending_balance(
+        paid = wait_for_lighter_withdrawal(
             web3,
             owner=vault.safe_address,
             usdc=usdc,
-            minimum=Decimal(trade.other_data["lighter_pending_balance_before_usdc"]) + amount,
+            amount=amount,
+            pending_before=Decimal(trade.other_data["lighter_pending_balance_before_usdc"]),
+            from_block=int(trade.other_data["lighter_withdrawal_from_block"]),
             timeout=self.key_management.withdrawal_timeout,
             zk_lighter=self.lighter_contract,
         )
+        self._finish_withdrawal(routing_state, trade, amount, paid)
 
+    def _finish_withdrawal(
+        self,
+        routing_state: LighterRoutingState,
+        trade: TradeExecution,
+        amount: Decimal,
+        paid: bool,
+    ) -> None:
+        """Prepare the Safe claim, or record that Lighter's relayer has already paid.
+
+        :param routing_state:
+            Per-cycle Lighter routing dependencies.
+        :param trade:
+            Withdrawal trade whose funds have arrived or are claimable.
+        :param amount:
+            USDC to claim or already paid.
+        :param paid:
+            ``True`` if the relayer has paid, so a claim would revert.
+        """
         trade.other_data["lighter_claimable_usdc"] = str(amount)
-        trade.set_blockchain_transactions([self._prepare_claim(routing_state, trade, amount)])
+        if paid:
+            trade.other_data["paid_without_transaction"] = True
+            trade.mark_broadcasted(native_datetime_utc_now())
+        else:
+            trade.set_blockchain_transactions([self._prepare_claim(routing_state, trade, amount)])
         self.checkpoint_state()
 
     def _prepare_withdrawal(
@@ -552,6 +584,15 @@ class LighterRouting(RoutingModel):
         requested_at = int(trade.other_data.get("lighter_withdrawal_requested_at", 0))
         if not request_id:
             requested_at = int(time.time())
+            from_block, pending_before = fetch_lighter_withdrawal_baseline(
+                routing_state.tx_builder.web3,
+                owner=vault.safe_address,
+                usdc=self._fetch_reserve_token(routing_state, trade),
+                zk_lighter=self.lighter_contract,
+            )
+            trade.other_data["lighter_withdrawal_from_block"] = from_block
+            trade.other_data["lighter_pending_balance_before_usdc"] = str(pending_before)
+            trade.other_data["lighter_safe_address"] = vault.safe_address
             # Persist the started status first, so a process failure after the
             # request leaves the transfer unclean for explicit recovery instead
             # of expiring it as never submitted; start-up never submits a
@@ -565,7 +606,6 @@ class LighterRouting(RoutingModel):
             trade.other_data["lighter_safe_balance_before_claim"] = str(
                 self._get_safe_balance(routing_state, trade)
             )
-            trade.other_data["lighter_safe_address"] = vault.safe_address
             # Keep the trade started until the Safe claim is ready. The normal
             # transaction broadcaster performs the single state transition to
             # broadcasted after it receives the signed claim transaction.
@@ -580,9 +620,8 @@ class LighterRouting(RoutingModel):
                 str(request_id),
             )
         )
-        trade.other_data["lighter_claimable_usdc"] = str(claimable)
-        trade.set_blockchain_transactions([self._prepare_claim(routing_state, trade, claimable)])
-        self.checkpoint_state()
+        paid = get_lighter_relayer_payout(routing_state.tx_builder.web3, trade) is not None
+        self._finish_withdrawal(routing_state, trade, claimable, paid)
 
     def _prepare_claim(
         self,

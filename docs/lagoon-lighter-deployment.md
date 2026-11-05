@@ -86,7 +86,15 @@ artefact; `init` then records the account indices in the state. Each sub-account
 `vault-record.nautilus.<id>.json` hand-over file; the executor record keeps
 only the master key. Sub-accounts start empty.
 
-Lighter allows 2 `L2CreateSubAccount` requests per minute per L1 address, so
+A Standard Lighter account gets four sub-accounts. A master holding no funds was
+refused a third with `21129 too many sub accounts`, which Lighter does not document.
+Deployment keeps its 1 USDC activation deposit on the master while it creates them,
+which was enough on mainnet on 2026-11-05, so do not lower it or withdraw it first.
+To add a sub-account later, fund the master first. See the
+[sub-account limits](https://github.com/tradingstrategy-ai/web3-ethereum-defi/blob/master/eth_defi/lighter/README-lighter-guard.md#limits).
+
+Lighter allows 2 `L2CreateSubAccount` requests per minute per L1 address, and a
+rejected request counts too, so
 deployment waits for the limit: four sub-accounts take at least a minute. Use an
 image later than `v1475` that includes eth-defi's `LighterSDKSession`. `v1475` and
 earlier stop with HTTP 429 on the third sub-account.
@@ -100,8 +108,8 @@ threshold 1. If the funds are on Lighter:
 
 1. Request each account's balance with the key-free L1 `withdraw`, through the
    module.
-2. Poll the Safe's pending balance, which took about 28 minutes on 2026-11-05, and
-   claim it to the Safe.
+2. Wait about 30 minutes, then claim the pending balance to the Safe. Check the Safe
+   first, because Lighter's relayer may already have paid it without a claim.
 3. Transfer the Safe's USDC to the deployer with `execTransaction`, simulating it
    first.
 

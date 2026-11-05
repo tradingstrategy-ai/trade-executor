@@ -1167,6 +1167,18 @@ class TradeExecution:
         """
         return self.is_external_account_transfer_pending() or self.is_internal_account_transfer_pending()
 
+    def is_paid_without_transaction(self) -> bool:
+        """Has a third party already completed this transfer on-chain?
+
+        Lighter's relayer can claim a withdrawal for the Safe, which leaves
+        nothing to broadcast. The execution pipeline settles such a trade
+        directly from the saved evidence.
+
+        :return:
+            ``True`` if the trade has no transaction of its own to send.
+        """
+        return bool(self.other_data.get("paid_without_transaction"))
+
     def is_external_account_transfer(self) -> bool:
         """Is this a transfer between the reserve and an exchange account."""
         return TradeFlag.external_account_transfer in (self.flags or set())

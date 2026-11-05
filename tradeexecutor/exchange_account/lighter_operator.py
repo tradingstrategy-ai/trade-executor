@@ -200,7 +200,7 @@ async def wait_for_lighter_withdrawal_claimable(
     requested_at: int,
     request_id: str,
 ) -> Decimal:
-    """Poll authenticated withdrawal history until one request is claimable.
+    """Poll authenticated withdrawal history until one request is claimable or paid.
 
     :param operator:
         Delegated signer and Lighter account details.
@@ -244,9 +244,11 @@ async def wait_for_lighter_withdrawal_claimable(
             if len(matches) == 1:
                 row = matches[0]
                 status = str(row.status).lower()
-                if status == "claimable":
+                # Lighter's relayer can claim first, so the row may skip claimable.
+                # The caller checks the chain before sending a claim.
+                if status in {"claimable", "completed"}:
                     return Decimal(str(row.amount))
-                if status in {"failed", "rejected", "cancelled"}:
+                if status in {"failed", "refunded", "rejected", "cancelled"}:
                     raise RuntimeError("Lighter secure withdrawal was rejected")
 
             remaining = deadline - time.monotonic()

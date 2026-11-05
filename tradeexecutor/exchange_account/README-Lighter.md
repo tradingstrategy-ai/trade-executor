@@ -113,6 +113,8 @@ Mainnet observations from 2026-10-26:
   withdrawal became claimable after about 29 minutes. The
   `LIGHTER_WITHDRAWAL_TIMEOUT` default of `start` and `perform-test-trade`
   is therefore one hour.
+- Lighter's relayer may pay a withdrawal without a claim from us, see
+  [Withdrawals paid by Lighter's relayer](#withdrawals-paid-by-lighters-relayer).
 - Lighter charged no fee for same-owner transfers. The authenticated
   `transferFeeInfo` quotes 0 USDC between accounts of the same owner (master
   to sub-account and sub-account to sub-account) and 1 USDC to a different
@@ -141,7 +143,10 @@ After the master key is registered, deployment creates the sub-accounts with
 the master key and registers one API key on each with a Safe `changePubKey`
 transaction. Sub-accounts start empty; `start` funds them once the vault has
 operating capital. The number of sub-accounts depends on the Lighter account
-tier: Standard allows 4, Plus 16 and Premium 64.
+tier: Standard allows 4, Plus 16 and Premium 64. Sub-accounts and public pools both
+count towards it and the master does not. A master holding no funds was refused a
+third sub-account with `21129 too many sub accounts`, so keep funds on it. See the
+[sub-account limits](https://github.com/tradingstrategy-ai/web3-ethereum-defi/blob/master/eth_defi/lighter/README-lighter-guard.md#limits).
 
 Deployment writes these records next to `VAULT_RECORD_FILE`, beside the
 Markdown report:
@@ -330,6 +335,10 @@ status and saved hashes, exits 1 and still prints the balance table. Then:
   `unconfirmed`.
 - **Withdrawal whose Safe claim was broadcast:** `correct-accounts` or
   `repair` reconciles it from the claim receipt.
+- **Withdrawal paid by Lighter's relayer:** `correct-accounts` or `repair`
+  reconciles it from the `WithdrawPending` event, including when our own claim
+  reverted because the relayer went first. A withdrawal saved by an earlier release
+  has no baseline, so run `lighter-move-funds` for it instead.
 - **Transfer the halted cycle never started:** `correct-accounts` or
   `repair` expires it. Execution starts each transfer just before submitting
   it, so a still-planned transfer moved no funds.
@@ -638,8 +647,8 @@ books it before the test trade is rerun. If it is interrupted during a
 withdrawal, the USDC waits in the Safe's pending balance on the ZkLighter
 contract and no saved trade tracks it, so `lighter-move-funds` cannot
 resume it: once it is claimable, claim it into the Safe with
-`eth_defi.lighter.lagoon.claim_usdc_to_lagoon_safe_from_lighter()`, and
-only then run `correct-accounts`. Run neither `correct-accounts` nor a NAV
+`eth_defi.lighter.lagoon.claim_usdc_to_lagoon_safe_from_lighter()`, unless
+Lighter's relayer has already paid it, and only then run `correct-accounts`. Run neither `correct-accounts` nor a NAV
 settlement in between, or the in-transit amount is booked as a loss.
 
 ### 3. Perform a resumable ETH/USD test trade
@@ -804,6 +813,34 @@ submits its secure withdrawal; `lighter-move-funds` does the same. The reported
 delay is not a deadline. In the live manual test, claimability lagged the
 reported value, so configure the timeout with headroom and rely on history
 status rather than elapsed time.
+
+### Withdrawals paid by Lighter's relayer
+
+`withdrawPendingBalance(owner, ...)` is permissionless and always pays `owner`, and
+Lighter runs a relayer that claims in batches for many owners. A withdrawal can
+reach the Safe with no claim from the executor. On 2026-11-05 two mainnet
+withdrawals arrived about 26 and 31 minutes after their requests, in relayer
+transactions, while another that day waited for our claim. We don't know when the
+relayer chooses to act, so the executor handles both outcomes:
+
+| What happens | What the executor does |
+| --- | --- |
+| The balance stays pending | Sends the Safe claim as normal. |
+| The relayer pays first | Sends nothing, and completes the trade from the `WithdrawPending` event. |
+| The relayer wins while our claim is in flight | The claim reverts. The trade still completes from the event, and is not marked failed. |
+
+The event is the evidence because the Safe's USDC balance also moves with Lagoon
+settlement. Each withdrawal records the block and pending balance just before its
+request, in `lighter_withdrawal_from_block` and
+`lighter_pending_balance_before_usdc`, and a paid trade records
+`lighter_relayer_paid_usdc`. This covers `start`, `perform-test-trade`,
+`lighter-move-funds`, `lagoon-lighter-test-trade` and public pool redemptions. The
+event names the owner rather than the withdrawal, so this relies on the executor
+running withdrawals one at a time. A sub-account trader withdrawing with their own
+key at the same moment could be mistaken for ours. A sub-account withdrawal saved by
+an earlier release takes its block from the request receipt when `start` or
+`lighter-move-funds` resumes it. A master withdrawal from an earlier release has no
+baseline, so a relayer payout needs the manual recovery above.
 
 Lighter fast USDC withdrawals require the L1 account's Ethereum EOA private
 key. The Lighter owner in this integration is a Lagoon Safe contract, not an
