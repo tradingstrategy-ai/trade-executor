@@ -73,6 +73,8 @@ def close_position(
     slippage: Optional[float] = Option(None, envvar="SLIPPAGE", help="Override the defaukt slippage tolerance E.g. 0.05 for 5% slippage/sell tax."),
     close_dust: Optional[bool] = Option(None, envvar="CLOSE_DUST", help="Force close dusty positions with a repair trade instead of attempting withdrawal. Auto-detects by default (None)."),
     all_test_trades: bool = Option(False, "--all-test-trades/--no-all-test-trades", envvar="ALL_TEST_TRADES", help="Close all open and frozen positions flagged as test trades."),
+    hypersync_api_key: str | None = shared_options.hypersync_api_key,
+    use_hypersync: bool = shared_options.use_hypersync,
 ):
     """Close a single position or all test trade positions.
 
@@ -80,6 +82,7 @@ def close_position(
 
     - Closes any position that's open currently
     """
+    hypersync_api_key = hypersync_api_key if use_hypersync and not simulate else None
     id = prepare_executor_id(id, strategy_file)
 
     logger = setup_logging(log_level=log_level)
@@ -111,6 +114,7 @@ def close_position(
         vault_payment_forwarder_address=vault_payment_forwarder_address,
         routing_hint=mod.trade_routing,
         deployment_file=resolve_deployment_file(id, state_file),
+        hypersync_api_key=hypersync_api_key,
     )
 
     client, routing_model = create_client(

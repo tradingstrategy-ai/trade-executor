@@ -543,6 +543,8 @@ records local fork evidence; it does not certify current mainnet availability.
 
 When calling `call_create_trading_universe()` from a command, pass
 `strategy_parameters=mod.parameters`; engine 0.5 strategies use these values.
-If HyperSync is behind the chain tip, an unconfirmed-settlement check may defer
-the command. For this small manual run, unsetting `HYPERSYNC_API_KEY` selects the
-existing RPC log reader; retain the state and resume the unfinished leg.
+Lagoon settlement readers retry with RPC when HyperSync fails or lags; the
+unconfirmed-settlement probe uses RPC directly. `--no-use-hypersync` or
+`USE_HYPERSYNC=false` forces RPC for Lagoon settlement and Lighter payout reads.
+Keep the state and resume an unfinished leg after a provider failure; disabling
+the indexer does not repair an unresolved transaction.

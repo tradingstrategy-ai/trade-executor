@@ -447,6 +447,7 @@ class LagoonVaultSyncModel(AddressSyncModel):
         defer_redemption_without_reserve_liquidity: bool = False,
         abort_lagoon_settlement_on_frozen_positions: bool = False,
         disable_broadcast: bool = False,
+        hypersync_api_key: str | None = None,
     ):
         """
         :param extra_gnosis_gas:
@@ -502,11 +503,14 @@ class LagoonVaultSyncModel(AddressSyncModel):
             strategy has frozen positions. This forces operators to resolve the
             frozen positions manually first and avoids miscounting or double
             counting capital in the posted NAV.
+        :param hypersync_api_key:
+            Explicit HyperSync credential; disabled or absent credentials use RPC in executor callers.
         """
         assert isinstance(vault, LagoonVault), f"Got {type(vault)} instead of LagoonVault"
         if hot_wallet is not None:
             # We can do initial setup without hot wallet
             assert isinstance(hot_wallet, HotWallet), f"Got {type(hot_wallet)} instead of HotWallet"
+        self.hypersync_api_key = hypersync_api_key
         self.vault = vault
         self.hot_wallet = hot_wallet
         self.extra_gnosis_gas = extra_gnosis_gas
@@ -795,13 +799,26 @@ class LagoonVaultSyncModel(AddressSyncModel):
         self,
         start_block: int,
         end_block: int,
+        use_hypersync: bool = True,
     ) -> list:
-        """Read Lagoon settlement logs without using Hypersync against Anvil."""
+        """Prefer indexed settlements, retrying incomplete/failed reads with RPC."""
+        if use_hypersync and self.hypersync_api_key and not self.anvil:
+            try:
+                return fetch_lagoon_settlements(
+                    vault=self.vault,
+                    start_block=start_block,
+                    end_block=end_block,
+                    use_hypersync=True,
+                    hypersync_api_key=self.hypersync_api_key,
+                    hypersync_timeout=90.0,
+                )
+            except Exception as exc:
+                logger.warning("Lagoon HyperSync settlement read failed (%s); retrying with RPC", type(exc).__name__)
         return fetch_lagoon_settlements(
             vault=self.vault,
             start_block=start_block,
             end_block=end_block,
-            use_hypersync=False if self.anvil else None,
+            use_hypersync=False,
         )
 
     def _probe_unconfirmed_lagoon_settlements(
@@ -820,7 +837,7 @@ class LagoonVaultSyncModel(AddressSyncModel):
             return
 
         try:
-            unsettled = self._fetch_lagoon_settlements(safe_sync_block + 1, tip)
+            unsettled = self._fetch_lagoon_settlements(safe_sync_block + 1, tip, use_hypersync=False)
         except Exception as e:
             raise LagoonUnconfirmedSettlement(
                 "Cannot prove Lagoon's unconfirmed block range has no settlement"

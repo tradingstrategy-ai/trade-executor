@@ -312,6 +312,7 @@ def create_vault_test_runtime(
     auto_simulated: bool,
     simulation_fork_blocks: list[str] | None = None,
     simulation_fork_block_reference: str | None = None,
+    hypersync_api_key: str | None = None,
 ) -> VaultTestRuntime:
     """Dispatch runtime construction based on the requested execution mode."""
 
@@ -345,6 +346,7 @@ def create_vault_test_runtime(
         unit_testing=unit_testing,
         amount=amount,
         data=data,
+        hypersync_api_key=hypersync_api_key,
     )
 
 
@@ -454,6 +456,7 @@ def _create_real_vault_test_runtime(
     unit_testing: bool,
     amount: Decimal,
     data: VaultTestData,
+    hypersync_api_key: str | None = None,
 ) -> VaultTestRuntime:
     """Create execution objects from the mandatory state-sibling deployment."""
 
@@ -485,6 +488,7 @@ def _create_real_vault_test_runtime(
             vault_payment_forwarder_address=None,
             token_cache=data.token_cache,
             deployment_file=deployment_file,
+            hypersync_api_key=hypersync_api_key,
         )
     except BaseException:
         # Do not leak providers if model construction rejects the deployment

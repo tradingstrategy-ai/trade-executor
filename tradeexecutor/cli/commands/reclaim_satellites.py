@@ -222,6 +222,8 @@ def _discover_unreceived_burns(
         Lowercased burn tx hashes already handled elsewhere (explicit
         ``--complete-burn-tx`` entries, in-transit state trades) — skipped.
 
+    :param hypersync_api_key:
+        Explicit credential for the existing CCTP burn scanner.
     :return:
         List of burn dicts in the same shape as :func:`_resolve_unrecorded_burns`,
         with ``auto=True``.
@@ -489,6 +491,7 @@ def lagoon_reclaim_satellites(
 
     unit_testing: bool = shared_options.unit_testing,
     simulate: bool = shared_options.simulate,
+    use_hypersync: bool = shared_options.use_hypersync,
 ):
     """Reclaim capital from multichain Lagoon satellite Safes into the master vault.
 
@@ -550,6 +553,7 @@ def lagoon_reclaim_satellites(
         token_cache=token_cache,
         deployment_file=deployment_file,
         unit_testing=unit_testing,
+        hypersync_api_key=hypersync_api_key if use_hypersync and not simulate else None,
     )
 
     assert isinstance(execution_model, LagoonExecution), (

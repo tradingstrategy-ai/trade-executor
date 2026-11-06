@@ -688,6 +688,7 @@ def _build_accounting_correction_context(
             vault_adapter_address=context.lagoon_vault.trading_strategy_module_address,
             vault_payment_forwarder_address=None,
             routing_hint=mod.trade_routing,
+            hypersync_api_key=context.sync_model.hypersync_api_key,
         )
     )
 
@@ -860,6 +861,7 @@ def load_cleanup_context(
     cache_path: Path | None = None,
     unit_testing: bool = False,
     log_level: str = "info",
+    hypersync_api_key: str | None = None,
 ) -> HyperliquidCleanupContext:
     """Create the clean-up execution context from explicit parameters."""
     setup_logging(log_level)
@@ -887,6 +889,7 @@ def load_cleanup_context(
         vault_address=vault_address,
         vault_adapter_address=vault_adapter_address,
         unit_testing=unit_testing,
+        hypersync_api_key=hypersync_api_key,
     )
     assert isinstance(sync_model, LagoonVaultSyncModel)
     store = create_state_store(state_file)
@@ -930,6 +933,7 @@ def run_hyperliquid_cleanup(
     cache_path: Path | None = None,
     unit_testing: bool = False,
     log_level: str = "info",
+    hypersync_api_key: str | None = None,
 ) -> HyperliquidCleanupReport:
     """Run the closed-position Hyperliquid clean-up flow end to end.
 
@@ -964,6 +968,7 @@ def run_hyperliquid_cleanup(
         cache_path=cache_path,
         unit_testing=unit_testing,
         log_level=log_level,
+        hypersync_api_key=hypersync_api_key,
     )
     live_snapshot = _fetch_live_cleanup_snapshot(context)
     state_snapshot = _build_state_snapshot(context.state)

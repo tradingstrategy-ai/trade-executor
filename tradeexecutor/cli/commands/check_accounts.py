@@ -80,12 +80,15 @@ def check_accounts(
     raise_on_unclean: bool = typer.Option(False, is_flag=False, envvar="RAISE_ON_UNCLEAN", help="Raise an exception if unclean. Unit test option."),
     lighter_operator_record_file: Path | None = shared_options.lighter_operator_record_file,
     lighter_sub_account_operator_record_files: str | None = shared_options.lighter_sub_account_operator_record_files,
+    hypersync_api_key: str | None = shared_options.hypersync_api_key,
+    use_hypersync: bool = shared_options.use_hypersync,
 ):
     """Check that the state ledger matches onchain and external balances.
 
     - Print differences between observed balances and expected state balances
     """
 
+    hypersync_api_key = hypersync_api_key if use_hypersync else None
     global logger
 
     id = prepare_executor_id(id, strategy_file)
@@ -117,6 +120,7 @@ def check_accounts(
         hot_wallet,
         vault_address,
         vault_adapter_address,
+        hypersync_api_key=hypersync_api_key,
     )
 
     logger.info("RPC details")
@@ -153,6 +157,7 @@ def check_accounts(
         web3,
         mutate=False,
         signers=load_lighter_signers(lighter_operator_record_file, lighter_sub_account_operator_record_files),
+        hypersync_api_key=hypersync_api_key,
     )
     if verified_transfers:
         logger.info(

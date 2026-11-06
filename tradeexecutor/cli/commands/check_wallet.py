@@ -282,6 +282,8 @@ def check_wallet(
     # Debugging and unit testing
     unit_testing: bool = shared_options.unit_testing,
     unit_test_force_anvil: bool = typer.Option(False, envvar="UNIT_TEST_FORCE_ANVIL", help="Use Anvil backend regardless of what chain strategy module suggests"),
+    hypersync_api_key: str | None = shared_options.hypersync_api_key,
+    use_hypersync: bool = shared_options.use_hypersync,
 ):
     """Print out the token balances of the hot wallet.
 
@@ -291,6 +293,7 @@ def check_wallet(
     # To run this from command line with .env file you can do
     # set -o allexport ; source ~/pancake-eth-usd-sma-final.env ; set +o allexport ;  trade-executor check-wallet
 
+    hypersync_api_key = hypersync_api_key if use_hypersync else None
     global logger
 
     id = prepare_executor_id(id, strategy_file)
@@ -354,6 +357,7 @@ def check_wallet(
         routing_hint=mod.trade_routing,
         token_cache=token_cache,
         deployment_file=resolve_deployment_file(id, state_file),
+        hypersync_api_key=hypersync_api_key,
     )
 
     assert asset_management_mode.is_live_trading(), f"Cannot perform check wallet for non-real modes"

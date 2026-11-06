@@ -676,6 +676,8 @@ def correct_accounts(
     ccxt_sandbox: bool = Option(False, envvar="CCXT_SANDBOX", help="Use CCXT exchange sandbox/testnet mode"),
     lighter_operator_record_file: Path | None = shared_options.lighter_operator_record_file,
     lighter_sub_account_operator_record_files: str | None = shared_options.lighter_sub_account_operator_record_files,
+    hypersync_api_key: str | None = shared_options.hypersync_api_key,
+    use_hypersync: bool = shared_options.use_hypersync,
 ):
     """Correct accounting errors in the internal ledger of the trade executor.
 
@@ -719,6 +721,7 @@ def correct_accounts(
     An old state file is automatically backed up.
     """
 
+    hypersync_api_key = hypersync_api_key if use_hypersync else None
     global logger
 
     id = prepare_executor_id(id, strategy_file)
@@ -753,6 +756,7 @@ def correct_accounts(
         hot_wallet,
         vault_address,
         vault_adapter_address,
+        hypersync_api_key=hypersync_api_key,
     )
 
     logger.info("RPC details")
@@ -821,6 +825,7 @@ def correct_accounts(
             web3,
             mutate=True,
             signers=load_lighter_signers(lighter_operator_record_file, lighter_sub_account_operator_record_files),
+            hypersync_api_key=hypersync_api_key,
         )
         if reconciled_transfers:
             if not dry_run:
@@ -927,6 +932,7 @@ def correct_accounts(
         min_gas_balance=Decimal(0),
         vault_payment_forwarder_address=vault_payment_forwarder,
         deployment_file=resolve_deployment_file(id, state_file),
+        hypersync_api_key=hypersync_api_key,
     )
 
     run_description: StrategyExecutionDescription = strategy_factory(

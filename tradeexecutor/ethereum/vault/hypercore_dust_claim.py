@@ -733,6 +733,7 @@ def run_hypercore_dust_claim(
     cache_path: Path | None = None,
     unit_testing: bool = False,
     log_level: str = "info",
+    hypersync_api_key: str | None = None,
 ) -> HypercoreDustClaimReport:
     """Run the Hypercore vault dust claim flow."""
     context = load_cleanup_context(
@@ -747,6 +748,7 @@ def run_hypercore_dust_claim(
         cache_path=cache_path,
         unit_testing=unit_testing,
         log_level=log_level,
+        hypersync_api_key=hypersync_api_key,
     )
     candidates = discover_hypercore_dust_candidates(
         context, max_claim_usdc=max_claim_usdc

@@ -143,7 +143,8 @@ trading_strategy_api_key = Option(None, envvar="TRADING_STRATEGY_API_KEY", help=
 #: Vault datasets are a separate paid product from the oracle API and use their own credential.
 vault_pro_api_key = Option(None, envvar="VAULT_PRO_API_KEY", help="Creem licence key for the paid vault datasets, needed by any strategy that loads vault metadata or vault price history. Emailed on purchase from https://tradingstrategy.ai/vaults/datasets and formatted as five dash separated groups. This is not --trading-strategy-api-key: the oracle key is secret-token: prefixed and the vault dataset API rejects it.")
 
-hypersync_api_key = Option(None, envvar="HYPERSYNC_API_KEY", help="HyperSync API key for reading guard config events from on-chain. Not needed for simulated (Anvil) deployments.")
+hypersync_api_key = Option(None, envvar="HYPERSYNC_API_KEY", help="HyperSync API key for indexed event reads, including Lighter payouts, Lagoon settlements and guard reports. Optional: RPC is used when unavailable.")
+use_hypersync = Option(True, "--use-hypersync/--no-use-hypersync", envvar="USE_HYPERSYNC", help="Use HyperSync for Lighter payout and Lagoon settlement reads when a key is supplied. Disable to force RPC for these reads; guard reports and CCTP scans are unaffected.")
 
 chain_name = Option(None, envvar="CHAIN_NAME", help="Chain slug to select when multiple JSON-RPC endpoints are configured (e.g. 'base', 'arbitrum'). Required for simulate mode with multiple RPCs.")
 

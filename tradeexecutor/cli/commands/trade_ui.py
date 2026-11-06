@@ -136,6 +136,8 @@ def trade_ui(
 
     test_short: bool = Option(True, "--test-short/--no-test-short", help="Perform test short trades as well."),
     simulate: bool = shared_options.simulate,
+    hypersync_api_key: str | None = shared_options.hypersync_api_key,
+    use_hypersync: bool = shared_options.use_hypersync,
 ):
     """Interactive test trade selection.
 
@@ -143,6 +145,7 @@ def trade_ui(
     a pair, amount and trade mode to perform a test trade.
     """
 
+    hypersync_api_key = hypersync_api_key if use_hypersync and not simulate else None
     id = prepare_executor_id(id, strategy_file)
 
     logger = setup_logging(log_level=log_level)
@@ -201,6 +204,7 @@ def trade_ui(
         routing_hint=mod.trade_routing,
         token_cache=token_cache,
         deployment_file=resolve_deployment_file(id, state_file),
+        hypersync_api_key=hypersync_api_key,
     )
 
     client, routing_model = create_client(

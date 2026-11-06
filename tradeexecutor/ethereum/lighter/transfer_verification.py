@@ -64,7 +64,7 @@ class LighterTransferVerification:
     metadata_updates: dict[str, str]
 
 
-def get_lighter_relayer_payout(web3: Web3, trade: TradeExecution) -> Decimal | None:
+def get_lighter_relayer_payout(web3: Web3, trade: TradeExecution, hypersync_api_key: str | None = None) -> Decimal | None:
     """Return a withdrawal Lighter's relayer has paid to the Safe, if any.
 
     ``withdrawPendingBalance`` is permissionless, so the relayer can claim for us.
@@ -77,6 +77,8 @@ def get_lighter_relayer_payout(web3: Web3, trade: TradeExecution) -> Decimal | N
         Chain reader for ``WithdrawPending`` events.
     :param trade:
         Lighter withdrawal trade.
+    :param hypersync_api_key:
+        Explicit HyperSync credential; disabled or absent credentials use RPC in executor callers.
     :return:
         Paid USDC, or ``None`` if not paid yet, or if the trade predates this
         evidence and has no baseline.
@@ -92,6 +94,7 @@ def get_lighter_relayer_payout(web3: Web3, trade: TradeExecution) -> Decimal | N
         amount=amount,
         pending_before=Decimal(str(metadata["lighter_pending_balance_before_usdc"])),
         from_block=int(metadata["lighter_withdrawal_from_block"]),
+        hypersync_api_key=hypersync_api_key,
     )
     return amount if paid else None
 
@@ -102,6 +105,7 @@ def verify_lighter_transfer(
     session: LighterSession,
     receipts: list[dict] | None = None,
     deposit_wait_timeout: int | None = None,
+    hypersync_api_key: str | None = None,
 ) -> LighterTransferVerification | None:
     """Verify a Lighter transfer without mutating executor state.
 
@@ -115,6 +119,8 @@ def verify_lighter_transfer(
         Optional receipts already collected by the execution pipeline.
     :param deposit_wait_timeout:
         Optional normal-routing wait for Lighter collateral indexing.
+    :param hypersync_api_key:
+        Explicit HyperSync credential; disabled or absent credentials use RPC in executor callers.
     :return:
         Verified accounting values, or ``None`` while evidence is incomplete.
     """
@@ -122,7 +128,7 @@ def verify_lighter_transfer(
         raise ValueError("Expected a Lighter exchange-account transfer")
     transaction_receipts = receipts or _fetch_transaction_receipts(web3, trade)
     if not transaction_receipts or any(receipt.get("status") != 1 for receipt in transaction_receipts):
-        payout = get_lighter_relayer_payout(web3, trade)
+        payout = get_lighter_relayer_payout(web3, trade, hypersync_api_key=hypersync_api_key)
         if payout is not None:
             return LighterTransferVerification(
                 executed_amount=-payout,
@@ -260,6 +266,7 @@ def reconcile_verified_lighter_transfers(
     *,
     mutate: bool,
     signers: dict[int, LighterOperatorRecord] | None = None,
+    hypersync_api_key: str | None = None,
 ) -> list[TradeExecution]:
     """Inspect or apply verified unfinished Lighter transfers.
 
@@ -279,6 +286,8 @@ def reconcile_verified_lighter_transfers(
         Operator records the executor holds, keyed by account index, for
         the authenticated transfer-history reads; see
         :py:func:`~tradeexecutor.exchange_account.lighter_operator.load_lighter_signers`.
+    :param hypersync_api_key:
+        Explicit HyperSync credential; disabled or absent credentials use RPC in executor callers.
     :return:
         Transfers whose evidence is complete.
     """
@@ -353,7 +362,7 @@ def reconcile_verified_lighter_transfers(
     session = create_lighter_session()
     try:
         for position, trade in pending_transfers:
-            verification = verify_lighter_transfer(web3, trade, session)
+            verification = verify_lighter_transfer(web3, trade, session, hypersync_api_key=hypersync_api_key)
             if verification is None:
                 continue
             verified_trades.append(trade)

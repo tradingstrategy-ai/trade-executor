@@ -68,6 +68,7 @@ class EthereumExecution(ExecutionModel):
         mainnet_fork=False,
         force_sequential_broadcast=False,
         disable_broadcast=False,
+        hypersync_api_key: str | None = None,
     ):
         """
         :param tx_builder:
@@ -96,6 +97,8 @@ class EthereumExecution(ExecutionModel):
 
         :param mainnet_fork:
             Is this Anvil in automining mainnet fork mode
+        :param hypersync_api_key:
+            Explicit HyperSync credential; disabled or absent credentials use RPC in executor callers.
         """
         assert isinstance(tx_builder, TransactionBuilder), f"Got {tx_builder} {tx_builder.__class__}"
         assert isinstance(confirmation_timeout, datetime.timedelta), f"Got {confirmation_timeout} {confirmation_timeout.__class__}"
@@ -111,6 +114,7 @@ class EthereumExecution(ExecutionModel):
         self.disable_broadcast =disable_broadcast
         self.account_value_func = None
         self.web3config = None  # Set by CLI bootstrap for multichain support
+        self.hypersync_api_key = hypersync_api_key
         self.token_cache = None
         logger.info(
             "Execution model %s created.\n confirmation_block_count: %s, confirmation_timeout: %s, mainnet_fork: %s, force_sequential_broadcast: %s",

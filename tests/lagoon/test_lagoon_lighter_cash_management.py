@@ -35,6 +35,10 @@ from pytest_mock import MockerFixture
 from typer.main import get_command
 from web3 import Web3
 
+import tradeexecutor.cli.commands.start as start_module
+import tradeexecutor.ethereum.ethereum_protocol_adapters as protocol_adapters
+import eth_defi.lighter.lagoon as lighter_lagoon
+
 from tradeexecutor.cli.main import app
 from tradeexecutor.exchange_account.lighter import LIGHTER_PROTOCOL
 from tradeexecutor.state.state import State
@@ -269,14 +273,24 @@ def test_cli_lagoon_lighter_cash_management_uses_normal_pipeline(
         "LIGHTER_OPERATOR_RECORD_FILE": operator_record_file.as_posix(),
         "CACHE_PATH": (tmp_path / "cache").as_posix(),
         "MIN_GAS_BALANCE": "0",
+        "HYPERSYNC_API_KEY": "test-hypersync-key",
     }
     mocker.patch.dict("os.environ", environment, clear=True)
     cli = get_command(app)
     cli.main(args=["init"], standalone_mode=False)
 
-    # 3. Run real Typer ``start`` cycles and verify the automatic deposit pipeline.
+    # 3. Run real Typer start cycles and verify the automatic deposit/key pipeline.
+    # Spies keep the real constructors; an indexer call on Anvil is a test failure.
+    bootstrap = mocker.spy(start_module, "create_execution_and_sync_model")
+    adapter = mocker.spy(protocol_adapters, "create_lighter_adapter")
+    indexer = mocker.patch.object(lighter_lagoon, "configure_hypersync_from_env", side_effect=AssertionError("Anvil must not query HyperSync"))
     cli.main(args=["start"], standalone_mode=False)
     cli.main(args=["start"], standalone_mode=False)
+    assert bootstrap.spy_return[0].hypersync_api_key == "test-hypersync-key"
+    assert bootstrap.spy_return[1].hypersync_api_key == "test-hypersync-key"
+    assert adapter.spy_return.routing_model.hypersync_api_key == "test-hypersync-key"
+    indexer.assert_not_called()
+    assert "test-hypersync-key" not in state_file.read_text()
     state = State.read_json_file(state_file)
     reserve = state.portfolio.get_default_reserve_position()
     position = next(iter(state.portfolio.open_positions.values()))

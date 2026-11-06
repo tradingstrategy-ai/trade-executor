@@ -784,6 +784,7 @@ def create_lighter_adapter(
     web3: Web3 | None = None,
     key_management: LighterKeyManagement | None = None,
     session: LighterSession | None = None,
+    hypersync_api_key: str | None = None,
 ) -> ProtocolRoutingConfig:
     """Create the Lighter custody-transfer router and public valuator.
 
@@ -797,6 +798,8 @@ def create_lighter_adapter(
         Optional private withdrawal settings parsed at the CLI boundary.
     :param session:
         Reusable public Lighter session shared with account valuation.
+    :param hypersync_api_key:
+        Explicit HyperSync credential; disabled or absent credentials use RPC in executor callers.
     :return:
         Lighter routing, pricing, and valuation models.
     """
@@ -810,6 +813,7 @@ def create_lighter_adapter(
         reserve_token_address,
         key_management=key_management,
         session=session,
+        hypersync_api_key=hypersync_api_key,
     )
     return ProtocolRoutingConfig(
         routing_id=routing_id,
@@ -823,6 +827,7 @@ def create_lighter_pool_adapter(
     routing_id: ProtocolRoutingId,
     key_management: LighterKeyManagement | None = None,
     session: LighterSession | None = None,
+    hypersync_api_key: str | None = None,
 ) -> ProtocolRoutingConfig:
     """Create the Lighter public-pool router, live pricing and valuation.
 
@@ -837,6 +842,8 @@ def create_lighter_pool_adapter(
         execution; pricing and valuation work without it.
     :param session:
         Optional Lighter API session shared by pricing, valuation and routing.
+    :param hypersync_api_key:
+        Explicit HyperSync credential; disabled or absent credentials use RPC in executor callers.
     :return:
         Pool routing, pricing and valuation models.
     """
@@ -848,6 +855,7 @@ def create_lighter_pool_adapter(
         LIGHTER_USDC_ETHEREUM,
         key_management=key_management,
         session=session,
+        hypersync_api_key=hypersync_api_key,
     )
     return ProtocolRoutingConfig(
         routing_id=routing_id,
@@ -974,6 +982,7 @@ class EthereumPairConfigurator(PairConfigurator):
         self.satellite_vaults = satellite_vaults or getattr(execution_model, "satellite_vaults", None) or {}
         self.hypercore_market_data_source = hypercore_market_data_source or getattr(execution_model, "hypercore_market_data_source", None)
         self.lighter_key_management = lighter_key_management or getattr(execution_model, "lighter_key_management", None)
+        self.hypersync_api_key = getattr(execution_model, "hypersync_api_key", None)
         self.lighter_session: LighterSession | None = None
         self.vault_valuation_func = None
         self.vault_simulate_redemption_with_liquidity = False
@@ -1203,11 +1212,13 @@ class EthereumPairConfigurator(PairConfigurator):
                 web3=self.web3,
                 key_management=self.lighter_key_management,
                 session=self.lighter_session,
+                hypersync_api_key=self.hypersync_api_key,
             )
         elif routing_id.router_name == "lighter_pool":
             return create_lighter_pool_adapter(
                 routing_id,
                 key_management=self.lighter_key_management,
+                hypersync_api_key=self.hypersync_api_key,
             )
         elif routing_id.router_name == "cctp-bridge":
             # Resolve primary custody address from the execution model's

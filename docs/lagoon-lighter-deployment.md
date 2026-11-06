@@ -18,6 +18,21 @@ deployment:
 Use native Ethereum USDC at
 `0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48`; bridged USDC is not suitable.
 
+## Indexed event reads
+
+Configure `HYPERSYNC_API_KEY` in the executor's secret environment file, or pass
+`--hypersync-api-key` to the runtime, settlement, account-check and manual
+custody commands. Explicit CLI credentials override the environment. Lighter
+payout checks use HyperSync for indexed blocks and RPC for the remaining tail.
+Lagoon settlement reads retry with RPC if the indexer fails or lags; the recent
+unconfirmed-settlement probe always uses RPC. Anvil also always uses RPC.
+
+`--no-use-hypersync` or `USE_HYPERSYNC=false` forces RPC for Lighter payout and
+Lagoon settlement reads without removing the key. This switch does not affect
+guard reports or CCTP scans. A missing key selects RPC as well. Read failures
+from both providers still halt or defer accounting; they are never treated as
+an empty payout or settlement history.
+
 ## Deploy with the Typer CLI
 
 `lagoon-deploy-vault` creates the Lighter account owned by a fresh Ethereum
@@ -325,8 +340,8 @@ Plan on these when operating such a vault:
 
 - Lighter's `entry_timestamp` is in Unix milliseconds, and its withdrawal history
   ends with an empty page that repeats the end cursor, not with an empty cursor.
-- If `lagoon-settle` fails with a Hypersync `RuntimeError: inner receiver`, unset
-  `HYPERSYNC_API_KEY` to use the RPC log reader and resume.
+- For executor versions without automatic RPC fallback, unset `HYPERSYNC_API_KEY`
+  to resume after a Hypersync `RuntimeError: inner receiver` failure.
 - In the 3 November run, the 1 USDC activation deposit was outside NAV until a
   pool buy invested it. The first subscription settled at a vault value of
   18.99 USDC for 20 shares. The idle-collateral accounting above corrects this

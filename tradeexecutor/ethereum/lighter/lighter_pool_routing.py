@@ -226,10 +226,12 @@ class LighterPoolRouting(RoutingModel):
         operation_timeout: float = DEFAULT_LIGHTER_POOL_OPERATION_TIMEOUT_SECONDS,
         collateral_timeout: float = DEFAULT_LIGHTER_POOL_COLLATERAL_TIMEOUT_SECONDS,
         poll_interval: float = DEFAULT_LIGHTER_POOL_POLL_SECONDS,
+        hypersync_api_key: str | None = None,
     ):
         super().__init__({}, reserve_token_address.lower())
         self.key_management = key_management or LighterKeyManagement()
         self.session = session
+        self.hypersync_api_key = hypersync_api_key
         self.lighter_contract = Web3.to_checksum_address(lighter_contract)
         self.deposit_timeout = deposit_timeout
         self.operation_timeout = operation_timeout
@@ -653,6 +655,7 @@ class LighterPoolRouting(RoutingModel):
             amount=claimable,
             pending_before=Decimal(data["withdrawal_pending_before"]),
             from_block=int(data["withdrawal_from_block"]),
+            hypersync_api_key=self.hypersync_api_key,
         )
 
     def _claim_withdrawal(self, ctx: LighterPoolContext, trade: TradeExecution, data: dict, claimable: Decimal) -> None:

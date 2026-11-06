@@ -119,8 +119,9 @@ def test_cli_claim_survives_losing_the_race(mocker: MockerFixture) -> None:
     vault = SimpleNamespace(safe_address=SAFE)
     wallet = SimpleNamespace(sync_nonce=lambda _web3: None)
     journal = {"withdrawal_from_block": 100, "withdrawal_pending_before": "0"}
-    assert test_trade_module._claim_unless_paid(object(), wallet, vault, object(), AMOUNT, journal) is None
+    assert test_trade_module._claim_unless_paid(object(), wallet, vault, object(), AMOUNT, journal, hypersync_api_key="test-key") is None
     claim.assert_not_called()
+    assert paid.call_args.kwargs["hypersync_api_key"] == "test-key"
 
     # 2. A claim that reverts because the relayer went first is accepted.
     paid.side_effect = [False, True]

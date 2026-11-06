@@ -182,6 +182,8 @@ def vault_test_trade(
         "--simulation-fork-block-reference",
         help="Issue, PR comment or document recording fixed fork block choices.",
     ),
+    hypersync_api_key: str | None = shared_options.hypersync_api_key,
+    use_hypersync: bool = shared_options.use_hypersync,
 ) -> None:
     """Test selected external vaults using one Lagoon executor.
 
@@ -241,6 +243,7 @@ def vault_test_trade(
         auto_simulated=auto_simulated,
         simulation_fork_blocks=simulation_fork_block,
         simulation_fork_block_reference=simulation_fork_block_reference,
+        hypersync_api_key=hypersync_api_key if use_hypersync and not auto_simulated else None,
     )
     runtime.provenance["run_id"] = uuid.uuid4().hex
 

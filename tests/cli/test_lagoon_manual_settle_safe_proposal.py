@@ -86,7 +86,7 @@ def test_lagoon_manual_settle_proposes_preflighted_safe_transaction(
     )
     monkeypatch.setattr(manual_settle, "load_lagoon_vault", lambda *_args: vault)
     monkeypatch.setattr(
-        manual_settle, "inspect_manual_lagoon_settlement", lambda *_args: report
+        manual_settle, "inspect_manual_lagoon_settlement", lambda *_args, **_kwargs: report
     )
     monkeypatch.setattr(
         manual_settle, "propose_safe_transaction", fake_propose_safe_transaction

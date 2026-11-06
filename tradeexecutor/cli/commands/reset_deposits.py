@@ -33,6 +33,8 @@ def reset_deposits(
 
     rpc_kwargs: dict | None = None,
 
+    hypersync_api_key: str | None = shared_options.hypersync_api_key,
+    use_hypersync: bool = shared_options.use_hypersync,
 ):
     """Reset account balances.
 
@@ -40,6 +42,7 @@ def reset_deposits(
     Does not lose trade history, but lose any unprocessed deposit and redemption events.
     """
 
+    hypersync_api_key = hypersync_api_key if use_hypersync else None
     id = prepare_executor_id(id, strategy_file)
 
     logger = setup_logging(log_level)
@@ -68,6 +71,7 @@ def reset_deposits(
         web3,
         hot_wallet,
         vault_address,
+        hypersync_api_key=hypersync_api_key,
     )
 
     logger.info("RPC details")

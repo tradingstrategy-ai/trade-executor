@@ -414,6 +414,7 @@ def _resume_withdrawal(
     session: LighterSession,
     trade: TradeExecution,
     withdraw_timeout: int,
+    hypersync_api_key: str | None = None,
 ) -> None:
     """Resume one persisted secure withdrawal without resubmitting it.
 
@@ -464,6 +465,7 @@ def _resume_withdrawal(
             pending_before=Decimal(str(metadata["lighter_pending_balance_before_usdc"])),
             from_block=int(metadata["lighter_withdrawal_from_block"]),
             timeout=withdraw_timeout,
+            hypersync_api_key=hypersync_api_key,
         )
         claimable = amount
     else:
@@ -479,7 +481,7 @@ def _resume_withdrawal(
         raise LighterMoveFundsError("Lighter claimable withdrawal amount differs from the saved request")
     _append_transfer_metadata(trade, lighter_claimable_usdc=str(claimable))
     claim_tx_hash = None
-    if get_lighter_relayer_payout(vault.web3, trade) is None:
+    if get_lighter_relayer_payout(vault.web3, trade, hypersync_api_key=hypersync_api_key) is None:
         hot_wallet.sync_nonce(vault.web3)
         try:
             claim_tx_hash = claim_usdc_to_lagoon_safe_from_lighter(
@@ -491,7 +493,7 @@ def _resume_withdrawal(
             )
         except (Reverted, RuntimeError):
             # Lighter's relayer claiming first also reverts our claim.
-            if get_lighter_relayer_payout(vault.web3, trade) is None:
+            if get_lighter_relayer_payout(vault.web3, trade, hypersync_api_key=hypersync_api_key) is None:
                 raise
     if claim_tx_hash is None:
         logger.info("Lighter's relayer paid the withdrawal of %s USDC", amount)
@@ -551,8 +553,11 @@ def lighter_move_funds(
         DEFAULT_LIGHTER_WITHDRAW_TIMEOUT,
         envvar="LIGHTER_WITHDRAW_TIMEOUT",
     ),
+    hypersync_api_key: str | None = shared_options.hypersync_api_key,
+    use_hypersync: bool = shared_options.use_hypersync,
 ) -> None:
     """Move USDC between a Lagoon Safe and Lighter for diagnostics and recovery."""
+    hypersync_api_key = hypersync_api_key if use_hypersync and not simulate else None
     if simulate:
         raise LighterMoveFundsError("lighter-move-funds does not support SIMULATE=true")
     if asset_management_mode != AssetManagementMode.lagoon:
@@ -648,6 +653,7 @@ def lighter_move_funds(
                 session=session,
                 trade=pending_trade,
                 withdraw_timeout=lighter_withdraw_timeout,
+                hypersync_api_key=hypersync_api_key,
             )
         else:
             state.check_if_clean()
@@ -802,6 +808,7 @@ def lighter_move_funds(
                     session=session,
                     trade=trade,
                     withdraw_timeout=lighter_withdraw_timeout,
+                    hypersync_api_key=hypersync_api_key,
                 )
 
         final_state = initial_store.load()
