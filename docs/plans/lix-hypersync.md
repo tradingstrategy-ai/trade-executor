@@ -265,9 +265,9 @@ The focused Opus 5.5 follow-up completed with no blocking or high-confidence
 correctness findings. Both reviews have successful terminal result events.
 The final legacy-client assertions and near-tip comparison subsequently passed.
 
-Eth-defi revision: `570a01aed401ae1b14643d7bc9b75bb7f898c655`, on local branch
-`feat/lix-hypersync` in this worktree's dependency checkout. The executor gitlink
-now selects that revision, published in
+Eth-defi revision: `4fce376e82e665806274203f2d327f8dc8a87cda`, the squash merge of
+`feat/lix-hypersync` (reviewed head `570a01aed401ae1b14643d7bc9b75bb7f898c655`).
+The executor gitlink now selects the merged revision from
 [eth-defi PR #1734](https://github.com/tradingstrategy-ai/web3-ethereum-defi/pull/1734).
 The unpublished dependency commits were rebased onto current master before PR
 creation; the reviewed reader implementations are unchanged. Nothing was deployed.
