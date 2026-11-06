@@ -2,6 +2,7 @@
 
 ## 0.2
 
+- Price HyperEVM transactions from the latest small block through web3-ethereum-defi, because a large block as `latest` left a Lagoon settlement unmined for 96 minutes and stopped Hyper-AI (2026-11-06)
 - Prefer HyperSync for Lighter payout checks and Lagoon settlement reads, pass credentials through CLI runtime and recovery commands, and retain RPC fallback with an explicit opt-out (2026-11-06).
 
 - Recover Lighter deposits that were broadcast but never mined in `repair`: rebroadcast while the nonce is free, and return the reserves only when the transaction that consumed the nonce is proven to have moved nothing out of the Safe (2026-11-05)
