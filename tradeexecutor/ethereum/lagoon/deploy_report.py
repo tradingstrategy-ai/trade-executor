@@ -1,8 +1,10 @@
 """Guard configuration report after Lagoon vault deployment."""
 
+import enum
 import logging
 from typing import Any
 
+import requests
 from eth_typing import HexAddress
 from web3 import Web3
 
@@ -23,6 +25,21 @@ from tradeexecutor.exchange_account.lighter import (
 )
 
 logger = logging.getLogger(__name__)
+
+#: Etherscan's multichain API.
+ETHERSCAN_V2_API_URL = "https://api.etherscan.io/v2/api"
+
+#: The check runs after a finished deployment, so it must not be able to stall one.
+ETHERSCAN_REQUEST_TIMEOUT_SECONDS = 10
+
+
+class ContractVerificationStatus(enum.Enum):
+    """Whether Etherscan publishes a contract's source."""
+
+    verified = "verified"
+    not_verified = "not_verified"
+    #: Etherscan could not be read, which says nothing about the contract.
+    unknown = "unknown"
 
 
 def _get_public_lighter_metadata(metadata: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -57,6 +74,88 @@ def _create_hypersync_client(web3: Web3, hypersync_api_key: str):
     except ImportError:
         logger.warning("hypersync not installed — falling back to RPC for guard config scan")
         return None
+
+
+def fetch_etherscan_verification_status(
+    chain_id: int,
+    address: HexAddress,
+    api_key: str,
+) -> ContractVerificationStatus:
+    """Read whether Etherscan publishes a contract's source.
+
+    The status is read rather than assumed, because Etherscan can also match a
+    contract to known bytecode without anything being submitted.
+
+    The API key is part of the request URL, so errors are logged by type only.
+
+    :param chain_id:
+        Chain of the contract.
+    :param address:
+        Contract address.
+    :param api_key:
+        Etherscan API key.
+    :return:
+        Verification status, ``unknown`` if Etherscan gave no usable answer.
+    """
+    params = {
+        "chainid": chain_id,
+        "module": "contract",
+        "action": "getsourcecode",
+        "address": address,
+        "apikey": api_key,
+    }
+    try:
+        response = requests.get(ETHERSCAN_V2_API_URL, params=params, timeout=ETHERSCAN_REQUEST_TIMEOUT_SECONDS)
+        payload = response.json()
+        # API errors and rate limits arrive as HTTP 200 with status 0.
+        if response.status_code != 200 or payload.get("status") != "1":
+            logger.warning("Etherscan gave no result for %s on chain %d", address, chain_id)
+            return ContractVerificationStatus.unknown
+        source_code = payload["result"][0]["SourceCode"]
+    except (requests.RequestException, ValueError, KeyError, IndexError, TypeError, AttributeError) as error:
+        logger.warning("Could not read Etherscan for %s on chain %d: %s", address, chain_id, type(error).__name__)
+        return ContractVerificationStatus.unknown
+    return ContractVerificationStatus.verified if source_code else ContractVerificationStatus.not_verified
+
+
+def add_module_verification_report(
+    markdown_report: str,
+    module_addresses: dict[int, HexAddress],
+    api_key: str,
+) -> str:
+    """Report the Etherscan status of deployed trading modules.
+
+    ``deploy_safe_trading_strategy_module()`` deploys the module and its libraries
+    with ``deploy_contract()``, which submits nothing to Etherscan, so an operator
+    who passed an API key cannot tell from the logs that the module is unverified.
+
+    Runs after the deployment artefacts are written, and cannot fail the deployment.
+
+    :param markdown_report:
+        Deployment report to extend.
+    :param module_addresses:
+        Trading module address per chain id.
+    :param api_key:
+        Etherscan API key.
+    :return:
+        The report with a verification section.
+    """
+    lines = [markdown_report, "", "## Etherscan verification", ""]
+    for chain_id, address in module_addresses.items():
+        status = fetch_etherscan_verification_status(chain_id, address, api_key)
+        lines.append(f"- Trading module `{address}` on chain {chain_id}: {status.value}")
+        if status == ContractVerificationStatus.verified:
+            logger.info("Trading module %s on chain %d is verified on Etherscan", address, chain_id)
+        elif status == ContractVerificationStatus.not_verified:
+            logger.warning(
+                "Trading module %s on chain %d is not verified on Etherscan. "
+                "Deployment does not submit the module or its libraries, so verify them by hand.",
+                address,
+                chain_id,
+            )
+        else:
+            logger.warning("Check the Etherscan verification of trading module %s on chain %d by hand", address, chain_id)
+    return "\n".join(lines)
 
 
 def print_deployment_report(

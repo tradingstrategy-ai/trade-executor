@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import math
 import time
 from dataclasses import dataclass, field
 from decimal import Decimal
@@ -23,6 +24,7 @@ from eth_defi.provider.receipt import wait_for_transaction_receipt_robust
 from eth_defi.token import TokenDetails, fetch_erc20_details
 from hexbytes import HexBytes
 from web3 import Web3
+from web3.contract.contract import ContractFunction
 from web3.exceptions import TransactionNotFound
 
 from tradeexecutor.exchange_account.lighter import create_executor_lighter_session, get_lighter_master_account_index, is_lighter_sub_account_pair
@@ -44,6 +46,7 @@ from tradeexecutor.ethereum.lighter.transfer_verification import (
     verify_lighter_funding,
     verify_lighter_transfer,
 )
+from tradeexecutor.ethereum.lagoon.tx import LagoonTransactionBuilder
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution, TradeFlag
@@ -54,16 +57,55 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 
 logger = logging.getLogger(__name__)
 
-#: Gas limit for the ERC-20 approval wrapped by Lagoon.
+#: Fallback gas limit for the ERC-20 approval wrapped by Lagoon.
 LIGHTER_APPROVAL_GAS_LIMIT = 500_000
-#: Gas limit for a Lighter deposit wrapped by Lagoon.
+#: Whole transaction gas limit for a Lighter deposit wrapped by Lagoon.
 #:
-#: A LIX mainnet deposit used 200,146 gas. A node refuses a transaction unless
-#: the hot wallet holds the limit times the maximum fee, so a generous limit
-#: stops a deposit the wallet could afford. Lagoon adds ``extra_gnosis_gas``.
+#: A deposit cannot be estimated, because it is signed before its approval is
+#: mined. LIX mainnet deposits used up to 223,281 gas, the highest being the first
+#: to a new Lighter account. A node refuses a transaction unless the hot wallet
+#: holds the limit times the maximum fee, so a generous limit stops a deposit the
+#: wallet could afford.
 LIGHTER_DEPOSIT_GAS_LIMIT = 400_000
-#: Gas limit for a Lighter pending withdrawal claim wrapped by Lagoon.
+#: Fallback gas limit for a Lighter pending withdrawal claim wrapped by Lagoon.
 LIGHTER_WITHDRAWAL_CLAIM_GAS_LIMIT = 1_000_000
+#: Margin on a gas estimate, for state that changes before the transaction is mined.
+LIGHTER_GAS_ESTIMATE_MARGIN = 1.5
+
+
+def estimate_lighter_gas_limit(
+    tx_builder: LagoonTransactionBuilder,
+    function: ContractFunction,
+    fallback_gas_limit: int,
+) -> int:
+    """Return the whole transaction's gas limit for a Safe-wrapped Lighter call.
+
+    A node refuses a transaction unless the hot wallet holds the limit times the
+    maximum fee, so a fixed limit can stop a transaction the wallet could afford.
+
+    The estimate is not capped, because signing below it could only produce a
+    reverting transaction. An estimate can fail for reasons that do not stop the
+    transaction, such as an RPC error, so the fixed limit remains the fallback and
+    a failed estimate cannot block a custody movement.
+
+    :param tx_builder:
+        Lagoon transaction builder of the Safe making the call.
+    :param function:
+        The call the Safe will make.
+    :param fallback_gas_limit:
+        Gas limit of the wrapped call if estimation fails.
+    :return:
+        Gas limit to pass as ``total_gas_limit``.
+    """
+    try:
+        return math.ceil(tx_builder.estimate_gas(function) * LIGHTER_GAS_ESTIMATE_MARGIN)
+    except Exception as error:
+        logger.warning(
+            "Could not estimate gas for Lighter %s(), using the fixed limit: %s",
+            function.fn_name,
+            type(error).__name__,
+        )
+        return fallback_gas_limit + tx_builder.extra_gnosis_gas
 #: Default maximum wait for a secure or L1 Lighter withdrawal to arrive or become claimable.
 #:
 #: A live sub-account L1 withdrawal took about 29 minutes, so leave margin.
@@ -380,10 +422,11 @@ class LighterRouting(RoutingModel):
             int(lighter_account_index),
         ).collateral
         trade.other_data["lighter_collateral_before_usdc"] = str(collateral_before)
+        approve_call = usdc.contract.functions.approve(self.lighter_contract, amount_raw)
         approve_tx = routing_state.tx_builder.sign_transaction(
             usdc.contract,
-            usdc.contract.functions.approve(self.lighter_contract, amount_raw),
-            gas_limit=LIGHTER_APPROVAL_GAS_LIMIT,
+            approve_call,
+            total_gas_limit=estimate_lighter_gas_limit(routing_state.tx_builder, approve_call, LIGHTER_APPROVAL_GAS_LIMIT),
             asset_deltas=[],
             notes=trade.notes,
         )
@@ -395,7 +438,7 @@ class LighterRouting(RoutingModel):
                 0,
                 amount_raw,
             ),
-            gas_limit=LIGHTER_DEPOSIT_GAS_LIMIT,
+            total_gas_limit=LIGHTER_DEPOSIT_GAS_LIMIT,
             asset_deltas=[],
             notes=trade.notes,
         )
@@ -513,15 +556,16 @@ class LighterRouting(RoutingModel):
         if not trade.other_data.get("lighter_withdrawal_request_id"):
             from_block, pending_before = fetch_lighter_withdrawal_baseline(web3, owner=vault.safe_address, usdc=usdc, zk_lighter=self.lighter_contract)
             # USDC has a Lighter tick size of one raw unit, so base amount equals raw USDC.
+            withdraw_call = zk.functions.withdraw(
+                int(trade.pair.get_exchange_account_id()),
+                zk.functions.USDC_ASSET_INDEX().call(),
+                LIGHTER_ROUTE_PERP,
+                usdc.convert_to_raw(amount),
+            )
             request_tx = routing_state.tx_builder.sign_transaction(
                 zk,
-                zk.functions.withdraw(
-                    int(trade.pair.get_exchange_account_id()),
-                    zk.functions.USDC_ASSET_INDEX().call(),
-                    LIGHTER_ROUTE_PERP,
-                    usdc.convert_to_raw(amount),
-                ),
-                gas_limit=LIGHTER_L1_WITHDRAW_GAS_LIMIT,
+                withdraw_call,
+                total_gas_limit=estimate_lighter_gas_limit(routing_state.tx_builder, withdraw_call, LIGHTER_L1_WITHDRAW_GAS_LIMIT),
                 asset_deltas=[],
                 notes=trade.notes,
             )
@@ -639,14 +683,15 @@ class LighterRouting(RoutingModel):
         zk = get_deployed_contract(web3, "lighter/ZkLighter.json", self.lighter_contract)
         amount_raw = usdc.convert_to_raw(claimable)
         vault = self._get_lagoon_vault(routing_state)
+        claim_call = zk.functions.withdrawPendingBalance(
+            vault.safe_address,
+            zk.functions.USDC_ASSET_INDEX().call(),
+            amount_raw,
+        )
         return routing_state.tx_builder.sign_transaction(
             zk,
-            zk.functions.withdrawPendingBalance(
-                vault.safe_address,
-                zk.functions.USDC_ASSET_INDEX().call(),
-                amount_raw,
-            ),
-            gas_limit=LIGHTER_WITHDRAWAL_CLAIM_GAS_LIMIT,
+            claim_call,
+            total_gas_limit=estimate_lighter_gas_limit(routing_state.tx_builder, claim_call, LIGHTER_WITHDRAWAL_CLAIM_GAS_LIMIT),
             asset_deltas=[],
             notes=trade.notes,
         )

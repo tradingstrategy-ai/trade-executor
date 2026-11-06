@@ -126,6 +126,7 @@ from tradeexecutor.cli.commands.shared_options import \
     parse_comma_separated_list
 from tradeexecutor.cli.log import setup_logging
 from tradeexecutor.ethereum.lagoon.deploy_report import (
+    add_module_verification_report,
     generate_multichain_deployment_report,
     print_deployment_report,
 )
@@ -1863,6 +1864,13 @@ def lagoon_deploy_vault(
         public_lighter_metadata=_get_public_lighter_metadata(deploy_info),
     )
 
+    if verifier == "etherscan" and etherscan_api_key and not simulate:
+        markdown_report = add_module_verification_report(
+            markdown_report,
+            {web3.eth.chain_id: deploy_info.trading_strategy_module.address},
+            etherscan_api_key,
+        )
+
     _write_markdown_report(vault_record_file, markdown_report, logger)
 
     web3config.close()
@@ -2354,6 +2362,16 @@ def _deploy_multichain(
     # vault-test-trade all discover the same modules without SATELLITE_MODULES.
     # The helper derives the executor id from strategy_file on this legacy path.
     _write_state_sibling_deployment_artifact(strategy_file, json_payload, simulate=simulate, logger=logger)
+
+    if verifier == "etherscan" and etherscan_api_key and not simulate:
+        markdown_report = add_module_verification_report(
+            markdown_report,
+            {
+                chain_web3[slug].eth.chain_id: deployment.trading_strategy_module.address
+                for slug, deployment in result.deployments.items()
+            },
+            etherscan_api_key,
+        )
 
     _write_markdown_report(vault_record_file, markdown_report, logger)
 

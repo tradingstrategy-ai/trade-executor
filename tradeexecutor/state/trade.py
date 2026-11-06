@@ -956,6 +956,9 @@ class TradeExecution:
                 return "Supply credit"
             else:
                 return "Recall credit"
+        elif self.is_repair_trade():
+            # Bookkeeping counter-trade of an exchange-account transfer.
+            return "Repair"
         else:
             raise AssertionError(f"Could not figure out action verb")
 
