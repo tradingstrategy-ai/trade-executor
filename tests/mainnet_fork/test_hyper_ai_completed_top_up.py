@@ -95,7 +95,7 @@ def top_up_cli(anvil: AnvilLaunch, tmp_path: Path, monkeypatch: pytest.MonkeyPat
     # its unrelated lifetime investor logs can exceed the public RPC's range
     # limits and test deadline. Real discovery is covered by the dual-fork
     # account-command tests; keep deposit receipts and current queue reads real.
-    monkeypatch.setattr(LagoonVaultSyncModel, "_fetch_lagoon_settlements", lambda self, start_block, end_block: [])
+    monkeypatch.setattr(LagoonVaultSyncModel, "_fetch_lagoon_settlements", lambda self, start_block, end_block, **_kwargs: [])
     for name in tuple(os.environ):
         if name.startswith("JSON_RPC_"):
             monkeypatch.delenv(name)

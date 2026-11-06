@@ -241,6 +241,7 @@ def create_execution_model(
     min_gas_balance: Optional[Decimal],
     mainnet_fork=False,
     lighter_key_management: LighterKeyManagement | None = None,
+    hypersync_api_key: str | None = None,
 ):
     """Set up the code transaction building logic.
 
@@ -264,6 +265,7 @@ def create_execution_model(
             min_balance_threshold=min_gas_balance,
             mainnet_fork=mainnet_fork,
             lighter_key_management=lighter_key_management,
+            hypersync_api_key=hypersync_api_key,
         )
         valuation_model_factory = GenericValuationModelFactory()
         pricing_model_factory = EthereumGenericPricingFactory(sync_model.web3)
@@ -280,6 +282,7 @@ def create_execution_model(
             min_balance_threshold=min_gas_balance,
             mainnet_fork=mainnet_fork,
             lighter_key_management=lighter_key_management,
+            hypersync_api_key=hypersync_api_key,
         )
         valuation_model_factory = GenericValuationModelFactory()
         pricing_model_factory = EthereumGenericPricingFactory(sync_model.web3)
@@ -708,6 +711,7 @@ def create_execution_and_sync_model(
     token_cache: "TokenDiskCache | None" = None,
     deployment_file: "Path | None" = None,
     lighter_key_management: LighterKeyManagement | None = None,
+    hypersync_api_key: str | None = None,
 ) -> Tuple[ExecutionModel, SyncModel, ValuationModelFactory, PricingModelFactory]:
     """Set up the wallet sync and execution mode for the command line client."""
 
@@ -743,6 +747,7 @@ def create_execution_and_sync_model(
             vault_payment_forwarder_address,
             unit_testing=unit_testing,
             token_cache=token_cache,
+            hypersync_api_key=hypersync_api_key,
         )
 
         # Pass web3config for multichain balance queries (e.g. CCTP bridge)
@@ -768,6 +773,7 @@ def create_execution_and_sync_model(
                 mainnet_fork=web3config.is_mainnet_fork(),
                 sync_model=sync_model,
                 lighter_key_management=lighter_key_management,
+                hypersync_api_key=hypersync_api_key,
             )
         )
 
@@ -1162,11 +1168,14 @@ def create_sync_model(
     init=False,
     unit_testing=False,
     token_cache: "TokenDiskCache | None" = None,
+    hypersync_api_key: str | None = None,
 ) -> SyncModel:
     """Create sync model for wallet type
 
     :param init:
         This is for state init only - no chain functions called
+    :param hypersync_api_key:
+        Explicit HyperSync credential; disabled or absent credentials use RPC in executor callers.
     """
     match asset_management_mode:
         case AssetManagementMode.hot_wallet:
@@ -1208,6 +1217,7 @@ def create_sync_model(
                 valuation_data_freshness=datetime.timedelta(days=2)
                 if unit_testing
                 else datetime.timedelta(hours=4),
+                hypersync_api_key=hypersync_api_key,
             )
         case _:
             raise NotImplementedError()

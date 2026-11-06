@@ -1,6 +1,7 @@
 """Inspect and simulate a manual Lagoon Safe settlement."""
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +31,8 @@ from tradeexecutor.cli.commands.lagoon_utils import (
 from tradeexecutor.cli.log import setup_logging
 from tradeexecutor.strategy.strategy_module import read_strategy_module
 
+
+logger = logging.getLogger(__name__)
 
 NO_PENDING_NAV = 2**256 - 1
 
@@ -67,7 +70,7 @@ def _build_settlement_call(
 
 
 def _fetch_pending_new_total_assets(
-    vault, deployment_block: int, block_number: int
+    vault, deployment_block: int, block_number: int, hypersync_api_key: str | None = None
 ) -> tuple[int | None, str]:
     """Read the valuation waiting to be settled from contract state or events."""
     has_getter = any(
@@ -85,14 +88,21 @@ def _fetch_pending_new_total_assets(
 
     new_nav_topic = Web3.keccak(text="NewTotalAssetsUpdated(uint256)")
     settled_nav_topic = Web3.keccak(text="TotalAssetsUpdated(uint256)")
-    logs = fetch_vault_settlement_logs(
+    read_options = dict(
         web3=vault.web3,
         address=vault.address,
         topic0_list=[Web3.to_hex(new_nav_topic), Web3.to_hex(settled_nav_topic)],
         start_block=deployment_block,
         end_block=block_number,
-        use_hypersync=False if is_anvil(vault.web3) else None,
     )
+    if hypersync_api_key and not is_anvil(vault.web3):
+        try:
+            logs = fetch_vault_settlement_logs(**read_options, use_hypersync=True, hypersync_api_key=hypersync_api_key, hypersync_timeout=90.0)
+        except Exception as exc:
+            logger.warning("Lagoon HyperSync NAV read failed (%s); retrying with RPC", type(exc).__name__)
+            logs = fetch_vault_settlement_logs(**read_options, use_hypersync=False)
+    else:
+        logs = fetch_vault_settlement_logs(**read_options, use_hypersync=False)
     pending_new_total_assets = None
     for log in sorted(logs, key=lambda item: (item["blockNumber"], item["logIndex"])):
         if HexBytes(log["topics"][0]) == new_nav_topic:
@@ -103,7 +113,7 @@ def _fetch_pending_new_total_assets(
     return pending_new_total_assets, "NewTotalAssetsUpdated/TotalAssetsUpdated events"
 
 
-def inspect_manual_lagoon_settlement(vault, deployment_block: int) -> dict[str, Any]:
+def inspect_manual_lagoon_settlement(vault, deployment_block: int, hypersync_api_key: str | None = None) -> dict[str, Any]:
     """Read one on-chain Lagoon queue snapshot and simulate Safe settlement.
 
     The tool reads the pending ``newTotalAssets`` value from the deployed
@@ -124,7 +134,8 @@ def inspect_manual_lagoon_settlement(vault, deployment_block: int) -> dict[str, 
     )
 
     new_total_assets_raw, new_total_assets_source = _fetch_pending_new_total_assets(
-        vault, deployment_block, block_number
+        vault, deployment_block, block_number,
+        hypersync_api_key=hypersync_api_key,
     )
     if pending_deposit > 0:
         function_name = "settleDeposit"
@@ -314,6 +325,8 @@ def lagoon_manual_settle(
         help="Propose the inspected direct settlement in the Safe Transaction Service using PRIVATE_KEY. Does not execute it.",
     ),
     rpc_kwargs: dict | None = None,
+    hypersync_api_key: str | None = shared_options.hypersync_api_key,
+    use_hypersync: bool = shared_options.use_hypersync,
 ):
     """Print instructions for the required direct Safe settlement transaction.
 
@@ -324,6 +337,7 @@ def lagoon_manual_settle(
     Safe owners must still review, sign and execute it.
     It reads all configuration from the normal executor environment and state.
     """
+    hypersync_api_key = hypersync_api_key if use_hypersync else None
     id = prepare_executor_id(id, strategy_file)
     setup_logging(log_level=log_level)
     mod = read_strategy_module(strategy_file)
@@ -348,7 +362,7 @@ def lagoon_manual_settle(
             "Lagoon deployment block is missing from strategy state"
         )
         vault = load_lagoon_vault(web3config.get_default(), vault_address)
-        report = inspect_manual_lagoon_settlement(vault, deployment_block)
+        report = inspect_manual_lagoon_settlement(vault, deployment_block, hypersync_api_key=hypersync_api_key)
         typer.echo(format_manual_settlement_instructions(report))
         if propose_in_safe:
             proposal_hash, proposal_url = propose_manual_lagoon_settlement(

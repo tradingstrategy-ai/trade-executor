@@ -99,6 +99,8 @@ def init(
 
     rpc_kwargs: dict | None = None,
 
+    hypersync_api_key: str | None = shared_options.hypersync_api_key,
+    use_hypersync: bool = shared_options.use_hypersync,
 ):
     """Initialise a strategy.
 
@@ -108,6 +110,7 @@ def init(
     Vault deployment is still handled separate.
     """
 
+    hypersync_api_key = hypersync_api_key if use_hypersync else None
     global logger
 
     id = prepare_executor_id(id, strategy_file)
@@ -145,6 +148,7 @@ def init(
         vault_address,
         vault_adapter_address=vault_adapter_address,
         init=True,
+        hypersync_api_key=hypersync_api_key,
     )
 
     logger.info("RPC details")

@@ -103,6 +103,8 @@ def perform_test_trade(
         "--lighter-transfer",
         help="Move --amount USDC between two Lighter accounts of the vault, given as SOURCE:DESTINATION account ids such as trend:arb or master:trend, and back again unless --buy-only. Any Lighter fee is charged on top of each leg, so a round trip needs the destination to cover the return fee.",
     ),
+    hypersync_api_key: str | None = shared_options.hypersync_api_key,
+    use_hypersync: bool = shared_options.use_hypersync,
 ):
     """Perform a small test swap.
 
@@ -150,6 +152,7 @@ def perform_test_trade(
     as described in README-Lighter.md.
     """
 
+    hypersync_api_key = hypersync_api_key if use_hypersync and not simulate else None
     if close_only:
         if buy_only or not pair or lending_reserve or single_pair or all_pairs or all_vaults or lighter_transfer:
             raise ValueError("--close-only requires one --pair and cannot be combined with --buy-only or bulk/transfer selections")
@@ -229,6 +232,7 @@ def perform_test_trade(
         # a custom STATE_FILE location is honoured (matches the deploy side).
         deployment_file=resolve_deployment_file(id, state_file),
         lighter_key_management=lighter_key_management,
+        hypersync_api_key=hypersync_api_key,
     )
 
     client, routing_model = create_client(

@@ -60,6 +60,8 @@ def lagoon_settle(
     simulate: bool = shared_options.simulate,
     sync_interest: bool = True,
     force_valuation: bool = Option(False, "--force-valuation", help="Post the calculated NAV even below the usual change threshold, for example before a final investor withdrawal. Guard limits and cooldowns still apply."),
+    hypersync_api_key: str | None = shared_options.hypersync_api_key,
+    use_hypersync: bool = shared_options.use_hypersync,
 ):
     """Settle the Lagoon vault NAV and deposits.
 
@@ -67,6 +69,7 @@ def lagoon_settle(
     - Syncs the latest reserve deposits and redemptions
     - Optionally syncs lending interest rates before valuation (default: True)
     """
+    hypersync_api_key = hypersync_api_key if use_hypersync and not simulate else None
     id = prepare_executor_id(id, strategy_file)
 
     logger = setup_logging(log_level=log_level)
@@ -101,6 +104,7 @@ def lagoon_settle(
         unit_testing=unit_testing,
         token_cache=token_cache,
         deployment_file=resolve_deployment_file(id, state_file),
+        hypersync_api_key=hypersync_api_key,
     )
 
     client, routing_model = create_client(

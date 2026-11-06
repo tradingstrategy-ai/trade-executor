@@ -59,6 +59,8 @@ def blacklist(
 
     add_token: str = Option(None, envvar="ADD_TOKEN", help="Add a token by an address to the blacklist"),
     remove_token: str = Option(None, envvar="REMOVE_TOKEN", help="Remove a token by an address from the blacklist"),
+    hypersync_api_key: str | None = shared_options.hypersync_api_key,
+    use_hypersync: bool = shared_options.use_hypersync,
 ):
     """Manage blacklist state.
 
@@ -66,6 +68,7 @@ def blacklist(
     - Add and remove entries
     """
 
+    hypersync_api_key = hypersync_api_key if use_hypersync else None
     global logger
 
     id = prepare_executor_id(id, strategy_file)
@@ -96,6 +99,7 @@ def blacklist(
         hot_wallet,
         vault_address,
         vault_adapter_address,
+        hypersync_api_key=hypersync_api_key,
     )
 
     if not state_file:

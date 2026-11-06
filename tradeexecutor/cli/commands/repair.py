@@ -65,6 +65,8 @@ def repair(
     auto_approve: bool = Option(False, envvar="AUTO_APPROVE", help="Approve the repair trade without asking for confirmation"),
     lighter_operator_record_file: Path | None = shared_options.lighter_operator_record_file,
     lighter_sub_account_operator_record_files: str | None = shared_options.lighter_sub_account_operator_record_files,
+    hypersync_api_key: str | None = shared_options.hypersync_api_key,
+    use_hypersync: bool = shared_options.use_hypersync,
 ):
     """Repair broken state.
 
@@ -90,6 +92,7 @@ def repair(
     See also check-accounts and correct-accounts commands.
     """
 
+    hypersync_api_key = hypersync_api_key if use_hypersync else None
     id = prepare_executor_id(id, strategy_file)
 
     logger = setup_logging(log_level=log_level)
@@ -130,6 +133,7 @@ def repair(
         vault_payment_forwarder_address=vault_payment_forwarder_address,
         routing_hint=mod.trade_routing,
         deployment_file=resolve_deployment_file(id, state_file),
+        hypersync_api_key=hypersync_api_key,
     )
 
     client, routing_model = create_client(
@@ -168,6 +172,7 @@ def repair(
         web3,
         mutate=True,
         signers=load_lighter_signers(lighter_operator_record_file, lighter_sub_account_operator_record_files),
+        hypersync_api_key=hypersync_api_key,
     )
     if reconciled_transfers:
         store.sync(state)

@@ -55,6 +55,8 @@ def close_all(
 
     unit_testing: bool = shared_options.unit_testing,
     simulate: bool = shared_options.simulate,
+    hypersync_api_key: str | None = shared_options.hypersync_api_key,
+    use_hypersync: bool = shared_options.use_hypersync,
 ):
     """Close all open positions.
 
@@ -62,6 +64,7 @@ def close_all(
 
     - Closes any position that's open currently
     """
+    hypersync_api_key = hypersync_api_key if use_hypersync and not simulate else None
     id = prepare_executor_id(id, strategy_file)
 
     logger = setup_logging(log_level=log_level)
@@ -93,6 +96,7 @@ def close_all(
         vault_payment_forwarder_address=vault_payment_forwarder_address,
         routing_hint=mod.trade_routing,
         deployment_file=resolve_deployment_file(id, state_file),
+        hypersync_api_key=hypersync_api_key,
     )
 
     client, routing_model = create_client(

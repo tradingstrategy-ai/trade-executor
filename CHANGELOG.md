@@ -2,6 +2,8 @@
 
 ## 0.2
 
+- Prefer HyperSync for Lighter payout checks and Lagoon settlement reads, pass credentials through CLI runtime and recovery commands, and retain RPC fallback with an explicit opt-out (2026-11-06).
+
 - Recover Lighter deposits that were broadcast but never mined in `repair`: rebroadcast while the nonce is free, and return the reserves only when the transaction that consumed the nonce is proven to have moved nothing out of the Safe (2026-11-05)
 - Store gas used and gas price the right way round on the main execution path; they were swapped, which left their product correct but showed wrong gas figures in reports (2026-11-05)
 - Estimate gas for Lighter approvals, L1 withdrawals and claims, and make 400,000 the whole limit of a Lighter deposit, so hot wallets are no longer asked to hold 5 to 10 times the real cost up front (2026-11-05)

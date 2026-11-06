@@ -50,6 +50,8 @@ def check_universe(
     vault_address: Optional[str] = shared_options.vault_address,
     vault_adapter_address: Optional[str] = shared_options.vault_adapter_address,
     vault_payment_forwarder_address: Optional[str] = shared_options.vault_payment_forwarder,
+    hypersync_api_key: str | None = shared_options.hypersync_api_key,
+    use_hypersync: bool = shared_options.use_hypersync,
 ):
     """Checks that the trading universe is healthy.
 
@@ -57,6 +59,7 @@ def check_universe(
     and will display all available trading pairs.
     """
 
+    hypersync_api_key = hypersync_api_key if use_hypersync else None
     global logger
 
     id = prepare_executor_id(id, strategy_file)
@@ -116,6 +119,7 @@ def check_universe(
             confirmation_timeout=datetime.timedelta(seconds=60),  # Not used
             token_cache=token_cache,
             deployment_file=resolve_deployment_file(id, state_file),
+            hypersync_api_key=hypersync_api_key,
         )
     else:
         execution_model = sync_model = valuation_model_factory = pricing_model_factory = None

@@ -529,6 +529,7 @@ def _claim_unless_paid(
     usdc: TokenDetails,
     claimable: Decimal,
     journal: dict[str, Any],
+    hypersync_api_key: str | None = None,
 ) -> str | None:
     """Claim a withdrawal to the Safe, unless Lighter's relayer has paid it.
 
@@ -548,6 +549,8 @@ def _claim_unless_paid(
     :param journal:
         Test-trade journal holding the withdrawal baseline. A journal from an
         earlier release has none, and every failure is then raised.
+    :param hypersync_api_key:
+        Explicit HyperSync credential; disabled or absent credentials use RPC in executor callers.
     :return:
         Claim transaction hash, or ``None`` if the relayer paid.
     """
@@ -562,6 +565,7 @@ def _claim_unless_paid(
             amount=claimable,
             pending_before=Decimal(str(journal["withdrawal_pending_before"])),
             from_block=int(journal["withdrawal_from_block"]),
+            hypersync_api_key=hypersync_api_key,
         )
 
     if is_paid():
@@ -760,8 +764,11 @@ def lagoon_lighter_test_trade(
         envvar="LIGHTER_WITHDRAW_TIMEOUT",
     ),
     auto_approve: bool = Option(False, envvar="AUTO_APPROVE"),
+    hypersync_api_key: str | None = shared_options.hypersync_api_key,
+    use_hypersync: bool = shared_options.use_hypersync,
 ) -> None:
     """Deposit, trade, withdraw and NAV-sync one funded Lagoon Lighter vault."""
+    hypersync_api_key = hypersync_api_key if use_hypersync and not simulate else None
     if simulate:
         raise LighterTestTradeError("lagoon-lighter-test-trade does not support SIMULATE=true")
     if asset_management_mode != AssetManagementMode.lagoon:
@@ -889,6 +896,7 @@ def lagoon_lighter_test_trade(
                 hot_wallet=hot_wallet,
                 unit_testing=unit_testing,
                 calculate_valuation_func=valuation_func,
+                hypersync_api_key=hypersync_api_key,
             )
             if store.is_pristine():
                 state = State()
@@ -1081,7 +1089,7 @@ def lagoon_lighter_test_trade(
                         int(journal["withdrawal_requested_at"]),
                     ),
                 )
-                claim_tx_hash = _claim_unless_paid(web3, hot_wallet, vault, usdc, claimable, journal)
+                claim_tx_hash = _claim_unless_paid(web3, hot_wallet, vault, usdc, claimable, journal, hypersync_api_key=hypersync_api_key)
                 safe_after = usdc.fetch_balance_of(vault.safe_address)
                 if claim_tx_hash and usdc.convert_to_raw(safe_after - safe_before) != usdc.convert_to_raw(claimable):
                     raise LighterTestTradeError("Safe did not receive the claimed Lighter withdrawal")

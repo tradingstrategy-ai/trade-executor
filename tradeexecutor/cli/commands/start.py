@@ -226,8 +226,11 @@ def start(
     notebook_report: Optional[Path] = shared_options.notebook_report,
     html_report: Optional[Path] = shared_options.html_report,
     cache_path: Optional[Path] = shared_options.cache_path,
+    hypersync_api_key: str | None = shared_options.hypersync_api_key,
+    use_hypersync: bool = shared_options.use_hypersync,
 ):
     """Launch Trade Executor instance."""
+    hypersync_api_key = hypersync_api_key if use_hypersync and not simulate else None
     global logger
 
     started_at = native_datetime_utc_now()
@@ -408,6 +411,7 @@ def start(
             # the state file.
             deployment_file=deployment_file,
             lighter_key_management=lighter_key_management,
+            hypersync_api_key=hypersync_api_key,
         )
 
         # TODO: Unit test hack

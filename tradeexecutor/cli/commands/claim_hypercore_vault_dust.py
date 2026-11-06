@@ -38,6 +38,8 @@ def claim_hypercore_vault_dust(
         envvar="MAX_CLAIM_USDC",
         help="Maximum per-vault Hypercore dust claim amount in USDC.",
     ),
+    hypersync_api_key: str | None = shared_options.hypersync_api_key,
+    use_hypersync: bool = shared_options.use_hypersync,
 ):
     """Claim live Hypercore vault dust that is not represented in state."""
     id = prepare_executor_id(id, strategy_file)
@@ -77,4 +79,5 @@ def claim_hypercore_vault_dust(
         cache_path=cache_path,
         unit_testing=unit_testing,
         log_level=log_level or "info",
+        hypersync_api_key=hypersync_api_key if use_hypersync else None,
     )

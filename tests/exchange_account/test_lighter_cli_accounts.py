@@ -19,6 +19,10 @@ from pytest_mock import MockerFixture
 from typer.main import get_command
 from web3 import Web3
 
+import tradeexecutor.cli.commands.check_accounts as check_module
+import tradeexecutor.cli.commands.correct_accounts as correct_module
+import tradeexecutor.cli.commands.repair as repair_module
+
 from tradeexecutor.cli.main import app
 from tradeexecutor.exchange_account.lighter import create_lighter_exchange_account_pair
 from tradeexecutor.exchange_account.state import open_exchange_account_position
@@ -125,6 +129,7 @@ def environment(web3: Web3, strategy_file: Path, state_file: Path) -> dict[str, 
         "LIGHTER_ACCOUNT_INDEX": str(LIGHTER_ACCOUNT_INDEX),
         "UNIT_TESTING": "true",
         "LOG_LEVEL": "disabled",
+        "HYPERSYNC_API_KEY": "test-hypersync-key",
     }
 
 
@@ -156,7 +161,9 @@ def test_check_accounts_detects_changed_lighter_equity(
 
     # 2. Run the real ``check-accounts`` Typer command against fixed-block Anvil.
     mocker.patch.dict("os.environ", environment, clear=True)
+    reconcile = mocker.spy(check_module, "reconcile_verified_lighter_transfers")
     _run_cli_command("check-accounts", expected_exit_code=1)
+    assert reconcile.call_args.kwargs["hypersync_api_key"] == "test-hypersync-key"
 
     # 3. Verify the command reports a mismatch and leaves accounting unchanged.
     state = State.read_json_file(state_file)
@@ -189,7 +196,9 @@ def test_correct_accounts_updates_changed_lighter_equity(
     mocker.patch.dict("os.environ", environment, clear=True)
 
     # 2. Run the real ``correct-accounts`` Typer command and reload its state.
+    reconcile = mocker.spy(correct_module, "reconcile_verified_lighter_transfers")
     _run_cli_command("correct-accounts", expected_exit_code=0)
+    assert reconcile.call_args.kwargs["hypersync_api_key"] == "test-hypersync-key"
     state = State.read_json_file(state_file)
     position = next(iter(state.portfolio.open_positions.values()))
 
@@ -233,7 +242,9 @@ def test_repair_preserves_healthy_lighter_position(
     # 2. Run the real ``repair`` Typer command against fixed-block Anvil.
     repair_environment = {**environment, "AUTO_APPROVE": "true"}
     mocker.patch.dict("os.environ", repair_environment, clear=True)
+    reconcile = mocker.spy(repair_module, "reconcile_verified_lighter_transfers")
     get_command(app).main(args=["repair"], standalone_mode=False)
+    assert reconcile.call_args.kwargs["hypersync_api_key"] == "test-hypersync-key"
 
     # 3. Verify the healthy Lighter position and its accounting are unchanged.
     state = State.read_json_file(state_file)

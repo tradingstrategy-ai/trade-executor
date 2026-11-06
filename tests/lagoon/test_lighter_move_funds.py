@@ -28,6 +28,8 @@ from typer.main import get_command
 from web3 import Web3
 
 from tradeexecutor.cli.commands.lagoon_lighter_test_trade import LighterWithdrawalRejected
+import tradeexecutor.cli.commands.lighter_move_funds as move_module
+
 from tradeexecutor.cli.main import app
 from tradeexecutor.ethereum.lagoon.vault import LagoonVaultSyncModel
 from tradeexecutor.exchange_account.lighter import (
@@ -325,9 +327,11 @@ def test_cli_lighter_move_funds_records_safe_and_lighter_custody(
         "LIGHTER_ACCOUNT_INDEX": str(LIGHTER_ACCOUNT_INDEX),
         "LIGHTER_OPERATOR_RECORD_FILE": operator_record_file.as_posix(),
         "LOG_LEVEL": "disabled",
+        "HYPERSYNC_API_KEY": "test-hypersync-key",
         "UNIT_TESTING": "true",
     }
     mocker.patch.dict("os.environ", environment, clear=True)
+    resume = mocker.spy(move_module, "_resume_withdrawal")
     cli = get_command(app)
 
     # 3. Run completed, interrupted and definitively rejected transfers through Typer.
@@ -398,3 +402,5 @@ def test_cli_lighter_move_funds_records_safe_and_lighter_custody(
     assert {trade.other_data["direction"] for trade in transfers} == {"deposit", "withdraw"}
     assert observed == {"deposits": 2, "requests": 3, "withdrawals": 2, "history_checks": 3, "claims": 2}
     assert delegated_private_key not in state_file.read_text()
+    assert resume.call_args.kwargs["hypersync_api_key"] == "test-hypersync-key"
+    assert "test-hypersync-key" not in state_file.read_text()

@@ -229,6 +229,7 @@ class LighterRouting(RoutingModel):
         lighter_contract: str = LIGHTER_L1_CONTRACT,
         key_management: LighterKeyManagement | None = None,
         session: LighterSession | None = None,
+        hypersync_api_key: str | None = None,
     ):
         """Create the Lighter exchange-account router.
 
@@ -240,8 +241,11 @@ class LighterRouting(RoutingModel):
             CLI-parsed Lighter API keys and wait settings.
         :param session:
             Optional public Lighter API client, primarily for tests.
+        :param hypersync_api_key:
+            Explicit HyperSync credential; disabled or absent credentials use RPC in executor callers.
         """
         super().__init__({}, reserve_token_address.lower())
+        self.hypersync_api_key = hypersync_api_key
         self.lighter_contract = Web3.to_checksum_address(lighter_contract)
         self.key_management = key_management or LighterKeyManagement()
         self.lighter_session = session if session is not None else create_executor_lighter_session()
@@ -347,7 +351,7 @@ class LighterRouting(RoutingModel):
             _find_receipt(receipts, transaction)
             for transaction in trade.blockchain_transactions
         ]
-        if any(receipt.get("status") != 1 for receipt in transaction_receipts) and get_lighter_relayer_payout(web3, trade) is None:
+        if any(receipt.get("status") != 1 for receipt in transaction_receipts) and get_lighter_relayer_payout(web3, trade, hypersync_api_key=self.hypersync_api_key) is None:
             # A reverted claim is only a failure if the money has not arrived:
             # Lighter's relayer claiming first also reverts it.
             report_failure(
@@ -365,6 +369,7 @@ class LighterRouting(RoutingModel):
                 self.lighter_session,
                 receipts=transaction_receipts,
                 deposit_wait_timeout=DEFAULT_LIGHTER_DEPOSIT_TIMEOUT_SECONDS,
+                hypersync_api_key=self.hypersync_api_key,
             )
         except LighterTransferVerificationError as error:
             raise RuntimeError(str(error)) from error
@@ -591,6 +596,7 @@ class LighterRouting(RoutingModel):
             from_block=int(trade.other_data["lighter_withdrawal_from_block"]),
             timeout=self.key_management.withdrawal_timeout,
             zk_lighter=self.lighter_contract,
+            hypersync_api_key=self.hypersync_api_key,
         )
         self._finish_withdrawal(routing_state, trade, amount, paid)
 
@@ -668,7 +674,7 @@ class LighterRouting(RoutingModel):
                 str(request_id),
             )
         )
-        paid = get_lighter_relayer_payout(routing_state.tx_builder.web3, trade) is not None
+        paid = get_lighter_relayer_payout(routing_state.tx_builder.web3, trade, hypersync_api_key=self.hypersync_api_key) is not None
         self._finish_withdrawal(routing_state, trade, claimable, paid)
 
     def _prepare_claim(

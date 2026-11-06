@@ -34,6 +34,8 @@ def reset(
 
     rpc_kwargs: dict | None = None,
 
+    hypersync_api_key: str | None = shared_options.hypersync_api_key,
+    use_hypersync: bool = shared_options.use_hypersync,
 ):
     """Reset the strategy state.
 
@@ -43,6 +45,7 @@ def reset(
     All strategy live execution history is lost.
     """
 
+    hypersync_api_key = hypersync_api_key if use_hypersync else None
     global logger
 
     id = prepare_executor_id(id, strategy_file)
@@ -71,6 +74,7 @@ def reset(
         web3,
         hot_wallet,
         vault_address,
+        hypersync_api_key=hypersync_api_key,
     )
 
     logger.info("RPC details")

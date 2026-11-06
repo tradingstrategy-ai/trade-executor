@@ -173,6 +173,8 @@ def console(
 
     code: Optional[str] = Option(None, envvar="CODE", help="Run this Python snipped and exit"),
 
+    hypersync_api_key: str | None = shared_options.hypersync_api_key,
+    use_hypersync: bool = shared_options.use_hypersync,
 ):
     """Open interactive IPython console to explore state.
 
@@ -191,6 +193,7 @@ def console(
 
     """
 
+    hypersync_api_key = hypersync_api_key if use_hypersync and not simulate else None
     global logger
 
     id = prepare_executor_id(id, strategy_file)
@@ -265,6 +268,7 @@ def console(
         vault_payment_forwarder_address=vault_payment_forwarder_address,
         routing_hint=mod.trade_routing,
         deployment_file=resolve_deployment_file(id, state_file),
+        hypersync_api_key=hypersync_api_key,
     )
 
     logger.info("Valuation model factory is %s, pricing model factory is %s", valuation_model_factory, pricing_model_factory)
