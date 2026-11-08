@@ -8,9 +8,13 @@ cycle:
 
 1. Safe liquidity: withdraw what pending Lagoon redemptions need, from the
    master first and then from the sub-accounts with the most free collateral.
-2. Deposit idle Safe cash to the master.
+2. Deposit idle Safe cash to the master, optionally capped at fixed sleeve needs.
 3. Withdraw overweight sub-accounts to the Safe.
 4. Fund underweight sub-accounts from the master.
+
+Percentage weights keep the existing two-way rebalance. Fixed dollar minimums
+only fund shortfalls and retain sleeve profits. With Safe surplus retention,
+unused master cash is withdrawn only after sleeve funding is complete.
 
 Every movement is sized from balances observed at decision time, never from
 the expected result of another movement in the same cycle, so the plan stays
@@ -174,26 +178,32 @@ def get_lighter_account_pairs(pairs: Sequence[TradingPairIdentifier]) -> tuple[T
     return get_lighter_master_pair(pairs), [pair for pair in pairs if is_lighter_sub_account_pair(pair)]
 
 
-def get_sub_account_weights(sub_accounts: Iterable[SubAccount] | None, sub_account_ids: Collection[str]) -> dict[str, Decimal]:
-    """Return the target weight of every declared sub-account that has one.
+def get_sub_account_targets(sub_accounts: Iterable[SubAccount] | None, sub_account_ids: Collection[str]) -> tuple[dict[str, Decimal], dict[str, Decimal]]:
+    """Resolve managed targets without including unmanaged accounts in allocation.
 
     :param sub_accounts:
         ``Parameters.lighter_sub_accounts``.
     :param sub_account_ids:
         Ids of the sub-account pairs in the universe.
     :return:
-        Target weight per sub-account id.
+        Weight and fixed USDC minimum mappings keyed by sub-account id.
     :raise ValueError:
-        If a weighted sub-account has no pair in the universe.
+        If a managed sub-account has no pair or the strategy mixes target modes.
     """
     weights = {}
+    amounts = {}
     for sub_account in sub_accounts or ():
-        if sub_account.weight is None:
+        if sub_account.weight is None and sub_account.minimum_usd is None:
             continue
         if sub_account.id not in sub_account_ids:
             raise ValueError(f"Sub-account {sub_account.id!r} is not in the strategy universe")
-        weights[sub_account.id] = Decimal(str(sub_account.weight))
-    return weights
+        if sub_account.minimum_usd is not None:
+            amounts[sub_account.id] = sub_account.minimum_usd
+        else:
+            weights[sub_account.id] = Decimal(str(sub_account.weight))
+    if weights and amounts:
+        raise ValueError("Lighter sub-accounts must use either weights or fixed minimums, not both")
+    return weights, amounts
 
 
 def _policy_trade(trade: TradeExecution, policy: str) -> TradeExecution:
@@ -234,17 +244,22 @@ def decide_lighter_cash_management(input: StrategyInput) -> list[TradeExecution]
     - ``lighter_free_collateral_buffer_usd``: free collateral kept on the master
     - ``lighter_min_transfer_usd``: smallest movement; defaults to Lighter's 1 USDC minimum
     - ``lighter_sub_accounts``: the declared sub-accounts; those with a
-      ``weight`` get that share of the investable capital
+      ``weight`` get that share of investable capital, or use ``minimum_usd``
+      for fixed USDC equity minimums; allocation modes cannot be mixed
     - ``lighter_rebalance_band_usd``: tolerated distance from a target, default zero
     - ``lighter_transfer_fee_usd``: fee budgeted per funding transfer, default
       zero, as Lighter charges nothing for same-owner transfers
+    - ``lighter_keep_surplus_in_safe``: retain cash beyond sleeve funding needs
+      in the Safe; defaults to false and requires fixed minimums
 
     Every movement is one trade made with the
     :py:class:`~tradeexecutor.strategy.pandas_trader.position_manager.PositionManager`
     custody methods and tagged with the rule that created it in
-    ``other_data["policy"]``. Sub-accounts are rebalanced through the Safe:
-    an overweight sub-account is withdrawn, and the proceeds are deposited
-    to the master and sent on in later cycles.
+    ``other_data["policy"]``. Weighted sub-accounts are rebalanced through the
+    Safe: an overweight account is withdrawn, and proceeds are deposited to
+    the master and sent on in later cycles. Fixed minimums only fund
+    shortfalls; sleeve profits are retained. Surplus master cash returns to
+    the Safe after funding when ``lighter_keep_surplus_in_safe`` is enabled.
 
     :param input:
         Strategy cycle input.
@@ -262,12 +277,21 @@ def decide_lighter_cash_management(input: StrategyInput) -> list[TradeExecution]
     master_buffer = Decimal(str(parameters.lighter_free_collateral_buffer_usd))
     _master_pair, sub_pairs = get_lighter_account_pairs(list(input.strategy_universe.iterate_pairs()))
     sub_account_ids = [get_lighter_account_id(pair) for pair in sub_pairs]
+    weights, amounts = get_sub_account_targets(parameters.get("lighter_sub_accounts"), sub_account_ids)
     master_free = position_manager.get_lighter_free_collateral()
     master_spendable = max(Decimal(0), master_free - master_buffer)
     sub_balances = {
         account_id: SubAccountBalance(equity=position_manager.get_lighter_balance(account_id), free=position_manager.get_lighter_free_collateral(account_id))
         for account_id in sub_account_ids
     }
+    keep_surplus_in_safe = parameters.get("lighter_keep_surplus_in_safe", False)
+    if keep_surplus_in_safe and not amounts:
+        raise ValueError("Keeping Lighter surplus in the Safe requires fixed sub-account minimums")
+    transfer_fee = Decimal(str(parameters.get("lighter_transfer_fee_usd") or 0))
+    rebalance_band = Decimal(str(parameters.get("lighter_rebalance_band_usd") or 0))
+    funding_deficits = [target - sub_balances[account_id].equity for account_id, target in amounts.items() if target > sub_balances[account_id].equity]
+    funding_need = sum(funding_deficits, Decimal(0)) + transfer_fee * len(funding_deficits)
+    active_funding_need = sum((deficit + transfer_fee for deficit in funding_deficits if deficit > rebalance_band), Decimal(0))
 
     # 1. Safe liquidity, and 2. idle Safe cash, decided by the single-account manager
     # over the aggregate free collateral of all accounts.
@@ -287,20 +311,31 @@ def decide_lighter_cash_management(input: StrategyInput) -> list[TradeExecution]
     if decision.direction == "withdraw":
         return _withdraw_for_safe_liquidity(position_manager, decision.amount_usdc, master_spendable, sub_balances, minimum)
     if decision.direction == "deposit":
-        return [_policy_trade(position_manager.deposit_to_lighter(decision.amount_usdc, notes="Automatic Lighter cash management: idle_safe_cash"), "idle_safe_cash")]
+        amount = decision.amount_usdc
+        if keep_surplus_in_safe:
+            # Deposit only missing sleeve capital; investor surplus stays liquid in the Safe.
+            amount = round_down_to_usdc(min(amount, max(Decimal(0), active_funding_need + master_buffer - master_free)))
+        if amount >= minimum and amount > 0:
+            return [_policy_trade(position_manager.deposit_to_lighter(amount, notes="Automatic Lighter cash management: idle_safe_cash"), "idle_safe_cash")]
 
-    # 3. and 4. Sub-account target weights; a sub-account without a weight is unmanaged and left alone.
-    weights = get_sub_account_weights(parameters.get("lighter_sub_accounts"), sub_account_ids)
-    if not weights:
+    # 3. and 4. Rebalance managed equity targets; unmanaged accounts stay untouched.
+    if not weights and not amounts:
         return []
     movements = plan_sub_account_rebalance(
         master_free_usdc=master_spendable,
-        sub_accounts={account_id: sub_balances[account_id] for account_id in weights},
-        target_weights=weights,
+        sub_accounts={account_id: sub_balances[account_id] for account_id in (weights or amounts)},
+        target_weights=weights or None,
+        minimum_amounts_usdc=amounts or None,
         minimum_transfer_usdc=minimum,
-        rebalance_band_usdc=Decimal(str(parameters.get("lighter_rebalance_band_usd") or 0)),
-        transfer_fee_usdc=Decimal(str(parameters.get("lighter_transfer_fee_usd") or 0)),
+        rebalance_band_usdc=rebalance_band,
+        transfer_fee_usdc=transfer_fee,
     )
+    if keep_surplus_in_safe and not movements:
+        # Reserve even small sleeve shortfalls so price drift cannot bounce funding
+        # between the Safe and master before a sleeve crosses its rebalance band.
+        surplus = round_down_to_usdc(max(Decimal(0), master_spendable - funding_need))
+        if surplus >= minimum and surplus > rebalance_band:
+            return [_policy_trade(position_manager.withdraw_from_lighter(LIGHTER_MASTER_ACCOUNT_ID, surplus, notes="Automatic Lighter cash management: unallocated_cash"), "unallocated_cash")]
     trades = []
     for account_id, amount in movements:
         if amount < 0:
