@@ -109,12 +109,21 @@ class Parameters:
 | Parameter | Purpose |
 |---|---|
 | `lighter_cash_management` | Enables Lighter custody routing in `start` |
-| `lighter_sub_accounts` | The sub-accounts as `SubAccount(id, name, weight)` values. The id is the stable key the strategy moves funds with and the state maps to a Lighter account; never change it after deployment. The weight is the account's target share of the capital for the automatic cash policy |
+| `lighter_sub_accounts` | The sub-accounts as `SubAccount` values. Keep each id unchanged after deployment. Use `weight` for a share of investable capital or `minimum_usd=Decimal(...)` for a fixed USDC equity floor; a strategy cannot mix the two modes. With neither, the account is unmanaged |
 | `lighter_safe_cash_buffer_usd` | USDC the automatic policy keeps in the Safe |
 | `lighter_free_collateral_buffer_usd` | Free collateral the policy keeps on the master account |
 | `lighter_min_transfer_usd` | Optional; defaults to Lighter's 1 USDC minimum |
 | `lighter_rebalance_band_usd` | Optional tolerance before the policy moves capital between accounts; default 0 |
 | `lighter_transfer_fee_usd` | Optional fee budget per transfer; default 0, as Lighter charges nothing between accounts of one owner |
+| `lighter_keep_surplus_in_safe` | Optional; with fixed minimums, deposit only sleeve shortfalls and return excess master cash to the Safe. Defaults to false, leaving unallocated cash on the master |
+
+Fixed minimums are absolute and are not scaled down when cash is insufficient.
+Funding uses available master collateral, largest shortfall first. A zero
+minimum receives no automatic funding. Profits above a minimum remain in that
+sleeve; only redemption liquidity can trigger withdrawals from these sleeves.
+Minimums refer to account equity, including trading profit and loss, rather
+than the notional value or margin requirement of open positions. The existing
+weighted mode still trims overweight sleeves and funds underweight sleeves.
 
 Lighter assigns the account indices at deployment. `lagoon-deploy-vault`
 creates one sub-account per declared `SubAccount`, `init` records the

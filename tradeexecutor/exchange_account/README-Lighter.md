@@ -198,7 +198,7 @@ also carries the Safe module address, so it loads as an operator record.
 ### Strategy setup for sub-accounts
 
 A strategy declares the sub-strategies it runs as `SubAccount` values in
-`Parameters`: a stable id, a name and the account's target weight. See
+`Parameters`: a stable id, a name and an optional weight or fixed equity minimum. See
 [strategy parameters](../../docs/strategy-parameters.md) for what belongs
 in `Parameters` and what does not. No Lighter account
 index appears in the strategy. The id is the key the strategy moves funds
@@ -284,6 +284,36 @@ Optional parameters: `lighter_min_transfer_usd` (defaults to Lighter's 1 USDC
 minimum), `lighter_rebalance_band_usd` (default 0) and
 `lighter_transfer_fee_usd` (default 0, as Lighter charges nothing for
 transfers between accounts of one owner).
+
+For fixed budgets, replace every managed account's weight with
+`minimum_usd=Decimal(...)`, for example:
+
+```python
+lighter_sub_accounts = [
+    SubAccount(id="trend", name="Trend following", minimum_usd=Decimal(6000)),
+    SubAccount(id="arb", name="Funding-rate arbitrage", minimum_usd=Decimal(1000)),
+]
+lighter_keep_surplus_in_safe = True
+```
+
+Use weights or fixed minimums throughout a strategy, never both. An account
+with neither is unmanaged; a zero minimum receives no automatic funding.
+Fixed minimums measure equity, including trading profit and loss, and stay
+unchanged when NAV changes. Profit above a minimum stays in that sleeve.
+Only redemption liquidity triggers withdrawals from these sleeves. The
+existing weighted mode still rebalances both above and below its targets.
+If cash is short, the largest shortfall is funded first from available master
+collateral. Minimums are not scaled down and the policy does not borrow.
+
+With `lighter_keep_surplus_in_safe=True`, only shortfalls outside the rebalance
+band are deposited from the Safe, and surplus master cash is withdrawn to the
+Safe in a separate cycle, subject to the same rebalance band. Cash reserved for
+small sleeve shortfalls stays on the master to avoid repeated deposits and
+withdrawals as prices move across the band. Additional investor capital stays
+in cash until existing minimums need refilling or are raised manually. Losses
+beyond the band trigger automatic refills; sleeve profits are not trimmed.
+Master surplus is swept only after sleeve funding is complete. The default
+is false, retaining the existing policy of moving idle Safe cash to the master.
 
 Each cycle moves one kind of capital, sized from observed balances: first
 Safe liquidity for pending redemptions (master first, then the sub-accounts

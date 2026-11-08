@@ -144,25 +144,31 @@ def plan_sub_account_rebalance(
     *,
     master_free_usdc: Decimal,
     sub_accounts: dict[str, SubAccountBalance],
-    target_weights: dict[str, Decimal],
+    target_weights: dict[str, Decimal] | None = None,
+    minimum_amounts_usdc: dict[str, Decimal] | None = None,
     minimum_transfer_usdc: Decimal,
     rebalance_band_usdc: Decimal,
     transfer_fee_usdc: Decimal = Decimal(0),
 ) -> list[tuple[str, Decimal]]:
-    """Plan one kind of capital movement towards sub-account target weights.
+    """Plan capital movements using percentage weights or fixed equity minimums.
 
     Capital is split between sub-accounts by ``target_weights`` of the
     investable capital: the master's free collateral plus every managed
     sub-account's equity. Any weight left unassigned stays on the master.
-    Pass only the sub-accounts that have a target weight: an account without
-    one is unmanaged, and its capital is neither counted nor moved.
+    Alternatively, ``minimum_amounts_usdc`` sets absolute equity floors that
+    do not change with portfolio size. These accounts are only topped up:
+    profit above a floor stays in the sleeve and never triggers a withdrawal.
+    Minimums are not scaled down when cash is insufficient: funding stops at
+    the master's available budget, leaving shortfalls for later cycles.
+    Unallocated cash stays on the master. Use one allocation mode per plan.
+    Pass only managed sub-accounts: unmanaged capital is neither counted nor moved.
 
     The plan contains either withdrawals or fundings, never both, so no
     movement in a cycle depends on another one in the same cycle:
 
-    - Overweight sub-accounts are withdrawn to the Safe, capped by their free
-      collateral, because margin in use cannot move. A later cycle deposits
-      the proceeds to the master.
+    - In weighted mode, overweight sub-accounts are withdrawn to the Safe,
+      capped by free collateral because margin in use cannot move. A later
+      cycle deposits the proceeds to the master.
     - Otherwise underweight sub-accounts are funded from the master's free
       collateral, most underweight first, with the transfer fee budgeted on
       top of each amount.
@@ -177,7 +183,9 @@ def plan_sub_account_rebalance(
     :param sub_accounts:
         Balances keyed by sub-account id, in declaration order.
     :param target_weights:
-        Target share of investable capital per sub-account id.
+        Target share of investable capital per sub-account id; omit for fixed minimums.
+    :param minimum_amounts_usdc:
+        Fixed minimum equity per sub-account id; omit for weighted targets.
     :param minimum_transfer_usdc:
         Smallest movement worth submitting.
     :param rebalance_band_usdc:
@@ -196,19 +204,26 @@ def plan_sub_account_rebalance(
         "transfer_fee_usdc": transfer_fee_usdc,
     }.items():
         _validate_non_negative_decimal(name, value)
-    unknown = set(target_weights) - set(sub_accounts)
+    if (target_weights is None) == (minimum_amounts_usdc is None):
+        raise ExchangeCashManagementError("Provide either target weights or fixed minimum amounts")
+    configured = minimum_amounts_usdc if minimum_amounts_usdc is not None else target_weights
+    unknown = set(configured) - set(sub_accounts)
     if unknown:
-        raise ExchangeCashManagementError(f"Target weights for unknown sub-accounts: {sorted(unknown)}")
-    if any(weight < 0 for weight in target_weights.values()) or sum(target_weights.values(), Decimal(0)) > 1:
-        raise ExchangeCashManagementError("Sub-account target weights must be non-negative and sum to at most one")
-
-    investable = master_free_usdc + sum((balance.equity for balance in sub_accounts.values()), Decimal(0))
-    targets = {account_id: target_weights.get(account_id, Decimal(0)) * investable for account_id in sub_accounts}
+        raise ExchangeCashManagementError(f"Targets for unknown sub-accounts: {sorted(unknown)}")
+    for account_id, value in configured.items():
+        _validate_non_negative_decimal(f"Target for {account_id}", value)
+    if minimum_amounts_usdc is not None:
+        targets = {account_id: minimum_amounts_usdc.get(account_id, Decimal(0)) for account_id in sub_accounts}
+    else:
+        if sum(target_weights.values(), Decimal(0)) > 1:
+            raise ExchangeCashManagementError("Sub-account target weights must be non-negative and sum to at most one")
+        investable = master_free_usdc + sum((balance.equity for balance in sub_accounts.values()), Decimal(0))
+        targets = {account_id: target_weights.get(account_id, Decimal(0)) * investable for account_id in sub_accounts}
 
     withdrawals = []
     for account_id, balance in sub_accounts.items():
         excess = balance.equity - targets[account_id]
-        if excess > rebalance_band_usdc:
+        if minimum_amounts_usdc is None and excess > rebalance_band_usdc:
             amount = round_down_to_usdc(min(excess, balance.free))
             if amount >= minimum_transfer_usdc and amount > 0:
                 withdrawals.append((account_id, -amount))

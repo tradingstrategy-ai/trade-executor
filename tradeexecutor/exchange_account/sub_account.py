@@ -12,6 +12,7 @@ positions from then on.
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Any
 
 from tradeexecutor.state.position import TradingPosition
@@ -39,15 +40,25 @@ class SubAccount:
     #: Human-readable name of the sub-strategy run in this account.
     name: str
 
-    #: Target share of the investable capital for the automatic cash policy; ``None`` leaves the account unmanaged.
+    #: Target share of investable capital; mutually exclusive with ``minimum_usd``.
     weight: float | None = None
 
+    #: Fixed equity minimum for the cash policy, denominated in USDC for Lighter.
+    #: Fund shortfalls; retain profit above the minimum unless redemptions need it.
+    #: With neither a weight nor a fixed minimum, the account is unmanaged.
+    minimum_usd: Decimal | None = None
+
     def __post_init__(self) -> None:
-        """Reject ids that cannot serve as stable keys."""
+        """Reject unstable ids and ambiguous or invalid minimum allocations."""
         if not SUB_ACCOUNT_ID_PATTERN.match(self.id):
             raise ValueError(f"Sub-account id must match {SUB_ACCOUNT_ID_PATTERN.pattern}: {self.id!r}")
         if self.id == LIGHTER_MASTER_ACCOUNT_ID:
             raise ValueError(f"{LIGHTER_MASTER_ACCOUNT_ID!r} is the master account, not a sub-account id")
+        if self.minimum_usd is not None:
+            if self.weight is not None:
+                raise ValueError("A sub-account cannot have both a weight and a fixed minimum")
+            if not isinstance(self.minimum_usd, Decimal) or not self.minimum_usd.is_finite() or self.minimum_usd < 0:
+                raise ValueError("Sub-account minimum_usd must be a finite non-negative Decimal")
 
 
 def get_sub_account_ids(sub_accounts: Iterable[SubAccount] | None) -> list[str]:
