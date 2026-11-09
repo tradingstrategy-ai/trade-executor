@@ -800,7 +800,19 @@ must be applied and the normal scanner must publish corrected metadata before
 the downloaded universe reflects these fixes. A current adapter preflight
 remains necessary at execution time.
 
+## Backtest data windows
+
+When extending a backtest, rebuild its universe for the same
+requested end. `create_from_dataset()` retains that end as `data_load_end_at`,
+and `run_backtest()` rejects a later run on a prebuilt universe before indicators or trades. Generated
+candle dates cannot establish the original data window or observation freshness.
+
 ## Externalised fees in backtests
+
+Hyper-AI v14 uses this shared model with a separate fixed sell-tax allowance.
+V13's module docstring pins executor `09cc233` for its legacy pricing wrapper.
+Preserve that baseline or migrate the caller; removing the engine's assertion
+would hide duplicate fee handling.
 
 `backtest/vault_fees.py` calculates externalised management and performance fees
 from the position's successful trades. The normal runner binds the portfolio
