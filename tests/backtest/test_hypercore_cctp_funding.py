@@ -310,34 +310,32 @@ def test_lighter_synthetic_quote_uses_ethereum_cash(idle: int) -> None:
 
 
 @pytest.mark.parametrize('satellite', [False, True])
-def test_sequential_buy_snaps_dust_before_refusing_unfunded_bridge(satellite: bool) -> None:
+def test_sequential_buy_snaps_dust_before_refusing_unfunded_buy(satellite: bool) -> None:
     """Reuse State's dust tolerance while refusing a genuinely unfunded next trade.
 
-    1. Hold $100 on the hub and $100 in a HyperEVM bridge ledger.
-    2. Buy on either chain with sub-raw-unit dust, then request an unfunded bridge.
+    1. Hold $200 on the hub and plan $100 of HyperEVM funding.
+    2. Bridge first, buy on either chain with dust, then attempt an unfunded buy.
     3. Verify the buy settles at $100 and only the unfunded work expires.
     """
-    # 1. Hold $100 on the hub and $100 in a HyperEVM bridge ledger.
+    # 1. Hold $200 on the hub and plan $100 of HyperEVM funding.
     universe = _universe()
     reserve = universe.get_reserve_asset()
     bridge = next(p for p in universe.iterate_pairs() if p.is_cctp_bridge() and p.get_destination_chain_id() == 999)
     pair = next(p for p in universe.iterate_pairs() if p.base.token_symbol == ('physical' if satellite else 'hub'))
+    unfunded_pair = next(p for p in universe.iterate_pairs() if p.base.token_symbol == ('native' if satellite else 'cash'))
     state = State()
     state.portfolio.initialise_reserves(reserve, reserve_token_price=1.0)
     state.portfolio.get_default_reserve_position().quantity = Decimal(200)
     _, funding, _ = state.create_trade(START, bridge, None, Decimal(100), 1.0, TradeType.rebalance, reserve, 1.0)
-    state.start_execution(START, funding)
-    state.mark_broadcasted(START, funding)
-    state.mark_trade_success(START, funding, executed_price=1.0, executed_amount=Decimal(100),
-        executed_reserve=Decimal(100), lp_fees=0.0, native_token_price=1.0)
-
-    # 2. Buy on either chain with sub-raw-unit dust, then request an unfunded bridge.
+    # 2. Bridge first, buy on either chain with dust, then attempt an unfunded buy.
     _, buy, _ = state.create_trade(START, pair, None, Decimal('100.0000001234'), 1.0, TradeType.rebalance, reserve, 1.0)
-    _, out, _ = state.create_trade(START, bridge, None, Decimal(101), 1.0, TradeType.rebalance, reserve, 1.0)
+    _, unfunded, _ = state.create_trade(START, unfunded_pair, None, Decimal(1), 1.0, TradeType.rebalance, reserve, 1.0)
+    batch = [funding, buy, unfunded]
+    assert batch == sorted(batch, key=lambda trade: trade.get_execution_sort_position())
     # Mock transport and executor wiring to exercise real State allocation without RPCs.
     routing = MagicMock()
     routing.check_trade_before_execution.return_value = None
-    routing.setup_trades.side_effect = lambda **kwargs: state.mark_broadcasted(START, buy)
+    routing.setup_trades.side_effect = lambda **kwargs: state.mark_broadcasted(START, kwargs['trades'][0])
     executor = MagicMock(spec=EthereumExecution)
     executor.max_slippage = None
 
@@ -349,16 +347,16 @@ def test_sequential_buy_snaps_dust_before_refusing_unfunded_bridge(satellite: bo
 
     executor._execute_trade_batch.side_effect = settle
     with pytest.raises(ExecutionHaltableIssue, match='insufficient source cash'):
-        EthereumExecution._execute_trades_sequentially(executor, START, state, [buy, out],
+        EthereumExecution._execute_trades_sequentially(executor, START, state, batch,
             routing, MagicMock(), check_balances=False, rebroadcast=False, triggered=False)
 
     # 3. Verify the buy settles at $100 and only the unfunded work expires.
-    assert buy.is_success()
+    assert funding.is_success() and buy.is_success()
     assert buy.executed_reserve == pytest.approx(100)
-    assert out.get_status() == TradeStatus.expired
-    assert out.started_at is None
-    routing.setup_trades.assert_called_once()
-    executor._execute_trade_batch.assert_called_once()
+    assert unfunded.get_status() == TradeStatus.expired
+    assert unfunded.started_at is None
+    assert [call.kwargs['trades'][0].trade_id for call in routing.setup_trades.call_args_list] == [funding.trade_id, buy.trade_id]
+    assert executor._execute_trade_batch.call_count == 2
     executor.sync_state_before_broadcast.assert_called()
     assert state.portfolio.get_net_asset_value() == pytest.approx(200)
     state.perform_integrity_check()
