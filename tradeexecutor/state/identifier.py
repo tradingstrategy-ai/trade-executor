@@ -118,8 +118,8 @@ def normalise_custody_chain_id(chain_id: int) -> int:
     chain id is returned unchanged.
 
     Use this for deployment, signing and RPC selection. For CCTP funding use
-    :py:meth:`TradingPairIdentifier.get_funding_chain_id`, which maps only
-    Lighter pools and so keeps Hypercore funding behaviour unchanged.
+    :py:meth:`TradingPairIdentifier.get_funding_chain_id`, which resolves native
+    vault funding to its physical custody chain.
 
     :param chain_id:
         Dataset or EVM chain id.
@@ -1491,15 +1491,15 @@ class TradingPairIdentifier:
     def get_funding_chain_id(self) -> int:
         """Return the chain whose CCTP bridge position funds trades on this pair.
 
-        Lighter pools are funded from the Ethereum satellite. Other pairs,
-        including Hypercore vaults, keep their own chain id so their existing
-        funding behaviour is unchanged.
+        Lighter pools use Ethereum custody and HyperCore vaults use HyperEVM.
+        Dataset identities remain unchanged; the planner preserves the labelled
+        historical convention when no physical native bridge route is configured.
 
         :return:
             Chain id used to look up the bridge position.
         """
-        if self.is_lighter_pool():
-            return ChainId.ethereum.value
+        if self.is_lighter_pool() or self.is_hyperliquid_vault():
+            return normalise_custody_chain_id(self.chain_id)
         return self.chain_id
 
     def is_freqtrade(self) -> bool:

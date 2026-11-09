@@ -212,7 +212,15 @@ class Portfolio:
         return float(sum((o.amount for o in self.lighter_idle_collateral.values()), Decimal(0)))
 
     def get_lighter_buy_funding(self, trade: TradeExecution) -> Decimal:
-        """Safe-funded portion of a pool buy whose total cost includes idle USDC."""
+        """Return the Safe-funded portion of a Lighter pool purchase.
+
+        :param trade:
+            Planned buy after idle funding has been reserved on the trade.
+            With no idle allocation, its entire reserve budget is Safe-funded.
+        :return:
+            USDC budget excluding accounted idle collateral. The trade's full
+            executed reserve still includes that collateral in investment cost.
+        """
         return trade.get_planned_reserve() - Decimal(trade.other_data.get("lighter_idle_allocated", "0"))
 
     def plan_lighter_idle_funding(self, trades: list[TradeExecution]) -> None:
@@ -1237,6 +1245,21 @@ class Portfolio:
                     return position
         return None
 
+    def get_closed_bridge_position_for_chain(self, chain_id: int) -> "TradingPosition | None":
+        """Find the latest closed bridge ledger without reopening it.
+
+        :param chain_id:
+            Physical destination chain of the CCTP bridge.
+        :return:
+            Most recently closed bridge position, or None if no ledger exists.
+        """
+        candidates = (
+            position for position in self.closed_positions.values()
+            if position.pair.kind == TradingPairKind.cctp_bridge
+            and position.pair.get_destination_chain_id() == chain_id
+        )
+        return max(candidates, key=lambda p: p.closed_at or p.opened_at, default=None)
+
     def reopen_closed_bridge_position_for_chain(self, chain_id: int, reopened_at: datetime.datetime) -> "TradingPosition | None":
         """Reopen the latest closed CCTP bridge position for a destination chain.
 
@@ -1245,16 +1268,9 @@ class Portfolio:
         satellite-chain bridge capital, so the old bridge position must become
         open again to carry the available balance.
         """
-        candidates = [
-            position
-            for position in self.closed_positions.values()
-            if position.pair.kind == TradingPairKind.cctp_bridge
-            and position.pair.get_destination_chain_id() == chain_id
-        ]
-        if not candidates:
+        position = self.get_closed_bridge_position_for_chain(chain_id)
+        if position is None:
             return None
-
-        position = max(candidates, key=lambda p: p.closed_at or p.opened_at)
         logger.info(
             "Reopening closed CCTP bridge position #%d for chain %d after satellite capital returned",
             position.position_id,

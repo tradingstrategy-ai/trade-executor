@@ -356,10 +356,12 @@ def test_execution_persists_at_risk_marker_before_broadcast() -> None:
     trade.is_internal_account_transfer.return_value = False
     trade.is_paid_without_transaction.return_value = False
     trade.pair.is_lighter_pool.return_value = False
+    trade.pair.is_cctp_bridge.return_value = False
     trade.pair.get_ticker.return_value = "Citadel-USDC"
     trade.is_failed.return_value = False
     trade.other_data = {}
     state = MagicMock()
+    state.portfolio.get_bridge_position_for_chain.return_value = None
     routing = MagicMock()
     routing.check_trade_before_execution.return_value = None
     checkpointed_markers: list[dict] = []

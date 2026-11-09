@@ -252,28 +252,24 @@ class BacktestExecution(ExecutionModel):
         # quote = trade.pair.quote
 
         # For satellite chain trades funded via a CCTP bridge, the on-chain
-        # token spent/received is the satellite quote token (e.g. USDC on Base),
-        # not the portfolio reserve currency (e.g. USDC on Arbitrum).
+        # token spent/received is physical satellite USDC, not the hub reserve.
+        # Native dataset quotes can have a synthetic identity, so resolve them
+        # from the bridge asset rather than spending the dataset quote.
         #
         # Do not infer this from quote != reserve_currency: normal multi-hop
         # spot pairs like AAVE-WETH can still be funded from the USDC reserve.
-        bridge_position = state.portfolio.get_bridge_position_for_chain(trade.pair.chain_id)
-        has_closed_bridge_position = (
-            trade.is_sell()
-            and bridge_position is None
-            and trade.pair.quote != trade.reserve_currency
-            and any(
-                p.pair.is_cctp_bridge()
-                and p.pair.get_destination_chain_id() == trade.pair.chain_id
-                for p in state.portfolio.closed_positions.values()
-            )
-        )
+        funding_chain = trade.pair.get_funding_chain_id()
+        bridge_position = state.portfolio.get_bridge_position_for_chain(funding_chain)
+        if bridge_position is None and trade.is_sell() and trade.pair.quote != trade.reserve_currency:
+            bridge_position = state.portfolio.get_closed_bridge_position_for_chain(funding_chain)
         bridge_funded_buy = trade.bridge_currency_allocated is not None
-        satellite_sell_returning_to_bridge = trade.is_sell() and (
-            bridge_position is not None or has_closed_bridge_position
-        )
+        satellite_sell_returning_to_bridge = trade.is_sell() and bridge_position is not None
         if bridge_funded_buy or satellite_sell_returning_to_bridge:
-            reserve = trade.pair.quote
+            assert bridge_position is not None, f"Missing bridge funding for {trade}"
+            if trade.pair.is_hyperliquid_vault() or trade.pair.is_lighter_pool():
+                reserve = bridge_position.pair.base
+            else:
+                reserve = trade.pair.quote
         else:
             reserve = trade.reserve_currency
 
@@ -321,7 +317,8 @@ class BacktestExecution(ExecutionModel):
             # sizing can leave the reserve a few raw units short of the planned
             # buy after amount flooring, which must not crash the backtest.
             raw_unit_epsilon = reserve.convert_to_decimal(10)
-            self.wallet.update_balance(reserve, -executed_reserve, f"{type} trade #{trade.trade_id}", epsilon=raw_unit_epsilon)
+            wallet_debit = state.portfolio.get_lighter_buy_funding(trade) if trade.pair.is_lighter_pool() else executed_reserve
+            self.wallet.update_balance(reserve, -wallet_debit, f"{type} trade #{trade.trade_id}", epsilon=raw_unit_epsilon)
         else:
             if trade.is_credit_supply():
                 type = "credit recall"

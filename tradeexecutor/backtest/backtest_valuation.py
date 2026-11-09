@@ -36,7 +36,7 @@ class BacktestValuationModel(ValuationModel):
 
         pair = position.pair
 
-        if position.is_credit_supply():
+        if position.is_credit_supply() or pair.is_cctp_bridge():
             # TODO: Assumes stable USD stablecoins
             price = 1.0
         elif position.is_long():

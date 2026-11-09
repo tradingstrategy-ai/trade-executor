@@ -1010,6 +1010,15 @@ class StrategyRunner(abc.ABC):
                     # strategy that deliberately keeps satellite cash disables it.
                     sweep_idle = self.parameters.get("sweep_idle_bridge_capital", True) if self.parameters else True
                     bridge_sweep_min_usd = self.parameters.get("bridge_sweep_min_usd", 1.0) if self.parameters else 1.0
+                    if primary_chain is not None and execution_context.live_trading:
+                        bridge_destinations = {
+                            p.get_destination_chain_id() for p in universe.iterate_pairs() if p.is_cctp_bridge()
+                        }
+                        for trade in rebalance_trades:
+                            if (trade.pair.is_hyperliquid_vault()
+                                    and trade.pair.get_funding_chain_id() != primary_chain.value
+                                    and trade.pair.get_funding_chain_id() not in bridge_destinations):
+                                raise RuntimeError("Live native satellite trading requires a HyperEVM CCTP route")
                     if primary_chain is not None and (len(rebalance_trades) > 0 or sweep_idle):
                         rebalance_trades = inject_cctp_bridge_trades(
                             state=state,

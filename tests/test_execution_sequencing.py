@@ -91,6 +91,7 @@ def _make_trade(trade_id: int) -> MagicMock:
     trade.route = None
     trade.pair = MagicMock()
     trade.pair.is_exchange_account.return_value = False
+    trade.pair.is_cctp_bridge.return_value = False
     # An on-chain trade, not an off-chain transfer between exchange accounts.
     trade.is_internal_account_transfer.return_value = False
     # Lighter pool trades broadcast in setup_trades() and skip this batch.
@@ -116,6 +117,7 @@ def test_execute_trades_runs_sequential_router_one_trade_at_a_time(
     # 1. Build an execution model and a routing model that declares sequential settlement.
     execution = RecordingExecution()
     state = MagicMock()
+    state.portfolio.get_bridge_position_for_chain.return_value = None
     routing_model = MagicMock()
     routing_model.needs_sequential_trade_execution.return_value = True
     routing_model.check_trade_before_execution.return_value = None
@@ -216,6 +218,7 @@ def test_execute_trades_stops_sequential_batch_after_failed_trade(
     # 1. Build a sequential execution run where the first trade resolves as failed.
     execution = RecordingExecution()
     state = MagicMock()
+    state.portfolio.get_bridge_position_for_chain.return_value = None
     routing_model = MagicMock()
     routing_model.needs_sequential_trade_execution.return_value = True
     routing_model.check_trade_before_execution.return_value = None

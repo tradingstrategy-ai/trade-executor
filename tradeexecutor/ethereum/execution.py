@@ -1,4 +1,4 @@
-"""Dealing with Ethereum low level tranasctions."""
+"""Broadcast and settle EVM trades through protocol-specific routing."""
 
 import logging
 import datetime
@@ -34,6 +34,7 @@ from tradingstrategy.chain import ChainId
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.ethereum.swap import report_failure
 from tradeexecutor.state.state import State
+from tradeexecutor.state.portfolio import NotEnoughMoney
 from tradeexecutor.state.trade import TradeExecution, TradeStatus, has_unresolved_hypercore_accounting
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.freeze import freeze_position_on_failed_trade
@@ -52,9 +53,29 @@ from tradeexecutor.ethereum.ethereum_protocol_adapters import EthereumPairConfig
 logger = logging.getLogger(__name__)
 
 
+def _expire_planned_trades(state: State, trades: list[TradeExecution]) -> None:
+    """Expire unfunded work and archive empty positions without losing trade history.
+
+    :param state:
+        Authoritative executor state, saved by the caller after expiry.
+    :param trades:
+        Remaining trades in the batch; started or settled trades are preserved.
+    """
+    for trade in trades:
+        if trade.get_status() != TradeStatus.planned:
+            continue
+        trade.mark_expired(native_datetime_utc_now())
+        position = state.portfolio.open_positions.get(trade.position_id)
+        if position is not None and position.get_quantity() == 0 and all(
+            t.get_status() == TradeStatus.expired for t in position.trades.values()
+        ):
+            state.portfolio.expired_positions[position.position_id] = position
+            del state.portfolio.open_positions[position.position_id]
+
+
 # TODO check with tradeexuctor.strategy.execution ExecutionModel
 class EthereumExecution(ExecutionModel):
-    """Run order execution on a single Uniswap v2 style exchanges."""
+    """Execute EVM trades through the configured custody and protocol routers."""
 
     def __init__(
         self,
@@ -714,7 +735,29 @@ class EthereumExecution(ExecutionModel):
         rebroadcast: bool,
         triggered: bool,
     ) -> None:
-        """Prepare, broadcast, settle, and freeze one trade at a time."""
+        """Prepare and settle sorted trades individually before spending their proceeds.
+
+        :param ts:
+            Naive UTC strategy decision time used for failure handling.
+        :param state:
+            Authoritative portfolio and trade state.
+        :param trades:
+            Trades already ordered by execution priority.
+        :param routing_model:
+            Protocol dispatcher for preflight, signing and settlement.
+        :param routing_state:
+            Per-cycle router state.
+        :param check_balances:
+            Enable optional router balance checks. Cross-chain source-capital
+            checks still apply when this is false.
+        :param rebroadcast:
+            Reuse prepared transactions without allocating capital again.
+        :param triggered:
+            Whether the batch contains triggered orders.
+        :raises ExecutionHaltableIssue:
+            A trade fails, a CCTP receive remains pending, or recorded settled
+            source capital is insufficient. Completed trades remain recorded.
+        """
         reason = routing_model.get_sequential_trade_execution_reason(trades)
         logger.warning(
             "Sequential trade execution enabled for %d trade(s)%s",
@@ -722,6 +765,7 @@ class EthereumExecution(ExecutionModel):
             f": {reason}" if reason else "",
         )
 
+        has_bridge_trades = any(t.pair.is_cctp_bridge() for t in trades)
         for idx, trade in enumerate(trades, start=1):
             if trade.get_status() == TradeStatus.expired:
                 continue
@@ -740,17 +784,7 @@ class EthereumExecution(ExecutionModel):
                 preflight_reason = routing_model.check_trade_before_execution(trade)
                 if preflight_reason is not None:
                     trade.other_data["execution_preflight_reason"] = preflight_reason
-                    trade.mark_expired(native_datetime_utc_now())
-                    position = state.portfolio.open_positions.get(trade.position_id)
-                    # A rejected opening buy may leave an empty placeholder.
-                    # Keep existing holdings and any position with active trades.
-                    if position is not None and position.get_quantity() == 0 and all(
-                        t.get_status() == TradeStatus.expired for t in position.trades.values()
-                    ):
-                        # Keep the rejected opening trade and its reason in
-                        # the existing diagnostics archive, outside live holdings.
-                        state.portfolio.expired_positions[trade.position_id] = position
-                        del state.portfolio.open_positions[trade.position_id]
+                    _expire_planned_trades(state, [trade])
                     logger.warning(
                         "Skipping trade_id=%s before execution: %s",
                         trade.trade_id,
@@ -760,12 +794,36 @@ class EthereumExecution(ExecutionModel):
                     continue
 
             if not rebroadcast:
-                state.start_execution(
-                    native_datetime_utc_now(),
-                    trade,
-                    underflow_check=check_balances,
-                    triggered=triggered,
+                is_bridge = trade.pair.is_cctp_bridge()
+                needs_source_check = is_bridge or (
+                    trade.is_buy() and not trade.is_internal_account_transfer() and (
+                        has_bridge_trades
+                        or state.portfolio.get_bridge_position_for_chain(trade.pair.get_funding_chain_id()) is not None
+                    )
                 )
+                try:
+                    if is_bridge and trade.is_sell():
+                        # State allocates no capital for bridge-backs, so check them here.
+                        bridge = state.portfolio.get_bridge_position_for_chain(trade.pair.get_destination_chain_id())
+                        available = bridge.get_available_bridge_capital() if bridge else Decimal(0)
+                        if abs(trade.planned_quantity) > available:
+                            raise NotEnoughMoney(f"Bridge-back needs {abs(trade.planned_quantity)}, available {available}")
+                    # Reuse State's funding source, idle collateral and raw-unit dust rules.
+                    state.start_execution(
+                        native_datetime_utc_now(),
+                        trade,
+                        underflow_check=check_balances or needs_source_check,
+                        triggered=triggered,
+                    )
+                except NotEnoughMoney as exc:
+                    if not needs_source_check:
+                        raise
+                    _expire_planned_trades(state, trades[idx - 1:])
+                    self.sync_state_before_broadcast()
+                    raise ExecutionHaltableIssue(
+                        f"Unsettled or insufficient source cash for trade #{trade.trade_id}: "
+                        f"{exc}; remaining planned trades expired"
+                    ) from exc
                 if self.max_slippage is not None:
                     trade.planned_max_slippage = self.max_slippage
 
@@ -819,35 +877,13 @@ class EthereumExecution(ExecutionModel):
                 # One operation owns the dedicated account until it settles.
                 # Other venues may continue, but later pool trades must be
                 # reconsidered by the next decision cycle without funding them.
-                for remaining_trade in trades[idx:]:
-                    if remaining_trade.pair.is_lighter_pool() and remaining_trade.get_status() == TradeStatus.planned:
-                        remaining_trade.mark_expired(native_datetime_utc_now())
-                        position = state.portfolio.open_positions.get(remaining_trade.position_id)
-                        if position is not None and all(t.get_status() == TradeStatus.expired for t in position.trades.values()):
-                            state.portfolio.expired_positions[position.position_id] = position
-                            del state.portfolio.open_positions[position.position_id]
+                _expire_planned_trades(state, [
+                    remaining for remaining in trades[idx:] if remaining.pair.is_lighter_pool()
+                ])
                 self.sync_state_before_broadcast()
 
             if trade.get_status() == TradeStatus.cctp_in_transit:
-                # Expire remaining planned trades and clean up orphan positions
-                for remaining_trade in trades[idx:]:
-                    if remaining_trade.get_status() == TradeStatus.planned:
-                        remaining_trade.mark_expired(native_datetime_utc_now())
-                        # Clean up orphan positions created by now-expired trades
-                        pos = state.portfolio.open_positions.get(remaining_trade.position_id)
-                        if pos is not None and pos.get_quantity() == 0:
-                            all_expired = all(
-                                t.get_status() == TradeStatus.expired
-                                for t in pos.trades.values()
-                            )
-                            if all_expired:
-                                # Keep the existing expired-position archive,
-                                # as the vault halt branch above already does.
-                                # Deleting these IDs breaks restart integrity
-                                # before CCTP retry can finish the burned funds.
-                                # No cash moved for these unfunded positions.
-                                state.portfolio.expired_positions[pos.position_id] = pos
-                                del state.portfolio.open_positions[remaining_trade.position_id]
+                _expire_planned_trades(state, trades[idx:])
 
                 remaining_ids = [t.trade_id for t in trades[idx:]]
                 raise ExecutionHaltableIssue(
