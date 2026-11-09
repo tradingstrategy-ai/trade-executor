@@ -718,6 +718,7 @@ class EthereumExecution(ExecutionModel):
             f": {reason}" if reason else "",
         )
 
+        has_bridge_trades = any(t.pair.is_cctp_bridge() for t in trades)
         for idx, trade in enumerate(trades, start=1):
             if trade.get_status() == TradeStatus.expired:
                 continue
@@ -754,6 +755,35 @@ class EthereumExecution(ExecutionModel):
                     )
                     self.sync_state_before_broadcast()
                     continue
+
+            if not rebroadcast and (trade.pair.is_cctp_bridge() or (trade.is_buy()
+                    and (has_bridge_trades or state.portfolio.get_bridge_position_for_chain(trade.pair.get_funding_chain_id()) is not None))):
+                # Cross-chain money must already be settled at the source. Do
+                # this before allocation/signing, even with check_balances=False.
+                if trade.pair.is_cctp_bridge() and trade.is_sell():
+                    bridge = state.portfolio.get_bridge_position_for_chain(trade.pair.get_destination_chain_id())
+                    available = bridge.get_available_bridge_capital() if bridge else 0
+                    required = abs(trade.planned_quantity)
+                elif trade.is_buy():
+                    bridge = state.portfolio.get_bridge_position_for_chain(trade.pair.get_funding_chain_id()) if not trade.pair.is_cctp_bridge() else None
+                    available = bridge.get_available_bridge_capital() if bridge else state.portfolio.get_default_reserve_position().quantity
+                    required = state.portfolio.get_lighter_buy_funding(trade) if trade.pair.is_lighter_pool() else trade.planned_reserve
+                else:
+                    available = required = 0
+                if required > available:
+                    for remaining in trades[idx - 1:]:
+                        if remaining.get_status() == TradeStatus.planned:
+                            remaining.mark_expired(native_datetime_utc_now())
+                            position = state.portfolio.open_positions.get(remaining.position_id)
+                            if position is not None and position.get_quantity() == 0 and all(
+                                    t.get_status() == TradeStatus.expired for t in position.trades.values()):
+                                state.portfolio.expired_positions[position.position_id] = position
+                                del state.portfolio.open_positions[position.position_id]
+                    self.sync_state_before_broadcast()
+                    raise ExecutionHaltableIssue(
+                        f"Unsettled or insufficient source cash for trade #{trade.trade_id}: "
+                        f"need {required}, available {available}; dependent trades expired"
+                    )
 
             if not rebroadcast:
                 state.start_execution(

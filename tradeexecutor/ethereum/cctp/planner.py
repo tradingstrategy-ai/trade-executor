@@ -331,10 +331,30 @@ def inject_cctp_bridge_trades(
     primary_sells = Decimal(0)
     primary_buys = Decimal(0)
 
+    # Native positions opened under the old instant-primary convention have no
+    # satellite ledger. Refuse them before any trade/idle-funding mutations.
+    for trade in trades:
+        funding_chain = trade.pair.get_funding_chain_id()
+        if (trade.pair.is_hyperliquid_vault() and trade.is_sell()
+                and funding_chain != primary_chain_id and funding_chain in bridge_pairs):
+            ledgers = list(state.portfolio.open_positions.values()) + list(state.portfolio.closed_positions.values())
+            if not any(p.pair.is_cctp_bridge() and p.pair.get_destination_chain_id() == funding_chain for p in ledgers):
+                raise NotEnoughMoney(
+                    f"Native satellite sell #{trade.trade_id} has no funding ledger on chain {funding_chain}; "
+                    "reconcile legacy native funding before execution"
+                )
+
     state.portfolio.plan_lighter_idle_funding(trades)
     for trade in trades:
         # A Lighter pool (dataset chain 9998) is funded from the Ethereum bridge.
         trade_chain_id = trade.pair.get_funding_chain_id()
+        if trade.pair.is_hyperliquid_vault():
+            if not bridge_pairs:
+                # Preserve standalone Hyper AI and synthetic historical universes.
+                continue
+            if trade_chain_id != primary_chain_id and trade_chain_id not in bridge_pairs:
+                logger.warning("Native trade #%d uses assumed primary funding: no HyperEVM CCTP route", trade.trade_id)
+                continue
         value = trade.planned_reserve if trade.planned_reserve else Decimal(str(trade.get_planned_value()))
         value = abs(value)
         if trade.pair.is_lighter_pool() and trade.is_buy():
@@ -359,11 +379,6 @@ def inject_cctp_bridge_trades(
                 primary_sells += value
             else:
                 primary_buys += value
-            continue
-
-        # HyperCore vault trades (chain_id 9999) have their own multi-phase
-        # settlement mechanism and do not need CCTP bridging.
-        if trade.pair.is_hyperliquid_vault():
             continue
 
         if trade.is_sell():

@@ -257,23 +257,18 @@ class BacktestExecution(ExecutionModel):
         #
         # Do not infer this from quote != reserve_currency: normal multi-hop
         # spot pairs like AAVE-WETH can still be funded from the USDC reserve.
-        bridge_position = state.portfolio.get_bridge_position_for_chain(trade.pair.chain_id)
-        has_closed_bridge_position = (
-            trade.is_sell()
-            and bridge_position is None
-            and trade.pair.quote != trade.reserve_currency
-            and any(
-                p.pair.is_cctp_bridge()
-                and p.pair.get_destination_chain_id() == trade.pair.chain_id
-                for p in state.portfolio.closed_positions.values()
-            )
-        )
+        funding_chain = trade.pair.get_funding_chain_id()
+        bridge_position = state.portfolio.get_bridge_position_for_chain(funding_chain)
+        if bridge_position is None and trade.is_sell():
+            bridge_position = next((
+                p for p in state.portfolio.closed_positions.values()
+                if p.pair.is_cctp_bridge() and p.pair.get_destination_chain_id() == funding_chain
+            ), None)
         bridge_funded_buy = trade.bridge_currency_allocated is not None
-        satellite_sell_returning_to_bridge = trade.is_sell() and (
-            bridge_position is not None or has_closed_bridge_position
-        )
+        satellite_sell_returning_to_bridge = trade.is_sell() and bridge_position is not None
         if bridge_funded_buy or satellite_sell_returning_to_bridge:
-            reserve = trade.pair.quote
+            assert bridge_position is not None, f"Missing bridge funding for {trade}"
+            reserve = bridge_position.pair.base if trade.pair.is_hyperliquid_vault() else trade.pair.quote
         else:
             reserve = trade.reserve_currency
 
