@@ -118,7 +118,8 @@ def normalise_custody_chain_id(chain_id: int) -> int:
     chain id is returned unchanged.
 
     Use this for deployment, signing and RPC selection. For CCTP funding use
-    :py:meth:`TradingPairIdentifier.get_funding_chain_id`, which resolves native vault funding to its physical custody chain.
+    :py:meth:`TradingPairIdentifier.get_funding_chain_id`, which resolves native
+    vault funding to its physical custody chain.
 
     :param chain_id:
         Dataset or EVM chain id.

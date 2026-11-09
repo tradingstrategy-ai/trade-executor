@@ -186,6 +186,19 @@ captures the baselines above, and builds **phase 1** of each trade.
 phases. A failure calls `report_failure()`, which surfaces as
 `ExecutionHaltableIssue` and stops the sequential batch.
 
+## Cross-chain funding
+
+Native dataset identity 9999 resolves to HyperEVM funding chain 999. For a
+non-HyperEVM hub with a declared HyperEVM CCTP route, the shared planner includes
+native exits and deposits in satellite netting; payouts must reach HyperEVM
+before a bridge-back can spend them. Standalone Hyper AI without bridge pairs
+retains its existing planner bypass. Historical assumed-primary routing is kept
+separate from live route validation.
+
+See [native vault funding through CCTP](../../docs/plans/hypercore-cctp-funding.md)
+for accounting checks, fee estimates, compatibility coverage and current
+halt/restart recovery limits. This does not change the native withdrawal phases.
+
 ## Deposit (buy) flow
 
 A deposit transfers USDC from the HyperEVM Safe into the HyperCore vault.

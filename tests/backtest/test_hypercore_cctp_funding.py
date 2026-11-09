@@ -8,9 +8,12 @@ from unittest.mock import MagicMock
 from tradeexecutor.state.state import State
 from tradeexecutor.state.lighter import LighterIdleCollateral
 from tradeexecutor.state.portfolio import NotEnoughMoney
-from tradeexecutor.state.trade import TradeType, TradeStatus
+from tradeexecutor.state.trade import TradeType, TradeStatus, TradeExecution
 from tradeexecutor.ethereum.cctp.planner import inject_cctp_bridge_trades
 from tradeexecutor.ethereum.execution import EthereumExecution
+from tradeexecutor.ethereum.vault.hypercore_vault import create_hypercore_vault_pair
+from tradeexecutor.exchange_account.lighter import create_lighter_exchange_account_pairs
+from tradeexecutor.exchange_account.state import open_exchange_account_position, create_exchange_account_funding, complete_exchange_account_funding
 from tradeexecutor.strategy.execution_model import ExecutionHaltableIssue
 from tradeexecutor.backtest.backtest_execution import BacktestExecution
 from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
@@ -27,10 +30,11 @@ from tradeexecutor.backtest.backtest_runner import run_backtest_inline
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingIgnoredModel
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
 from tradeexecutor.strategy.alpha_model import AlphaModel
-from tradeexecutor.strategy.strategy_module import StrategyParameters
+from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.default_routing_options import TradeRouting
-from tradeexecutor.strategy.execution_context import ExecutionMode
+from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
+from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
 from tradeexecutor.strategy.pandas_trader.yield_manager import YieldManager, YieldRuleset, YieldWeightingRule, YieldDecisionInput
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
@@ -45,7 +49,7 @@ END = datetime.datetime(2025, 5, 7)
 
 
 def _universe() -> TradingStrategyUniverse:
-    """Create four fixed-price vaults and two bridges without external data."""
+    """Create five fixed-price vaults and two physical bridge routes without external data."""
     arb = AssetIdentifier(42161, '0xaf88d065e77c8cc2239327c5edb3a432268e5831', 'USDC', 6)
     hyper = AssetIdentifier(999, '0xb88339cb7199b77e23db6e890353e22632ba630f', 'USDC', 6)
     base = AssetIdentifier(8453, '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913', 'USDC', 6)
@@ -73,8 +77,14 @@ def _universe() -> TradingStrategyUniverse:
     return result
 
 
-def _decide(input: StrategyInput):
-    """Open the native holding, then replace it through normal allocation and yield release."""
+def _decide(input: StrategyInput) -> list[TradeExecution]:
+    """Open native holdings, then rotate through normal allocation and yield release.
+
+    :param input:
+        Engine-provided universe, portfolio and decision timestamp.
+    :return:
+        Scheduled directional and cash-venue trades, or no work between decisions.
+    """
     pairs = {p.base.token_symbol: p for p in input.strategy_universe.iterate_pairs() if p.is_vault()}
     pm = input.get_position_manager()
     if input.timestamp == START:
@@ -93,19 +103,25 @@ def _decide(input: StrategyInput):
         individual_rebalance_min_threshold=0.01, sell_rebalance_min_threshold=0.01,
         execution_context=input.execution_context)
     # YieldRuleset requires a positive buffer; a negligible value isolates cash topology.
-    manager = YieldManager(pm, YieldRuleset(0.90, 1e-12, 0.01, [YieldWeightingRule(pairs['cash'], 1.0)]))
+    manager = YieldManager(pm, YieldRuleset(position_allocation=0.90, buffer_pct=1e-12,
+        cash_change_tolerance_usd=0.01, weights=[YieldWeightingRule(pairs['cash'], 1.0)]))
     released = manager.calculate_yield_management_safe(YieldDecisionInput(
-        input.execution_context.mode, input.cycle, input.timestamp,
-        input.state.portfolio.get_net_asset_value(), 0, trades))
+        execution_mode=input.execution_context.mode, cycle=input.cycle, timestamp=input.timestamp,
+        total_equity=input.state.portfolio.get_net_asset_value(), pending_redemptions=0, directional_trades=trades))
     assert sum(float(t.planned_reserve) for t in released.trades) == pytest.approx(300)
     return trades + released.trades
 
 
-def _indicators(parameters, indicators, strategy_universe, execution_context):
-    """Fixed schedule needs no calculated indicators."""
+def _indicators(
+    parameters: StrategyParameters,
+    indicators: IndicatorSet,
+    strategy_universe: TradingStrategyUniverse,
+    execution_context: ExecutionContext,
+) -> None:
+    """Provide the required callback; the fixed schedule does not use its inputs."""
 
 
-def test_native_exit_funds_hub_and_satellite(monkeypatch: pytest.MonkeyPatch):
+def test_native_exit_funds_hub_and_satellite(monkeypatch: pytest.MonkeyPatch) -> None:
     """Reproduce the omitted native sale through the real runner and reconcile the wallet.
 
     1. Build an entirely local universe and execute the initial native allocation.
@@ -118,7 +134,8 @@ def test_native_exit_funds_hub_and_satellite(monkeypatch: pytest.MonkeyPatch):
     observed = []
     original = BacktestExecution.simulate_spot
 
-    def observe(execution, state, trade):
+    def observe(execution: BacktestExecution, state: State, trade: TradeExecution) -> tuple[Decimal, Decimal, bool]:
+        """Observe real wallet movements while delegating all simulation logic."""
         # Observe real simulation; do not replace any funding or settlement logic.
         hub_before = execution.wallet.get_balance(universe.get_reserve_asset().address)
         hyper_address = '0xb88339cb7199b77e23db6e890353e22632ba630f'
@@ -138,7 +155,9 @@ def test_native_exit_funds_hub_and_satellite(monkeypatch: pytest.MonkeyPatch):
         routing_model=routing, three_leg_resolution=False, allow_missing_fees=True, engine_version='0.5', mode=ExecutionMode.unit_testing, parameters=StrategyParameters({'cycle_duration': CycleDuration.cycle_1d, 'initial_cash': 1000}))
     # 3. Verify bridge ordering, target holdings and whole-wallet equity.
     state = result.state
-    assert observed == [(-600.0, 0.0), (600.0, 0.0)]
+    assert len(observed) == 2
+    assert observed[0] == pytest.approx((-600, 0))
+    assert observed[1] == pytest.approx((600, 0))
     assert state.portfolio.get_cash() == pytest.approx(100)
     assert state.portfolio.get_net_asset_value() == pytest.approx(1000)
     holdings = {p.pair.base.token_symbol: p.get_value() for p in state.portfolio.open_positions.values() if p.pair.is_vault()}
@@ -152,7 +171,7 @@ def test_native_exit_funds_hub_and_satellite(monkeypatch: pytest.MonkeyPatch):
 
 
 @pytest.mark.parametrize('primary', [999, 9999])
-def test_native_primary_keeps_existing_planner_behaviour(primary: int):
+def test_native_primary_keeps_existing_planner_behaviour(primary: int) -> None:
     """Preserve Hyper AI and the synthetic historical convention.
 
     1. Build native partial-sale and buy requests with an empty primary reserve.
@@ -166,20 +185,20 @@ def test_native_primary_keeps_existing_planner_behaviour(primary: int):
     state.portfolio.initialise_reserves(reserve, reserve_token_price=1.0)
     _, sell, _ = state.create_trade(START, native, Decimal(-100), None, 1.0, TradeType.rebalance, reserve, 1.0)
     _, buy, _ = state.create_trade(START, native, None, Decimal(100), 1.0, TradeType.rebalance, reserve, 1.0)
-    # 2. Verify standalone native trades are unchanged, with no new liquidity rejection.
+    # 2. Verify the bridge planner leaves standalone native funding to its existing checks.
     assert inject_cctp_bridge_trades(state, [sell, buy], SimpleNamespace(iterate_pairs=lambda: [native]),
                                     primary, START, reserve) == [sell, buy]
 
 
 @pytest.mark.parametrize('exit_price,performance,net', [(0.8, 0.0, 480), (1.2, 0.1, 708)])
-def test_reduced_native_payout_refuses_bridge_burn(exit_price: float, performance: float, net: int):
+def test_reduced_native_payout_refuses_bridge_burn(exit_price: float, performance: float, net: int) -> None:
     """Never burn planned proceeds that the native withdrawal did not actually return.
 
-    1. Execute a bridge, native buy and lower-price native exit using real simulation.
+    1. Execute funding and a native exit reduced by a price loss or performance fee.
     2. Request the original bridge-back and dependent Base transfer through live execution.
     3. Verify refusal before signing/broadcast and durable expired-trade state.
     """
-    # 1. Execute the funding and native round trip; only the transport is simulated.
+    # 1. Execute funding and a native exit reduced by a price loss or performance fee.
     universe = _universe()
     pairs = list(universe.iterate_pairs())
     reserve = universe.get_reserve_asset()
@@ -202,14 +221,14 @@ def test_reduced_native_payout_refuses_bridge_burn(exit_price: float, performanc
                                         (native, Decimal(-600), None, exit_price)]:
         _, trade, _ = state.create_trade(START, pair, quantity, amount, price, TradeType.rebalance, reserve, 1.0)
         if pair.is_hyperliquid_vault() and trade.is_sell():
-            forecast_state = State.from_json(state.to_json())
+            forecast_state = State.read_json_blob(state.to_json())
             forecast = inject_cctp_bridge_trades(forecast_state, [trade], universe, 42161, START, reserve)
             back_forecast = next(t for t in forecast if t.pair.is_cctp_bridge() and t.is_sell())
             assert abs(float(back_forecast.planned_quantity)) == pytest.approx(net)
         execution.execute_trades(START, state, [trade], routing, routing_state)
     assert state.portfolio.get_bridge_position_for_chain(999).get_available_bridge_capital() == pytest.approx(net)
     assert state.portfolio.get_cash() == pytest.approx(200)
-    # 2. Only external signing/transport is mocked; run the real live sequential guard.
+    # 2. Request the original bridge-back and dependent Base transfer through live execution.
     _, back, _ = state.create_trade(START, bridge, -Decimal(str(max(600, 600 * exit_price))), None, 1.0, TradeType.rebalance, reserve, 1.0)
     _, out, _ = state.create_trade(START, base_bridge, None, Decimal(500), 1.0, TradeType.rebalance, reserve, 1.0)
     executor = MagicMock(spec=EthereumExecution)
@@ -218,23 +237,23 @@ def test_reduced_native_payout_refuses_bridge_burn(exit_price: float, performanc
     with pytest.raises(ExecutionHaltableIssue, match='insufficient source cash'):
         EthereumExecution._execute_trades_sequentially(executor, START, state, [back, out],
             routing_live, MagicMock(), check_balances=False, rebroadcast=False, triggered=False)
-    # 3. No burn or destination spend is signed, and the refusal can be saved/reloaded.
+    # 3. Verify refusal before signing/broadcast and durable expired-trade state.
     routing_live.setup_trades.assert_not_called()
     executor._execute_trade_batch.assert_not_called()
     executor.sync_state_before_broadcast.assert_called_once()
     assert back.get_status() == out.get_status() == TradeStatus.expired
-    restored = State.from_json(state.to_json())
+    restored = State.read_json_blob(state.to_json())
     restored.perform_integrity_check()
     assert restored.portfolio.get_net_asset_value() == pytest.approx(400 + net)
 
 
-def test_native_legacy_ledger_diagnosis_is_atomic():
+def test_native_legacy_ledger_diagnosis_is_atomic() -> None:
     """Reject old native holdings before constructing a fictitious satellite bridge-back.
 
     1. Create the old-style planned native sell without a HyperEVM accounting ledger.
     2. Verify an explicit refusal leaves all existing state untouched.
     """
-    # 1. Create the old-style planned native sell.
+    # 1. Create the old-style planned native sell without a HyperEVM accounting ledger.
     universe = _universe()
     native = next(p for p in universe.iterate_pairs() if p.is_hyperliquid_vault())
     reserve = universe.get_reserve_asset()
@@ -242,21 +261,21 @@ def test_native_legacy_ledger_diagnosis_is_atomic():
     state.portfolio.initialise_reserves(reserve, reserve_token_price=1.0)
     _, trade, _ = state.create_trade(START, native, Decimal(-600), None, 1.0, TradeType.rebalance, reserve, 1.0)
     before = state.to_json()
-    # 2. Verify refusal is atomic.
+    # 2. Verify an explicit refusal leaves all existing state untouched.
     with pytest.raises(NotEnoughMoney, match='no funding ledger'):
         inject_cctp_bridge_trades(state, [trade], universe, 42161, START, reserve)
     assert state.to_json() == before
 
 
 @pytest.mark.parametrize('idle', [0, 40])
-def test_lighter_synthetic_quote_uses_ethereum_cash(idle: int):
+def test_lighter_synthetic_quote_uses_ethereum_cash(idle: int) -> None:
     """Keep Lighter's dataset quote out of the physical simulated wallet.
 
-    1. Build a Lighter pool with a synthetic quote and an Ethereum bridge ledger.
+    1. Build a synthetic Lighter pool with Ethereum funding and optional idle collateral.
     2. Execute its funding, purchase and exit using real state and simulation.
     3. Verify Ethereum cash is debited/credited while synthetic cash stays zero.
     """
-    # 1. Build the synthetic pool and its physical funding route.
+    # 1. Build a synthetic Lighter pool with Ethereum funding and optional idle collateral.
     universe = _universe()
     native = next(p for p in universe.iterate_pairs() if p.is_hyperliquid_vault())
     reserve = universe.get_reserve_asset()
@@ -276,13 +295,95 @@ def test_lighter_synthetic_quote_uses_ethereum_cash(idle: int):
     execution = BacktestExecution(wallet)
     routing = BacktestRoutingIgnoredModel(reserve.address)
     routing_state = BacktestRoutingState(None, wallet)
-    # 2. Execute real capital booking and wallet movements, without API calls.
+    # 2. Execute its funding, purchase and exit using real state and simulation.
     for pair, quantity, amount in [(bridge, None, Decimal(600)), (pool, None, Decimal(100)), (pool, Decimal(-100), None)]:
         _, trade, _ = state.create_trade(START, pair, quantity, amount, 1.0, TradeType.rebalance, reserve, 1.0)
         execution.execute_trades(START, state, [trade], routing, routing_state)
         if pair is pool and trade.is_buy():
             assert wallet.get_balance(ethereum.address) == pytest.approx(500 + idle)
-    # 3. Native and physical ledger cash agree after the round trip.
+    # 3. Verify Ethereum cash is debited/credited while synthetic cash stays zero.
     assert wallet.get_balance(pool.quote.address) == 0
     assert wallet.get_balance(ethereum.address) == pytest.approx(600 + idle)
     assert state.portfolio.get_net_asset_value() == pytest.approx(1000)
+
+
+def test_internal_transfer_in_bridge_batch_uses_account_cash() -> None:
+    """An exchange-account transfer must not borrow or require the hub's Safe cash.
+
+    1. Allocate all capital to an exchange master account and plan an internal transfer.
+    2. Execute it ahead of an underfunded bridge through the real sequential executor.
+    3. Verify the internal transfer succeeds and only the bridge is refused.
+    """
+    # 1. Allocate all capital to an exchange master account and plan an internal transfer.
+    universe = _universe()
+    reserve = universe.get_reserve_asset()
+    state = State()
+    state.portfolio.initialise_reserves(reserve, reserve_token_price=1.0)
+    state.portfolio.get_default_reserve_position().quantity = Decimal(200)
+    master_pair, sub_pair = create_lighter_exchange_account_pairs(reserve, 700, {123: 'sub'})
+    for pair, amount in [(master_pair, Decimal(200)), (sub_pair, Decimal(0))]:
+        open_exchange_account_position(state, START, pair, reserve, amount)
+    master, sub = state.portfolio.open_positions.values()
+    transfer = create_exchange_account_funding(state=state, source_position=master,
+        destination_position=sub, strategy_cycle_at=START, reserve_currency=reserve,
+        amount=Decimal(100), notes='Test account-funded transfer')
+    bridge = next(p for p in universe.iterate_pairs() if p.is_cctp_bridge())
+    _, out, _ = state.create_trade(START, bridge, None, Decimal(1), 1.0, TradeType.rebalance, reserve, 1.0)
+    # 2. Execute it ahead of an underfunded bridge through the real sequential executor.
+    routing = MagicMock()
+    routing.check_trade_before_execution.return_value = None
+    routing.setup_trades.side_effect = lambda **kwargs: state.mark_broadcasted(START, transfer)
+
+    def settle(web3: object, settled_state: State, trade: TradeExecution, receipts: dict) -> None:
+        """Complete the mocked receipt through real accounting; web3/receipts are unused."""
+        complete_exchange_account_funding(state=settled_state, trade=trade,
+            executed_amount=Decimal(100), fee=Decimal(0), executed_at=START)
+
+    routing.settle_trade.side_effect = settle
+    executor = MagicMock(spec=EthereumExecution)
+    executor.max_slippage = None
+    with pytest.raises(ExecutionHaltableIssue, match='insufficient source cash'):
+        EthereumExecution._execute_trades_sequentially(executor, START, state, [transfer, out],
+            routing, MagicMock(), check_balances=False, rebroadcast=False, triggered=False)
+    # 3. Verify the internal transfer succeeds and only the bridge is refused.
+    assert transfer.is_success()
+    assert out.get_status() == TradeStatus.expired
+    assert state.portfolio.get_cash() == 0
+    assert (master.get_quantity(), sub.get_quantity()) == pytest.approx((Decimal(100), Decimal(100)))
+    routing.setup_trades.assert_called_once()
+    state.perform_integrity_check()
+
+
+def test_factory_native_fee_metadata_keeps_gross_forecast() -> None:
+    """Live factory pairs with only a fee rate must not enter the historical fee model.
+
+    1. Fund and buy a real factory-created native pair with partial fee metadata.
+    2. Plan a native exit through a declared HyperEVM route.
+    3. Verify a gross forecast and unchanged settled cash, without a fee-mode assertion.
+    """
+    # 1. Fund and buy a real factory-created native pair with partial fee metadata.
+    universe = _universe()
+    reserve = universe.get_reserve_asset()
+    bridge = next(p for p in universe.iterate_pairs() if p.is_cctp_bridge() and p.get_destination_chain_id() == 999)
+    native = create_hypercore_vault_pair(quote=bridge.base, vault_address='0x' + '11' * 20,
+        internal_id=10, performance_fee=0.1)
+    state = State()
+    state.portfolio.initialise_reserves(reserve, reserve_token_price=1.0)
+    state.portfolio.get_default_reserve_position().quantity = Decimal(1000)
+    # Establish confirmed live-style ledger entries through State lifecycle calls.
+    # This live factory descriptor intentionally lacks historical backtest fee metadata.
+    for pair in (bridge, native):
+        _, trade, _ = state.create_trade(START, pair, None, Decimal(600), 1.0, TradeType.rebalance, reserve, 1.0)
+        state.start_execution(START, trade)
+        state.mark_broadcasted(START, trade)
+        state.mark_trade_success(START, trade, executed_price=1.0, executed_amount=Decimal(600),
+            executed_reserve=Decimal(600), lp_fees=0.0, native_token_price=1.0)
+    # 2. Plan a native exit through a declared HyperEVM route.
+    _, sell, _ = state.create_trade(START, native, Decimal(-100), None, 1.0, TradeType.rebalance, reserve, 1.0)
+    planned = inject_cctp_bridge_trades(state, [sell], SimpleNamespace(iterate_pairs=lambda: [native, bridge]),
+        42161, START, reserve)
+    # 3. Verify a gross forecast and unchanged settled cash, without a fee-mode assertion.
+    back = next(t for t in planned if t.pair.is_cctp_bridge())
+    assert back.planned_quantity == pytest.approx(Decimal(-100))
+    assert state.portfolio.get_cash() == pytest.approx(400)
+    assert state.portfolio.get_bridge_position_for_chain(999).get_available_bridge_capital() == 0

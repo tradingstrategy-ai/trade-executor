@@ -19,6 +19,7 @@ import datetime
 import logging
 from dataclasses import dataclass, field
 from collections import defaultdict
+from itertools import chain
 from decimal import Decimal
 
 from tradeexecutor.state.identifier import (
@@ -317,6 +318,13 @@ def inject_cctp_bridge_trades(
         Augmented trade list with bridge trades injected.
         Lighter buys have their budgets rounded to token units and idle funding
         recorded on the trade. An idle-only buy also opens its bridge cash ledger.
+        Native HyperCore exits use the existing ledger-derived fee estimate;
+        execution still validates the confirmed source capital before spending.
+
+    :raises NotEnoughMoney:
+        Hub funding is insufficient, or a native satellite exit has a configured
+        route but no open/closed bridge ledger. Legacy historical universes
+        without a native route retain their assumed-primary convention.
     """
 
     # Pre-fetch bridge pairs from the universe so we only iterate once.
@@ -334,12 +342,16 @@ def inject_cctp_bridge_trades(
 
     # Native positions opened under the old instant-primary convention have no
     # satellite ledger. Refuse them before any trade/idle-funding mutations.
+    ledger_chains = {
+        p.pair.get_destination_chain_id()
+        for p in chain(state.portfolio.open_positions.values(), state.portfolio.closed_positions.values())
+        if p.pair.is_cctp_bridge()
+    }
     for trade in trades:
         funding_chain = trade.pair.get_funding_chain_id()
         if (trade.pair.is_hyperliquid_vault() and trade.is_sell()
                 and funding_chain != primary_chain_id and funding_chain in bridge_pairs):
-            ledgers = list(state.portfolio.open_positions.values()) + list(state.portfolio.closed_positions.values())
-            if not any(p.pair.is_cctp_bridge() and p.pair.get_destination_chain_id() == funding_chain for p in ledgers):
+            if funding_chain not in ledger_chains:
                 raise NotEnoughMoney(
                     f"Native satellite sell #{trade.trade_id} has no funding ledger on chain {funding_chain}; "
                     "reconcile legacy native funding before execution"
@@ -360,12 +372,17 @@ def inject_cctp_bridge_trades(
         value = abs(value)
         if trade.pair.is_hyperliquid_vault() and trade.is_sell():
             position = state.portfolio.get_position_by_id(trade.position_id)
-            fees = calculate_vault_fees(
-                position, ts, abs(trade.planned_quantity),
-                trade.planned_mid_price or trade.planned_price, vault_exit_rate(trade.pair),
-            )
-            if fees:
-                value = Decimal(fees["net"])
+            if trade.pair.get_vault_metadata() is not None or trade.pair.other_data.get("vault_fee_internalised") is not None:
+                fees = calculate_vault_fees(
+                    position, ts, abs(trade.planned_quantity),
+                    trade.planned_mid_price or trade.planned_price, vault_exit_rate(trade.pair),
+                )
+                if fees:
+                    value = Decimal(fees["net"])
+            else:
+                # Factory-created live pairs can carry only a performance rate.
+                # That is insufficient for the historical ledger fee model.
+                logger.warning("Native sell #%d has no fee-mode metadata; planning gross proceeds, subject to the settled-cash guard", trade.trade_id)
         if trade.pair.is_lighter_pool() and trade.is_buy():
             value -= Decimal(trade.other_data.get("lighter_idle_allocated", "0"))
             if value == 0 and trade_chain_id != primary_chain_id and state.portfolio.get_bridge_position_for_chain(trade_chain_id) is None:

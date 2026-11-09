@@ -1,54 +1,60 @@
-# HyperCore funding through CCTP
+# Native vault funding through CCTP
 
-HyperCore dataset chain 9999 uses HyperEVM (999) USDC for physical funding.
-`get_funding_chain_id()` resolves that account without changing source identity.
-When the universe declares a HyperEVM bridge, the CCTP planner includes native
-sales and purchases in its existing satellite netting. Full and partial exits
-already sort before bridge-backs. State uses the same bridge ledger; simulation
-uses its physical destination USDC rather than the synthetic quote.
+HyperCore dataset chain 9999 uses HyperEVM (999) USDC for physical funding;
+Lighter dataset chain 9998 uses Ethereum (1). `get_funding_chain_id()` resolves
+the custody account without changing the source identity. With the corresponding
+bridge route, native trades participate in existing CCTP netting and State
+capital booking. Simulation uses physical USDC, not the synthetic dataset quote.
 
-Standalone Hyper AI (HyperEVM primary, no bridge pairs) keeps its original
-planner bypass. Historical universes without a HyperEVM route retain their
-labelled assumed-primary convention. Live cross-chain trading requires the
-physical route. A native sell with a declared route but no open or closed
-funding ledger is rejected before planner mutations. Existing wallets opened
-under the former instant-primary convention need evidence-led reconciliation;
-this change does not migrate balances automatically.
+Standalone Hyper AI with no bridge pairs retains its planner bypass. Historical
+universes without a HyperEVM route retain their assumed-primary convention;
+this is not evidence of a physical cross-chain route. The live strategy runner
+refuses native satellite trades without that route. A configured HyperCore exit
+without an open or closed funding ledger is diagnosed before planner mutations;
+old instant-primary wallets require reconciliation rather than automatic migration.
 
-Sequential live execution checks settled source capital before signing bridge
-transfers and their dependent buys, even with optional balance checks disabled.
-A reduced payout cannot finance an oversized burn. Unfunded remaining trades
-are expired and checkpointed through existing state. Pending CCTP retains the
-existing batch halt, saved transaction and startup retry behaviour. Automatic
-daemon continuation and calibrated bridge-delay backtests are separate work.
+The planner estimates net HyperCore sale proceeds using the existing
+ledger-derived externalised-fee calculation when fee-mode metadata is present.
+Factory-created live pairs carrying only a performance rate keep a gross
+forecast with a warning; no historical fee-mode assertion is applied to them. The sequential executor checks
+recorded settled source capital before signing bridges and dependent purchases,
+even when optional on-chain balance checks are disabled. This is an accounting
+guard, not an independent RPC balance proof. The native router still verifies
+actual payouts. Fees, NAV changes or withdrawal caps can reduce proceeds; an
+oversized spend then expires all remaining planned work and checkpoints state.
+Even a small overestimate can halt the batch; there is no automatic resizing.
+Internal exchange-account transfers use account capital, not reserve cash.
 
-The offline regression `tests/backtest/test_hypercore_cctp_funding.py` uses fixed
-vaults, $1 NAV candles, a real AlphaModel/YieldManager and the normal backtest
-runner. It starts with $1,000, buys native and cash vaults, then rotates into
-hub/Base vaults. The original planner fails with a $500 shortfall; the corrected
-run finishes with $400/$500 holdings and $100 cash. A transparent simulator spy
-checks native cash never appears in the hub before bridging. Refusal coverage
-checks reduced actual payout, shared native/HyperEVM capital, save/reload and
-missing-ledger atomicity. Neither RPC nor downloaded market data is required.
+Pending CCTP keeps its existing batch halt, signed-transaction recovery and
+startup retry. A live route can complete in one batch if each receive confirms
+within the router wait. Otherwise the loop requires recovery/restart and later
+replanning. Automatic daemon continuation and calibrated transfer-delay
+simulation are outside this change.
 
-The simple backtest valuation model now also supports bridge positions at $1,
-matching the existing CCTP valuation convention; this is needed to exercise the
-normal runner with an offline hardcoded universe. Historical transfer topology
-is an explicit zero-latency assumption, not proof of route availability at the
-historical date. No strategy ranking, universe policy or buffer is changed.
+Lighter purchase budgets include accounted idle collateral. State consumes that
+contribution; simulation debits only `get_lighter_buy_funding()` from physical
+Ethereum cash. The purchase's executed cost remains the full investment budget.
+The simple backtest valuator prices CCTP positions at $1; allocated capital is
+still accounted for by the existing bridge position, not counted twice.
 
-The unchanged-input NB07 rerun additionally exposed gross native reductions
-being used as bridge funding even though settlement deducts externalised vault
-fees. The planner now uses the existing ledger-derived `calculate_vault_fees()`
-net estimate for native sells. This matches simulation without duplicating the
-fee formula or changing live Hyper AI's standalone pricing. The refusal test
-also covers a profitable native exit with a 10% performance fee and asserts the
-projected bridge-back equals net proceeds. Actual live proceeds remain subject
-to the source-spending guard.
+## Verification and scope
 
-The second NB07 attempt passed the original failure and reached 5 October 2026,
-where a Lighter purchase exposed the same synthetic-quote wallet issue. The
-physical bridge asset is now used for both native integrations. Lighter buys
-debit only their Safe contribution (`get_lighter_buy_funding()`); their total
-investment and consumed idle collateral retain the existing State accounting.
-The offline round-trip regression covers both zero and non-zero idle collateral.
+`tests/backtest/test_hypercore_cctp_funding.py` builds five fixed-price vaults
+and two bridge routes without RPCs or downloaded data. Its main case uses the
+normal runner, AlphaModel and YieldManager: $1,000 becomes $600 native holdings,
+$300 cash parking and $100 reserve, then rotates to $400 hub/$500 Base holdings
+and $100 reserve. The original planner omitted the native exit and failed with
+a $500 shortfall. The corrected simulation observes native cash on HyperEVM
+before bridging; it does not establish live service availability.
+
+Focused cases cover standalone primary-chain compatibility, a missing-ledger
+refusal, net-fee forecasts, reduced payout refusal, state reload, shared physical
+and native capital, Lighter idle funding, and internal account transfers in a
+CCTP batch. The live sequential method uses mocked executor/transport wiring
+with real State and account completion. It is not a funded live rehearsal.
+
+Historical routing remains an idealised zero-latency assumption, including
+periods where route availability has not been established. No strategy ranking,
+universe policy, parameter, dependency pin or persistent state schema changed.
+The NB07 execution record lives in the sibling vault-notebooks research lineage;
+its completed financial run is separate from later saved-state reporting repairs.
