@@ -2,17 +2,18 @@ import datetime
 import logging
 import math
 import warnings
+from dataclasses import replace
 from decimal import ROUND_DOWN, Decimal
 from typing import Literal, Optional
 
 import numpy as np
 import pandas as pd
+from eth_defi.vault.base import DEPOSIT_CLOSED_FUNDING_PHASE, REDEMPTION_CLOSED_FUNDS_CUSTODIED
 from tradeexecutor.backtest.vault_fees import calculate_vault_fees, vault_exit_rate
 from tradeexecutor.backtest.backtest_execution import BacktestExecution
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
 from tradeexecutor.backtest.vault_windows import VaultWindowSchedule
-from tradeexecutor.strategy.vault_protocol.d2 import early_window
-from dataclasses import replace
+from tradeexecutor.strategy.vault_protocol.d2 import early_window, unknown_deposit_is_closed
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import \
     UniswapV2Routing
 from tradeexecutor.state.portfolio import Portfolio
@@ -748,7 +749,7 @@ class BacktestPricing(PricingModel):
             reason = (state or {}).get("deposit_closed_reason" if operation == "deposit" else "redemption_closed_reason")
             if (flag is None or pd.isna(flag) or flag == -1) and (cap is None or pd.isna(cap)) and not (isinstance(reason, str) and reason.strip()):
                 override = early_window(pair, ts)
-            if override is None and operation == "deposit":
+            if override is None and operation == "deposit" and unknown_deposit_is_closed(pair, ts):
                 if kwargs.get("unknown_is_closed") is None:
                     kwargs["unknown_is_closed"] = True
         result = get_vault_closure(
@@ -758,8 +759,10 @@ class BacktestPricing(PricingModel):
         # A published closure for an explicitly windowed protocol is a window;
         # explicit capacity/permission reasons remain ordinary refusals.
         if rules is not None and rules.deposit_windowed and result.reason == "explicit_closed":
-            reason = str((state or {}).get("deposit_closed_reason") or "").lower()
-            if not any(word in reason for word in ("capacity", "private", "permission", "paused", "shutdown")):
+            reason = (state or {}).get("deposit_closed_reason" if operation == "deposit" else "redemption_closed_reason")
+            if not isinstance(reason, str) or not reason.strip() or reason.startswith(
+                DEPOSIT_CLOSED_FUNDING_PHASE if operation == "deposit" else REDEMPTION_CLOSED_FUNDS_CUSTODIED
+            ):
                 result = replace(result, reason="window_closed")
         return result
 

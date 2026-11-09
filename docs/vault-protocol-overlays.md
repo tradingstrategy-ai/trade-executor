@@ -18,8 +18,9 @@ simulation assumptions. They perform no acquisition or account permission checks
   fourteen-day cadence, two open days, anchor 30 March 2025. It applies only
   from first price coverage on 20 November 2024 until 12 February 2026. It is
   labelled synthetic evidence, never a live rule, and never replaces a known
-  flag, capacity or restriction. Later missing deposit history fails closed;
-  existing unknown-redemption policy is preserved.
+  flag, capacity or restriction. Later missing HYPE++ deposit history fails closed;
+  other D2 vaults retain the existing unknown-state policy. The existing
+  unknown-redemption policy is preserved.
 - The dispatcher retains existing Lagoon/D2 event gates, metadata-estimate
   eligibility, protocol/default delays and Ostium's next-day 18:00 UTC rule.
   The shared settlement helper applies explicit backtest overrides first;

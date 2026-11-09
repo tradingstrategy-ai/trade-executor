@@ -1,5 +1,3 @@
-from tradeexecutor.strategy.vault_protocol import settlement_expectation
-
 import abc
 import datetime
 import logging
@@ -9,6 +7,7 @@ from typing import Callable, Literal, Optional, Protocol
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.types import USDollarPrice, Percent, USDollarAmount, TokenAmount
+from tradeexecutor.strategy.vault_protocol import settlement_expectation
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.redemption import (
     DepositBlockReason,

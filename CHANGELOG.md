@@ -1,7 +1,7 @@
     **Note**: A full changelog is not available as long as `trade-executor` package is in active beta developmnt.
 
 ## 0.2
-
+- Resolve vault fee and directional settlement rules on trading pairs, support Atoma fixed exit costs, and use observed D2 windows with a bounded early-history fallback (2026-11-09).
 - Add fixed USDC equity minimums alongside weighted Lighter sleeve rebalancing, with optional Safe cash retention and no profit trimming in minimum mode (2026-11-08).
 - Price HyperEVM transactions from the latest small block through web3-ethereum-defi, because a large block as `latest` left a Lagoon settlement unmined for 96 minutes and stopped Hyper-AI (2026-11-06)
 - Prefer HyperSync for Lighter payout checks and Lagoon settlement reads, pass credentials through CLI runtime and recovery commands, and retain RPC fallback with an explicit opt-out (2026-11-06).

@@ -1,11 +1,10 @@
 """Helper functions to translate Trading Strategy client data to trade executor data format."""
 from math import isnan
 
-from tradeexecutor.strategy.vault_protocol import enrich_vault_pair
-
 from eth_defi.erc_4626.core import GENERIC_ERC4626_PROTOCOL_SLUG
 
 from tradeexecutor.state.identifier import AssetIdentifier, AssetType, TradingPairIdentifier, TradingPairKind
+from tradeexecutor.strategy.vault_protocol import enrich_vault_pair
 from tradeexecutor.strategy.vault_fee_data import get_vault_fee_internalised
 from tradingstrategy.chain import ChainId
 from tradingstrategy.exchange import ExchangeType

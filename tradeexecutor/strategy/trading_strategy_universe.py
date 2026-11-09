@@ -3156,7 +3156,8 @@ def load_partial_data(
                     "timestamp",
                     "share_price",
                     "total_assets",
-                    # Optional deposit/redemption availability and observation-time columns;
+                    "protocol",
+                    # Protocol and optional deposit/redemption availability columns;
                     # silently dropped by read_vault_price_history_parquet for older sources.
                     *VAULT_STATE_COLUMNS,
                     *VAULT_STATE_METADATA_COLUMNS,

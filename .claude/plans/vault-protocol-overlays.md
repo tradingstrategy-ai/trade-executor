@@ -1,7 +1,8 @@
 # Vault protocol overlays and strategy conversion
 
 Status: implemented locally on `feat/vault-pair-overlays`; focused verification
-completed. Remote CI and a full NB07 financial backtest have not run.
+completed. Remote CI has not run. The full NB07 financial verification completed; results
+are close but not identical to the saved source run.
 Updated 9 November 2026 UTC with the user's decisions. The preceding version
 received a completed Claude CLI Opus 5.5 review; this revision incorporates that
 review where applicable and supersedes its Avantis, early-history and legacy-state
@@ -433,9 +434,47 @@ enum hierarchy. Existing managers, event gates, tickets and State remain in use.
 - An independent read-only review found unknown-state forwarding, explicit-capacity
   precedence, nullable reasons, unknown-redemption compatibility and fee-mode
   ranking issues. These were corrected, with public pricing regression checks.
-- No full NB07 historical backtest or economic parity claim. Normal remote CI
+- At that earlier checkpoint, the full NB07 historical backtest had not run; no
+  economic parity claim was made. Normal remote CI
   remains the pre-merge compatibility gate and has not run for these local changes.
 
 The canonical executor/dependencies were not switched or edited. The isolated
 worktree uses the existing full executor environment, not a new package install.
 Source-only credentials wrapper and local environment symlink are not versioned.
+
+
+### Initial full-period verification after implementation
+
+A converted-module run completed over `[2025-04-01, 2026-10-21)` UTC, starting
+with $100,000, recorded NB07 vault inputs and the explicit missing-fee override.
+Module final equity $116,496.95, CAGR 10.33%, Sharpe 7.62, MaxDD -0.36%; source
+final equity $116,412.77, CAGR 10.28%, Sharpe 7.62, MaxDD -0.36% on the same
+calendar. Neither has failed trades. One module redemption remains pending,
+versus two in the source. Exact parity is not established; no attribution of the
+$84.18 difference is claimed. The harness's initial import error and subsequent
+report-export error are preserved; reporting was repaired from saved State
+without rerunning the financial simulation. Local evidence is in vault-notebooks
+`data/vault-of-vault-cleanup/module-backtest-20261109/`.
+
+
+### Cleanup corrections and final verification
+
+Claude CLI `claude-opus-5-5` reviews completed independently for the executor,
+trading-strategy dependency, strategy and notebook record. Confirmed findings
+were corrected: production projection retains optional `protocol`; D2 unknown
+refusal is scoped to authorised later HYPE++ history; fee enrichment adds no
+global assertion; partial fee selection and required-source checks preserve the
+source universe. Directional due-time calls and documented timing controls now
+use the shared path. A partly missing Atoma entry fee remains data-only under
+the explicit override, while its supported exit fee is resolved independently.
+Pending-redemption test assertions confirm proceeds are unavailable as cash.
+
+The corrected-loader run supersedes the initial result above. Over
+`[2025-04-01, 2026-10-21)` UTC with $100,000 and recorded NB07 inputs, module
+final equity is $116,343.28, CAGR 10.24%, Sharpe 7.38, MaxDD -0.46%; source
+final equity is $116,412.77, CAGR 10.28%, Sharpe 7.62, MaxDD -0.36%.
+All 922 module trades succeeded, with no pending settlement; the source retains
+two. Module equity is $69.49 lower; exact parity and attribution are unverified.
+The deliberate retry used the original deadline; evidence is in
+`data/vault-of-vault-cleanup/module-backtest-20261109/attempt-02/` in the notebook
+repository. Earlier failures and reports remain preserved in the parent directory.

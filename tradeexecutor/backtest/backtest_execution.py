@@ -9,7 +9,9 @@ from tabulate import tabulate
 
 from eth_defi.erc_4626.core import ERC4626Feature
 
-from tradeexecutor.strategy.vault_protocol import settlement_expectation
+from tradeexecutor.strategy.vault_protocol import (
+    settlement_expectation, OSTIUM_BACKTEST_SETTLEMENT_HOUR, VAULT_SETTLEMENT_DELAY_FALLBACKS,
+)
 from tradeexecutor.backtest.vault_fees import FEE_KEY, calculate_vault_fees, externalised_rates, vault_exit_rate
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel, BacktestRoutingState
 from tradeexecutor.backtest.simulated_wallet import SimulatedWallet, OutOfSimulatedBalance
@@ -96,22 +98,6 @@ DEFAULT_VAULT_SETTLEMENT_DELAY = datetime.timedelta(days=2)
 #: settle after this grace period instead of permanently stranding capital.
 NO_HISTORICAL_SETTLEMENT_OBSERVATION_GRACE_PERIOD = datetime.timedelta(days=2)
 
-#: Hour of day (UTC, naive) when Ostium-style vaults settle in backtesting.
-#:
-#: Live Ostium V1.5 exposes settlement eligibility through the request
-#: settlement id and ``lastSettlementTs + maxSettlementInterval``. Backtests
-#: keep the earlier next-day approximation for reproducibility. Override the
-#: schedule per vault with ``vault_settlement_delay_overrides``.
-OSTIUM_BACKTEST_SETTLEMENT_HOUR = 18
-
-
-#: Conservative protocol delays when no positive settlement estimate exists.
-#: Per-vault ``vault_settlement_delay_overrides`` take precedence over these defaults.
-VAULT_SETTLEMENT_DELAY_FALLBACKS: dict[ERC4626Feature, datetime.timedelta] = {
-    ERC4626Feature.d2_like: datetime.timedelta(days=14),
-    ERC4626Feature.plutus_like: datetime.timedelta(days=14),
-    ERC4626Feature.atoma_like: datetime.timedelta(days=7),
-}
 
 
 class BacktestExecution(ExecutionModel):
@@ -527,28 +513,7 @@ class BacktestExecution(ExecutionModel):
             ERC4626Feature.d2_like,
         })
 
-    @staticmethod
-    def _uses_protocol_settlement_estimate(features: set[ERC4626Feature]) -> bool:
-        """Whether a queued backtest request can use the vault's reported delay.
-
-        :py:meth:`_get_settlement_due` uses this after explicit overrides.
-        Lagoon, Upshift and :py:data:`VAULT_SETTLEMENT_DELAY_FALLBACKS` families
-        prefer a positive metadata estimate; others keep their existing schedule.
-        Call :py:meth:`_is_async_vault` for the trade direction first: this
-        timing policy must not turn synchronous deposits into queued ones.
-
-        :param features:
-            Protocol features of the vault being simulated; empty if unknown.
-        :return:
-            Whether to consult the estimate before using a protocol/global fallback.
-        """
-        estimate_features = {
-            ERC4626Feature.lagoon_like,
-            ERC4626Feature.upshift_like,
-        } | VAULT_SETTLEMENT_DELAY_FALLBACKS.keys()
-        return bool(features & estimate_features)
-
-    def _get_settlement_due(self, pair: TradingPairIdentifier, ts: datetime.datetime) -> datetime.datetime:
+    def _get_settlement_due(self, pair: TradingPairIdentifier, ts: datetime.datetime, *, is_buy: bool = False) -> datetime.datetime:
         """Compute the minimum simulated settlement time for a queued request.
 
         Historical deposit-event checks may defer completion beyond this time.
@@ -575,7 +540,7 @@ class BacktestExecution(ExecutionModel):
             Earliest settlement timestamp under the selected simulation delay.
         """
         return settlement_expectation(
-            pair, ts, is_buy=False,
+            pair, ts, is_buy=is_buy,
             overrides=self.vault_settlement_delay_overrides,
             default_delay=self.vault_settlement_delay,
         )[1]
@@ -624,7 +589,7 @@ class BacktestExecution(ExecutionModel):
             self.wallet.update_balance(base, request_quantity, f"vault redeem request #{trade.trade_id}")
             trade.other_data[VAULT_SETTLEMENT_REQUEST_QUANTITY_KEY] = str(request_quantity)
 
-        settles_at = self._get_settlement_due(trade.pair, ts)
+        settles_at = self._get_settlement_due(trade.pair, ts, is_buy=trade.is_buy())
         trade.other_data["vault_settlement_estimated_at"] = settles_at.isoformat()
         if trade.is_buy() and self._requires_historical_deposit_settlement(trade.pair):
             trade.other_data["vault_settlement_historical_event_required"] = True

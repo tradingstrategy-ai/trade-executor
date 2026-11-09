@@ -58,6 +58,9 @@ def test_loaded_protocol_rules_and_real_settlement() -> None:
         manager = input.get_position_manager()
         if input.cycle == 1:
             return manager.open_spot(atoma, value=1000)
+        if input.cycle == 5:
+            assert input.state.portfolio.get_cash() == pytest.approx(9000)
+            assert any(t.is_vault_settlement_in_flight() for t in input.state.portfolio.get_all_trades())
         if input.cycle == 3:
             return manager.close_spot_position(next(iter(input.state.portfolio.open_positions.values())))
         return []
@@ -125,3 +128,83 @@ def test_fee_override_and_observed_window_boundary() -> None:
         BacktestRoutingIgnoredModel(universe.reserve_assets[0].address),
         pairs=universe.data_universe.pairs, vault_state=early_state)
     assert unknown.can_deposit(datetime.datetime(2025, 3, 30), pair)
+
+
+@pytest.mark.parametrize('with_protocol', [True, False])
+def test_partial_loader_preserves_protocol_for_window_buckets(tmp_path, monkeypatch, with_protocol):
+    """The public parquet loader preserves D2 bucketing and accepts older schemas.
+
+    1. Write hardcoded observations with and without the optional protocol field.
+    2. Load through the actual partial-universe projection and parquet reader.
+    3. Check D2 closes only in the next decision bucket; old files still load.
+    """
+    from unittest.mock import Mock
+    from tradingstrategy.client import Client
+    from tradingstrategy.exchange import ExchangeUniverse
+    from tradingstrategy.timebucket import TimeBucket
+    from tradeexecutor.strategy.execution_context import ExecutionContext
+    from tradeexecutor.strategy.universe_model import UniverseOptions
+    import tradeexecutor.strategy.trading_strategy_universe as loader
+
+    universe = create_vault_protocol_universe()
+    pairs = universe.data_universe.pairs.df
+    pair = next(p for p in universe.iterate_pairs() if p.get_vault_metadata().vault_name == 'HYPE++')
+    pairs = pairs[pairs.address == pair.pool_address].copy()
+    # 1. Write raw observations, before the normal pair-id assignment/conversion.
+    frame = pd.DataFrame([dict(chain=42161, address=pair.pool_address,
+        protocol='D2 Finance', timestamp=pd.Timestamp('2026-02-11 02:32:56'),
+        share_price=1., total_assets=100000., deposits_open=False, redemption_open=True)])
+    if not with_protocol:
+        frame = frame.drop(columns='protocol')
+    path = tmp_path / 'prices.parquet'
+    frame.to_parquet(path)
+    # 2. Only metadata transport is stubbed; projection, read and conversion are real.
+    client = Mock(spec=Client)
+    client.fetch_exchange_universe.return_value = ExchangeUniverse({})
+    monkeypatch.setattr(loader, 'create_vault_data_client', lambda *args: object())
+    monkeypatch.setattr(loader, 'load_multiple_vaults', lambda *args, **kwargs: (list(universe.data_universe.exchanges), pairs))
+    options = UniverseOptions(start_at=datetime.datetime(2026, 2, 10), end_at=datetime.datetime(2026, 2, 14))
+    options.vault_price_snapshot = path
+    dataset = loader.load_partial_data(client, ExecutionContext(ExecutionMode.backtesting),
+        TimeBucket.d1, pd.DataFrame(columns=['dex_type', 'pair_id', 'exchange_id']),
+        options, vaults=[(42161, pair.pool_address)], vault_history_source='trading-strategy-website')
+    # 3. Protocol-aware D2 ceil is exercised through the production entry point.
+    expected = '2026-02-12' if with_protocol else '2026-02-11'
+    assert dataset.vault_state.timestamp.iloc[0] == pd.Timestamp(expected)
+
+
+def test_other_d2_unknown_history_keeps_existing_policy():
+    """An authorised HYPE++ cutoff must not refuse other D2 deposit histories."""
+    universe = create_vault_protocol_universe()
+    hype = next(p for p in universe.iterate_pairs() if p.get_vault_metadata().vault_name == 'HYPE++')
+    other = replace(hype, pool_address='0x' + '9' * 40)
+    pricing = BacktestPricing(universe.data_universe.candles,
+        BacktestRoutingIgnoredModel(universe.reserve_assets[0].address), pairs=universe.data_universe.pairs)
+    assert pricing.can_deposit(datetime.datetime(2025, 1, 1), other)
+    assert pricing.can_deposit(datetime.datetime(2027, 1, 1), other)
+    assert not pricing.can_deposit(datetime.datetime(2027, 1, 1), hype)
+
+
+def test_invalid_fee_enrichment_does_not_add_global_assertion():
+    """Shared translation stays tolerant; explicit strict validation owns refusal."""
+    from tradeexecutor.strategy.vault_protocol import enrich_vault_pair
+    universe = create_vault_protocol_universe()
+    pair = next(p for p in universe.iterate_pairs() if p.get_vault_metadata().vault_name == 'Generic')
+    pair.other_data['token_metadata'] = replace(pair.get_vault_metadata(), deposit_fee=float('nan'))
+    enrich_vault_pair(pair)
+    assert not pair.get_vault_protocol_rules().deposit_fee_supported
+    with pytest.raises(AssertionError, match='Unsupported vault deposit fee'):
+        validate_vault_fee_data(universe)
+
+
+def test_atoma_missing_entry_fee_override_is_data_only():
+    """Known supported exit terms cannot hide the missing entry fee under override."""
+    from tradeexecutor.strategy.vault_protocol import enrich_vault_pair
+    universe = create_vault_protocol_universe()
+    pair = next(p for p in universe.iterate_pairs() if p.get_vault_metadata().vault_name == 'Atoma')
+    pair.other_data['token_metadata'] = replace(pair.get_vault_metadata(), deposit_fee=None)
+    enrich_vault_pair(pair)
+    with pytest.raises(AssertionError, match='deposit fee'):
+        validate_vault_fee_data(universe)
+    validate_vault_fee_data(universe, allow_missing=True)
+    assert pair.get_ignore_reason() == 'lacks_fee_data'

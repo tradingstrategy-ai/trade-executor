@@ -30,3 +30,9 @@ def early_window(pair, timestamp):
     if timestamp is not None and (pair.chain_id, pair.pool_address.lower()) == HYPE_VAULT and HISTORY_START <= timestamp < HISTORY_END:
         return EARLY_SCHEDULE
     return None
+
+
+def unknown_deposit_is_closed(pair, timestamp: datetime.datetime | None) -> bool:
+    """Refuse missing later HYPE++ evidence without changing other D2 histories."""
+    return (timestamp is not None and timestamp >= HISTORY_END
+            and (pair.chain_id, pair.pool_address.lower()) == HYPE_VAULT)

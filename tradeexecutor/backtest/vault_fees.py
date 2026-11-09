@@ -54,10 +54,9 @@ def externalised_rates(pair: TradingPairIdentifier) -> tuple[Decimal, Decimal] |
 def vault_exit_rate(pair: TradingPairIdentifier) -> float:
     """Keep fixed exit costs on the existing sell-tax path, separately from manager fees.
 
-    Metadata withdrawal fees are not automatically mapped to a tax by the
-    backtester. Using them only for externalised-fee vaults would give otherwise
-    identical vaults different fixed-cost treatment. Callers must model these
-    costs explicitly or exclude the route, as NB05 already does.
+    Explicit legacy share-token taxes take precedence. Otherwise the pair getter
+    exposes only supported loaded exit fees, independently of the manager-fee
+    mode; unsupported costs must be refused by the selecting strategy.
 
     :param pair:
         Pair whose base share token may carry an explicitly configured sell tax.
