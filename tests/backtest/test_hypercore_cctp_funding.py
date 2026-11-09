@@ -169,7 +169,8 @@ def test_native_primary_keeps_existing_planner_behaviour(primary: int):
                                     primary, START, reserve) == [sell, buy]
 
 
-def test_reduced_native_payout_refuses_bridge_burn():
+@pytest.mark.parametrize('exit_price,performance,net', [(0.8, 0.0, 480), (1.2, 0.1, 708)])
+def test_reduced_native_payout_refuses_bridge_burn(exit_price: float, performance: float, net: int):
     """Never burn planned proceeds that the native withdrawal did not actually return.
 
     1. Execute a bridge, native buy and lower-price native exit using real simulation.
@@ -181,6 +182,7 @@ def test_reduced_native_payout_refuses_bridge_burn():
     pairs = list(universe.iterate_pairs())
     reserve = universe.get_reserve_asset()
     native = next(p for p in pairs if p.is_hyperliquid_vault())
+    native.other_data.update(vault_fee_internalised=False, vault_management_fee=0.0, vault_performance_fee=performance)
     physical = next(p for p in pairs if p.base.token_symbol == 'physical')
     bridge = next(p for p in pairs if p.is_cctp_bridge() and p.get_destination_chain_id() == 999)
     base_bridge = next(p for p in pairs if p.is_cctp_bridge() and p.get_destination_chain_id() == 8453)
@@ -195,13 +197,18 @@ def test_reduced_native_payout_refuses_bridge_burn():
     for pair, quantity, amount, price in [(bridge, None, Decimal(800), 1.0),
                                         (physical, None, Decimal(200), 1.0),
                                         (native, None, Decimal(600), 1.0),
-                                        (native, Decimal(-600), None, 0.8)]:
+                                        (native, Decimal(-600), None, exit_price)]:
         _, trade, _ = state.create_trade(START, pair, quantity, amount, price, TradeType.rebalance, reserve, 1.0)
+        if pair.is_hyperliquid_vault() and trade.is_sell():
+            forecast_state = State.from_json(state.to_json())
+            forecast = inject_cctp_bridge_trades(forecast_state, [trade], universe, 42161, START, reserve)
+            back_forecast = next(t for t in forecast if t.pair.is_cctp_bridge() and t.is_sell())
+            assert abs(float(back_forecast.planned_quantity)) == pytest.approx(net)
         execution.execute_trades(START, state, [trade], routing, routing_state)
-    assert state.portfolio.get_bridge_position_for_chain(999).get_available_bridge_capital() == pytest.approx(480)
+    assert state.portfolio.get_bridge_position_for_chain(999).get_available_bridge_capital() == pytest.approx(net)
     assert state.portfolio.get_cash() == pytest.approx(200)
     # 2. Only external signing/transport is mocked; run the real live sequential guard.
-    _, back, _ = state.create_trade(START, bridge, Decimal(-600), None, 1.0, TradeType.rebalance, reserve, 1.0)
+    _, back, _ = state.create_trade(START, bridge, -Decimal(str(max(600, 600 * exit_price))), None, 1.0, TradeType.rebalance, reserve, 1.0)
     _, out, _ = state.create_trade(START, base_bridge, None, Decimal(500), 1.0, TradeType.rebalance, reserve, 1.0)
     executor = MagicMock(spec=EthereumExecution)
     routing_live = MagicMock()
@@ -216,7 +223,7 @@ def test_reduced_native_payout_refuses_bridge_burn():
     assert back.get_status() == out.get_status() == TradeStatus.expired
     restored = State.from_json(state.to_json())
     restored.perform_integrity_check()
-    assert restored.portfolio.get_net_asset_value() == pytest.approx(880)
+    assert restored.portfolio.get_net_asset_value() == pytest.approx(400 + net)
 
 
 def test_native_legacy_ledger_diagnosis_is_atomic():

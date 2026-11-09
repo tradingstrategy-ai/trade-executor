@@ -36,3 +36,12 @@ matching the existing CCTP valuation convention; this is needed to exercise the
 normal runner with an offline hardcoded universe. Historical transfer topology
 is an explicit zero-latency assumption, not proof of route availability at the
 historical date. No strategy ranking, universe policy or buffer is changed.
+
+The unchanged-input NB07 rerun additionally exposed gross native reductions
+being used as bridge funding even though settlement deducts externalised vault
+fees. The planner now uses the existing ledger-derived `calculate_vault_fees()`
+net estimate for native sells. This matches simulation without duplicating the
+fee formula or changing live Hyper AI's standalone pricing. The refusal test
+also covers a profitable native exit with a 10% performance fee and asserts the
+projected bridge-back equals net proceeds. Actual live proceeds remain subject
+to the source-spending guard.

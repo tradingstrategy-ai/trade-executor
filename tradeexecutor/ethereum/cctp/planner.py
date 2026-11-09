@@ -27,6 +27,7 @@ from tradeexecutor.state.identifier import (
     TradingPairKind,
 )
 from tradeexecutor.state.portfolio import NotEnoughMoney
+from tradeexecutor.backtest.vault_fees import calculate_vault_fees, vault_exit_rate
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import CCTP_BRIDGE_ORDER_BUMP, TradeExecution, TradeType
 from tradeexecutor.state.types import USDollarAmount
@@ -357,6 +358,14 @@ def inject_cctp_bridge_trades(
                 continue
         value = trade.planned_reserve if trade.planned_reserve else Decimal(str(trade.get_planned_value()))
         value = abs(value)
+        if trade.pair.is_hyperliquid_vault() and trade.is_sell():
+            position = state.portfolio.get_position_by_id(trade.position_id)
+            fees = calculate_vault_fees(
+                position, ts, abs(trade.planned_quantity),
+                trade.planned_mid_price or trade.planned_price, vault_exit_rate(trade.pair),
+            )
+            if fees:
+                value = Decimal(fees["net"])
         if trade.pair.is_lighter_pool() and trade.is_buy():
             value -= Decimal(trade.other_data.get("lighter_idle_allocated", "0"))
             if value == 0 and trade_chain_id != primary_chain_id and state.portfolio.get_bridge_position_for_chain(trade_chain_id) is None:
