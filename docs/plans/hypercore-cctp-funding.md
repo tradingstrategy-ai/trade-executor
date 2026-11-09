@@ -16,13 +16,17 @@ old instant-primary wallets require reconciliation rather than automatic migrati
 The planner estimates net HyperCore sale proceeds using the existing
 ledger-derived externalised-fee calculation when fee-mode metadata is present.
 Factory-created live pairs carrying only a performance rate keep a gross
-forecast with a warning; no historical fee-mode assertion is applied to them. The sequential executor checks
-recorded settled source capital before signing bridges and dependent purchases,
-even when optional on-chain balance checks are disabled. This is an accounting
+forecast with a warning; no historical fee-mode assertion is applied to them.
+The sequential executor requires State's existing allocation checks for bridges
+and dependent purchases, even when optional on-chain balance checks are disabled.
+State handles funding-source selection, idle collateral and sub-raw-unit buy
+rounding in one place. Bridge-backs retain an explicit source-capital check,
+because State does not allocate their source cash. This is an accounting
 guard, not an independent RPC balance proof. The native router still verifies
 actual payouts. Fees, NAV changes or withdrawal caps can reduce proceeds; an
 oversized spend then expires all remaining planned work and checkpoints state.
-Even a small overestimate can halt the batch; there is no automatic resizing.
+Sub-raw-unit buy shortages use Portfolio's existing dust snap; larger deficits
+halt the batch rather than automatically resizing it.
 Internal exchange-account transfers use account capital, not reserve cash.
 
 Pending CCTP keeps its existing batch halt, signed-transaction recovery and
@@ -34,9 +38,10 @@ simulation are outside this change.
 Lighter purchase budgets include accounted idle collateral. State consumes that
 contribution; simulation debits only `get_lighter_buy_funding()` from physical
 Ethereum cash. The purchase's executed cost remains the full investment budget.
-Manual pool buys that bypass the planner reserve their idle contribution before
-the sequential cash check, using State's existing reservation method. A $5 buy
-with $1 idle collateral therefore checks $4 of satellite Safe funding.
+Manual pool buys that bypass the planner use the same State allocation path.
+A $5 buy with $1 idle collateral therefore checks $4 of satellite Safe funding.
+Planner diagnosis, simulation and bridge reopening share Portfolio's latest
+closed-bridge lookup; looking up the ledger does not reopen or mutate it.
 The simple backtest valuator prices CCTP positions at $1; allocated capital is
 still accounted for by the existing bridge position, not counted twice.
 

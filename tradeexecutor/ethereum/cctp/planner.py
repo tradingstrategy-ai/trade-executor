@@ -19,7 +19,6 @@ import datetime
 import logging
 from dataclasses import dataclass, field
 from collections import defaultdict
-from itertools import chain
 from decimal import Decimal
 
 from tradeexecutor.state.identifier import (
@@ -342,16 +341,12 @@ def inject_cctp_bridge_trades(
 
     # Native positions opened under the old instant-primary convention have no
     # satellite ledger. Refuse them before any trade/idle-funding mutations.
-    ledger_chains = {
-        p.pair.get_destination_chain_id()
-        for p in chain(state.portfolio.open_positions.values(), state.portfolio.closed_positions.values())
-        if p.pair.is_cctp_bridge()
-    }
     for trade in trades:
         funding_chain = trade.pair.get_funding_chain_id()
         if (trade.pair.is_hyperliquid_vault() and trade.is_sell()
                 and funding_chain != primary_chain_id and funding_chain in bridge_pairs):
-            if funding_chain not in ledger_chains:
+            if (state.portfolio.get_bridge_position_for_chain(funding_chain) is None
+                    and state.portfolio.get_closed_bridge_position_for_chain(funding_chain) is None):
                 raise NotEnoughMoney(
                     f"Native satellite sell #{trade.trade_id} has no funding ledger on chain {funding_chain}; "
                     "reconcile legacy native funding before execution"

@@ -1245,6 +1245,21 @@ class Portfolio:
                     return position
         return None
 
+    def get_closed_bridge_position_for_chain(self, chain_id: int) -> "TradingPosition | None":
+        """Find the latest closed bridge ledger without reopening it.
+
+        :param chain_id:
+            Physical destination chain of the CCTP bridge.
+        :return:
+            Most recently closed bridge position, or None if no ledger exists.
+        """
+        candidates = (
+            position for position in self.closed_positions.values()
+            if position.pair.kind == TradingPairKind.cctp_bridge
+            and position.pair.get_destination_chain_id() == chain_id
+        )
+        return max(candidates, key=lambda p: p.closed_at or p.opened_at, default=None)
+
     def reopen_closed_bridge_position_for_chain(self, chain_id: int, reopened_at: datetime.datetime) -> "TradingPosition | None":
         """Reopen the latest closed CCTP bridge position for a destination chain.
 
@@ -1253,16 +1268,9 @@ class Portfolio:
         satellite-chain bridge capital, so the old bridge position must become
         open again to carry the available balance.
         """
-        candidates = [
-            position
-            for position in self.closed_positions.values()
-            if position.pair.kind == TradingPairKind.cctp_bridge
-            and position.pair.get_destination_chain_id() == chain_id
-        ]
-        if not candidates:
+        position = self.get_closed_bridge_position_for_chain(chain_id)
+        if position is None:
             return None
-
-        position = max(candidates, key=lambda p: p.closed_at or p.opened_at)
         logger.info(
             "Reopening closed CCTP bridge position #%d for chain %d after satellite capital returned",
             position.position_id,

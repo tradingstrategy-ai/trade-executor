@@ -232,6 +232,7 @@ def test_reduced_native_payout_refuses_bridge_burn(exit_price: float, performanc
     # 2. Request the original bridge-back and dependent Base transfer through live execution.
     _, back, _ = state.create_trade(START, bridge, -Decimal(str(max(600, 600 * exit_price))), None, 1.0, TradeType.rebalance, reserve, 1.0)
     _, out, _ = state.create_trade(START, base_bridge, None, Decimal(500), 1.0, TradeType.rebalance, reserve, 1.0)
+    # Mock transport and executor wiring: real State must refuse before signing or RPCs.
     executor = MagicMock(spec=EthereumExecution)
     routing_live = MagicMock()
     routing_live.check_trade_before_execution.return_value = None
@@ -308,6 +309,61 @@ def test_lighter_synthetic_quote_uses_ethereum_cash(idle: int) -> None:
     assert state.portfolio.get_net_asset_value() == pytest.approx(1000)
 
 
+@pytest.mark.parametrize('satellite', [False, True])
+def test_sequential_buy_snaps_dust_before_refusing_unfunded_bridge(satellite: bool) -> None:
+    """Reuse State's dust tolerance while refusing a genuinely unfunded next trade.
+
+    1. Hold $100 on the hub and $100 in a HyperEVM bridge ledger.
+    2. Buy on either chain with sub-raw-unit dust, then request an unfunded bridge.
+    3. Verify the buy settles at $100 and only the unfunded work expires.
+    """
+    # 1. Hold $100 on the hub and $100 in a HyperEVM bridge ledger.
+    universe = _universe()
+    reserve = universe.get_reserve_asset()
+    bridge = next(p for p in universe.iterate_pairs() if p.is_cctp_bridge() and p.get_destination_chain_id() == 999)
+    pair = next(p for p in universe.iterate_pairs() if p.base.token_symbol == ('physical' if satellite else 'hub'))
+    state = State()
+    state.portfolio.initialise_reserves(reserve, reserve_token_price=1.0)
+    state.portfolio.get_default_reserve_position().quantity = Decimal(200)
+    _, funding, _ = state.create_trade(START, bridge, None, Decimal(100), 1.0, TradeType.rebalance, reserve, 1.0)
+    state.start_execution(START, funding)
+    state.mark_broadcasted(START, funding)
+    state.mark_trade_success(START, funding, executed_price=1.0, executed_amount=Decimal(100),
+        executed_reserve=Decimal(100), lp_fees=0.0, native_token_price=1.0)
+
+    # 2. Buy on either chain with sub-raw-unit dust, then request an unfunded bridge.
+    _, buy, _ = state.create_trade(START, pair, None, Decimal('100.0000001234'), 1.0, TradeType.rebalance, reserve, 1.0)
+    _, out, _ = state.create_trade(START, bridge, None, Decimal(101), 1.0, TradeType.rebalance, reserve, 1.0)
+    # Mock transport and executor wiring to exercise real State allocation without RPCs.
+    routing = MagicMock()
+    routing.check_trade_before_execution.return_value = None
+    routing.setup_trades.side_effect = lambda **kwargs: state.mark_broadcasted(START, buy)
+    executor = MagicMock(spec=EthereumExecution)
+    executor.max_slippage = None
+
+    def settle(routing_model: object, settled_state: State, trades: list[TradeExecution], rebroadcast: bool) -> None:
+        """Record the mocked receipt; routing_model and rebroadcast are unused wiring."""
+        trade = trades[0]
+        settled_state.mark_trade_success(START, trade, executed_price=1.0, executed_amount=trade.planned_quantity,
+            executed_reserve=trade.planned_reserve, lp_fees=0.0, native_token_price=1.0)
+
+    executor._execute_trade_batch.side_effect = settle
+    with pytest.raises(ExecutionHaltableIssue, match='insufficient source cash'):
+        EthereumExecution._execute_trades_sequentially(executor, START, state, [buy, out],
+            routing, MagicMock(), check_balances=False, rebroadcast=False, triggered=False)
+
+    # 3. Verify the buy settles at $100 and only the unfunded work expires.
+    assert buy.is_success()
+    assert buy.executed_reserve == pytest.approx(100)
+    assert out.get_status() == TradeStatus.expired
+    assert out.started_at is None
+    routing.setup_trades.assert_called_once()
+    executor._execute_trade_batch.assert_called_once()
+    executor.sync_state_before_broadcast.assert_called()
+    assert state.portfolio.get_net_asset_value() == pytest.approx(200)
+    state.perform_integrity_check()
+
+
 def test_manual_lighter_buy_reserves_idle_before_cash_check() -> None:
     """A manual pool buy includes idle collateral before checking satellite cash.
 
@@ -335,6 +391,7 @@ def test_manual_lighter_buy_reserves_idle_before_cash_check() -> None:
     assert 'lighter_idle_allocated' not in buy.other_data
 
     # 2. Execute a $5 manual buy without calling the CCTP planner first.
+    # Mock transport and executor wiring while real State consumes both funding sources.
     routing = MagicMock()
     routing.check_trade_before_execution.return_value = None
     routing.setup_trades.side_effect = lambda **kwargs: state.mark_broadcasted(START, buy)
@@ -384,6 +441,7 @@ def test_internal_transfer_in_bridge_batch_uses_account_cash() -> None:
     bridge = next(p for p in universe.iterate_pairs() if p.is_cctp_bridge())
     _, out, _ = state.create_trade(START, bridge, None, Decimal(1), 1.0, TradeType.rebalance, reserve, 1.0)
     # 2. Execute it ahead of an underfunded bridge through the real sequential executor.
+    # Mock protocol transport; real account completion and State keep custody accounting.
     routing = MagicMock()
     routing.check_trade_before_execution.return_value = None
     routing.setup_trades.side_effect = lambda **kwargs: state.mark_broadcasted(START, transfer)

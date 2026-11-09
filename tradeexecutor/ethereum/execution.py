@@ -34,6 +34,7 @@ from tradingstrategy.chain import ChainId
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.ethereum.swap import report_failure
 from tradeexecutor.state.state import State
+from tradeexecutor.state.portfolio import NotEnoughMoney
 from tradeexecutor.state.trade import TradeExecution, TradeStatus, has_unresolved_hypercore_accounting
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.freeze import freeze_position_on_failed_trade
@@ -788,39 +789,37 @@ class EthereumExecution(ExecutionModel):
                     self.sync_state_before_broadcast()
                     continue
 
-            if not rebroadcast and trade.is_buy() and trade.pair.is_lighter_pool() and "lighter_idle_allocated" not in trade.other_data:
-                # Manual trades bypass CCTP planning. Reserve their idle contribution
-                # before checking the Safe-funded remainder, as start_execution does.
-                state.portfolio.plan_lighter_idle_funding([trade])
-
-            is_bridge = trade.pair.is_cctp_bridge()
-            bridge = None if is_bridge else state.portfolio.get_bridge_position_for_chain(trade.pair.get_funding_chain_id())
-            spends_cash = trade.is_buy() and not trade.is_internal_account_transfer()
-            if not rebroadcast and (is_bridge or (spends_cash and (has_bridge_trades or bridge is not None))):
-                # Check recorded settled capital before allocation or signing,
-                # including when optional on-chain balance checks are disabled.
-                if is_bridge and trade.is_sell():
-                    bridge = state.portfolio.get_bridge_position_for_chain(trade.pair.get_destination_chain_id())
-                    available = bridge.get_available_bridge_capital() if bridge else Decimal(0)
-                    required = abs(trade.planned_quantity)
-                else:
-                    available = bridge.get_available_bridge_capital() if bridge else state.portfolio.get_default_reserve_position().quantity
-                    required = state.portfolio.get_lighter_buy_funding(trade) if trade.pair.is_lighter_pool() else trade.planned_reserve
-                if required > available:
+            if not rebroadcast:
+                is_bridge = trade.pair.is_cctp_bridge()
+                needs_source_check = is_bridge or (
+                    trade.is_buy() and not trade.is_internal_account_transfer() and (
+                        has_bridge_trades
+                        or state.portfolio.get_bridge_position_for_chain(trade.pair.get_funding_chain_id()) is not None
+                    )
+                )
+                try:
+                    if is_bridge and trade.is_sell():
+                        # State allocates no capital for bridge-backs, so check them here.
+                        bridge = state.portfolio.get_bridge_position_for_chain(trade.pair.get_destination_chain_id())
+                        available = bridge.get_available_bridge_capital() if bridge else Decimal(0)
+                        if abs(trade.planned_quantity) > available:
+                            raise NotEnoughMoney(f"Bridge-back needs {abs(trade.planned_quantity)}, available {available}")
+                    # Reuse State's funding source, idle collateral and raw-unit dust rules.
+                    state.start_execution(
+                        native_datetime_utc_now(),
+                        trade,
+                        underflow_check=check_balances or needs_source_check,
+                        triggered=triggered,
+                    )
+                except NotEnoughMoney as exc:
+                    if not needs_source_check:
+                        raise
                     _expire_planned_trades(state, trades[idx - 1:])
                     self.sync_state_before_broadcast()
                     raise ExecutionHaltableIssue(
                         f"Unsettled or insufficient source cash for trade #{trade.trade_id}: "
-                        f"need {required}, available {available}; remaining planned trades expired"
-                    )
-
-            if not rebroadcast:
-                state.start_execution(
-                    native_datetime_utc_now(),
-                    trade,
-                    underflow_check=check_balances,
-                    triggered=triggered,
-                )
+                        f"{exc}; remaining planned trades expired"
+                    ) from exc
                 if self.max_slippage is not None:
                     trade.planned_max_slippage = self.max_slippage
 

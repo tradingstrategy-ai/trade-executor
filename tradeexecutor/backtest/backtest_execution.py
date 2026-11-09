@@ -261,10 +261,7 @@ class BacktestExecution(ExecutionModel):
         funding_chain = trade.pair.get_funding_chain_id()
         bridge_position = state.portfolio.get_bridge_position_for_chain(funding_chain)
         if bridge_position is None and trade.is_sell() and trade.pair.quote != trade.reserve_currency:
-            bridge_position = next((
-                p for p in state.portfolio.closed_positions.values()
-                if p.pair.is_cctp_bridge() and p.pair.get_destination_chain_id() == funding_chain
-            ), None)
+            bridge_position = state.portfolio.get_closed_bridge_position_for_chain(funding_chain)
         bridge_funded_buy = trade.bridge_currency_allocated is not None
         satellite_sell_returning_to_bridge = trade.is_sell() and bridge_position is not None
         if bridge_funded_buy or satellite_sell_returning_to_bridge:
