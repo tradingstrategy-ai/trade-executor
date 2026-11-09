@@ -34,6 +34,9 @@ simulation are outside this change.
 Lighter purchase budgets include accounted idle collateral. State consumes that
 contribution; simulation debits only `get_lighter_buy_funding()` from physical
 Ethereum cash. The purchase's executed cost remains the full investment budget.
+Manual pool buys that bypass the planner reserve their idle contribution before
+the sequential cash check, using State's existing reservation method. A $5 buy
+with $1 idle collateral therefore checks $4 of satellite Safe funding.
 The simple backtest valuator prices CCTP positions at $1; allocated capital is
 still accounted for by the existing bridge position, not counted twice.
 

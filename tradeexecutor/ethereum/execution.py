@@ -788,6 +788,11 @@ class EthereumExecution(ExecutionModel):
                     self.sync_state_before_broadcast()
                     continue
 
+            if not rebroadcast and trade.is_buy() and trade.pair.is_lighter_pool() and "lighter_idle_allocated" not in trade.other_data:
+                # Manual trades bypass CCTP planning. Reserve their idle contribution
+                # before checking the Safe-funded remainder, as start_execution does.
+                state.portfolio.plan_lighter_idle_funding([trade])
+
             is_bridge = trade.pair.is_cctp_bridge()
             bridge = None if is_bridge else state.portfolio.get_bridge_position_for_chain(trade.pair.get_funding_chain_id())
             spends_cash = trade.is_buy() and not trade.is_internal_account_transfer()

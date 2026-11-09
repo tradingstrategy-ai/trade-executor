@@ -12,6 +12,7 @@ from tradeexecutor.state.trade import TradeType, TradeStatus, TradeExecution
 from tradeexecutor.ethereum.cctp.planner import inject_cctp_bridge_trades
 from tradeexecutor.ethereum.execution import EthereumExecution
 from tradeexecutor.ethereum.vault.hypercore_vault import create_hypercore_vault_pair
+from tradeexecutor.ethereum.lighter.lighter_pool import create_lighter_pool_pair
 from tradeexecutor.exchange_account.lighter import create_lighter_exchange_account_pairs
 from tradeexecutor.exchange_account.state import open_exchange_account_position, create_exchange_account_funding, complete_exchange_account_funding
 from tradeexecutor.strategy.execution_model import ExecutionHaltableIssue
@@ -305,6 +306,59 @@ def test_lighter_synthetic_quote_uses_ethereum_cash(idle: int) -> None:
     assert wallet.get_balance(pool.quote.address) == 0
     assert wallet.get_balance(ethereum.address) == pytest.approx(600 + idle)
     assert state.portfolio.get_net_asset_value() == pytest.approx(1000)
+
+
+def test_manual_lighter_buy_reserves_idle_before_cash_check() -> None:
+    """A manual pool buy includes idle collateral before checking satellite cash.
+
+    1. Fund an Ethereum satellite with $4 and record $1 idle in Lighter.
+    2. Execute a $5 manual buy without calling the CCTP planner first.
+    3. Verify the real State consumes $1 idle and $4 Safe cash exactly once.
+    """
+    # 1. Fund an Ethereum satellite with $4 and record $1 idle in Lighter.
+    universe = _universe()
+    reserve = universe.get_reserve_asset()
+    ethereum = AssetIdentifier(1, '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48', 'USDC', 6)
+    pool = create_lighter_pool_pair(123, internal_id=10, internal_exchange_id=1, name='Lighter')
+    bridge = replace(next(p for p in universe.iterate_pairs() if p.is_cctp_bridge()), base=ethereum)
+    state = State()
+    state.portfolio.initialise_reserves(reserve, reserve_token_price=1.0)
+    state.portfolio.get_default_reserve_position().quantity = Decimal(4)
+    _, funding, _ = state.create_trade(START, bridge, None, Decimal(4), 1.0, TradeType.rebalance, reserve, 1.0)
+    state.start_execution(START, funding)
+    state.mark_broadcasted(START, funding)
+    state.mark_trade_success(START, funding, executed_price=1.0, executed_amount=Decimal(4),
+        executed_reserve=Decimal(4), lp_fees=0.0, native_token_price=1.0)
+    observation = LighterIdleCollateral(1, '0x' + '22' * 20, 123, Decimal(1), START)
+    state.portfolio.lighter_idle_collateral[observation.get_identifier()] = observation
+    _, buy, _ = state.create_trade(START, pool, None, Decimal(5), 1.0, TradeType.rebalance, reserve, 1.0)
+    assert 'lighter_idle_allocated' not in buy.other_data
+
+    # 2. Execute a $5 manual buy without calling the CCTP planner first.
+    routing = MagicMock()
+    routing.check_trade_before_execution.return_value = None
+    routing.setup_trades.side_effect = lambda **kwargs: state.mark_broadcasted(START, buy)
+
+    def settle(web3: object, settled_state: State, trade: TradeExecution, receipts: dict) -> None:
+        """Record the mocked payout with real accounting; web3/receipts are unused."""
+        settled_state.mark_trade_success(START, trade, executed_price=1.0, executed_amount=Decimal(5),
+            executed_reserve=Decimal(5), lp_fees=0.0, native_token_price=1.0)
+
+    routing.settle_trade.side_effect = settle
+    executor = MagicMock(spec=EthereumExecution)
+    executor.max_slippage = None
+    EthereumExecution._execute_trades_sequentially(executor, START, state, [buy],
+        routing, MagicMock(), check_balances=False, rebroadcast=False, triggered=False)
+
+    # 3. Verify the real State consumes $1 idle and $4 Safe cash exactly once.
+    assert buy.is_success()
+    assert Decimal(buy.other_data['lighter_idle_allocated']) == 1
+    assert buy.bridge_currency_allocated == 4
+    assert observation.amount == 0
+    assert state.portfolio.get_bridge_position_for_chain(1).get_available_bridge_capital() == 0
+    assert state.portfolio.get_net_asset_value() == pytest.approx(5)
+    routing.setup_trades.assert_called_once()
+    state.perform_integrity_check()
 
 
 def test_internal_transfer_in_bridge_batch_uses_account_cash() -> None:
