@@ -1,10 +1,12 @@
 """Offline integration of native exits, cash parking and CCTP funding."""
 import datetime
+from dataclasses import replace
 from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from tradeexecutor.state.state import State
+from tradeexecutor.state.lighter import LighterIdleCollateral
 from tradeexecutor.state.portfolio import NotEnoughMoney
 from tradeexecutor.state.trade import TradeType, TradeStatus
 from tradeexecutor.ethereum.cctp.planner import inject_cctp_bridge_trades
@@ -244,3 +246,43 @@ def test_native_legacy_ledger_diagnosis_is_atomic():
     with pytest.raises(NotEnoughMoney, match='no funding ledger'):
         inject_cctp_bridge_trades(state, [trade], universe, 42161, START, reserve)
     assert state.to_json() == before
+
+
+@pytest.mark.parametrize('idle', [0, 40])
+def test_lighter_synthetic_quote_uses_ethereum_cash(idle: int):
+    """Keep Lighter's dataset quote out of the physical simulated wallet.
+
+    1. Build a Lighter pool with a synthetic quote and an Ethereum bridge ledger.
+    2. Execute its funding, purchase and exit using real state and simulation.
+    3. Verify Ethereum cash is debited/credited while synthetic cash stays zero.
+    """
+    # 1. Build the synthetic pool and its physical funding route.
+    universe = _universe()
+    native = next(p for p in universe.iterate_pairs() if p.is_hyperliquid_vault())
+    reserve = universe.get_reserve_asset()
+    ethereum = AssetIdentifier(1, '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48', 'USDC', 6)
+    pool = replace(native,
+        base=AssetIdentifier(9998, 'lighter-pool-123', 'Lighter', 18),
+        quote=AssetIdentifier(9998, '0x0000000000000000000000000000000000000998', 'USDC', 6),
+        pool_address='lighter-pool-123')
+    bridge = replace(next(p for p in universe.iterate_pairs() if p.is_cctp_bridge()), base=ethereum)
+    state = State()
+    state.portfolio.initialise_reserves(reserve, reserve_token_price=1.0)
+    state.portfolio.get_default_reserve_position().quantity = Decimal(1000 - idle)
+    observation = LighterIdleCollateral(1, '0x' + '22' * 20, 123, Decimal(idle), START)
+    state.portfolio.lighter_idle_collateral[observation.get_identifier()] = observation
+    wallet = SimulatedWallet()
+    wallet.set_balance(reserve, Decimal(1000 - idle))
+    execution = BacktestExecution(wallet)
+    routing = BacktestRoutingIgnoredModel(reserve.address)
+    routing_state = BacktestRoutingState(None, wallet)
+    # 2. Execute real capital booking and wallet movements, without API calls.
+    for pair, quantity, amount in [(bridge, None, Decimal(600)), (pool, None, Decimal(100)), (pool, Decimal(-100), None)]:
+        _, trade, _ = state.create_trade(START, pair, quantity, amount, 1.0, TradeType.rebalance, reserve, 1.0)
+        execution.execute_trades(START, state, [trade], routing, routing_state)
+        if pair is pool and trade.is_buy():
+            assert wallet.get_balance(ethereum.address) == pytest.approx(500 + idle)
+    # 3. Native and physical ledger cash agree after the round trip.
+    assert wallet.get_balance(pool.quote.address) == 0
+    assert wallet.get_balance(ethereum.address) == pytest.approx(600 + idle)
+    assert state.portfolio.get_net_asset_value() == pytest.approx(1000)

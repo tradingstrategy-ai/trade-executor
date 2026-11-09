@@ -45,3 +45,10 @@ fee formula or changing live Hyper AI's standalone pricing. The refusal test
 also covers a profitable native exit with a 10% performance fee and asserts the
 projected bridge-back equals net proceeds. Actual live proceeds remain subject
 to the source-spending guard.
+
+The second NB07 attempt passed the original failure and reached 5 October 2026,
+where a Lighter purchase exposed the same synthetic-quote wallet issue. The
+physical bridge asset is now used for both native integrations. Lighter buys
+debit only their Safe contribution (`get_lighter_buy_funding()`); their total
+investment and consumed idle collateral retain the existing State accounting.
+The offline round-trip regression covers both zero and non-zero idle collateral.

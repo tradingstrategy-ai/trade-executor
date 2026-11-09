@@ -268,7 +268,7 @@ class BacktestExecution(ExecutionModel):
         satellite_sell_returning_to_bridge = trade.is_sell() and bridge_position is not None
         if bridge_funded_buy or satellite_sell_returning_to_bridge:
             assert bridge_position is not None, f"Missing bridge funding for {trade}"
-            reserve = bridge_position.pair.base if trade.pair.is_hyperliquid_vault() else trade.pair.quote
+            reserve = bridge_position.pair.base if (trade.pair.is_hyperliquid_vault() or trade.pair.is_lighter_pool()) else trade.pair.quote
         else:
             reserve = trade.reserve_currency
 
@@ -316,7 +316,8 @@ class BacktestExecution(ExecutionModel):
             # sizing can leave the reserve a few raw units short of the planned
             # buy after amount flooring, which must not crash the backtest.
             raw_unit_epsilon = reserve.convert_to_decimal(10)
-            self.wallet.update_balance(reserve, -executed_reserve, f"{type} trade #{trade.trade_id}", epsilon=raw_unit_epsilon)
+            wallet_debit = state.portfolio.get_lighter_buy_funding(trade) if trade.pair.is_lighter_pool() else executed_reserve
+            self.wallet.update_balance(reserve, -wallet_debit, f"{type} trade #{trade.trade_id}", epsilon=raw_unit_epsilon)
         else:
             if trade.is_credit_supply():
                 type = "credit recall"
