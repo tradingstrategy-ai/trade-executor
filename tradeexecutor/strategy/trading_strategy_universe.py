@@ -275,6 +275,11 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
     #: the backtest module here.
     vault_window_overrides: Optional[dict] = None
 
+    #: Original requested data end, retained before any forward filling.
+    #: Backtests must not run beyond it. Unlike options, it is not overwritten
+    #: by a shorter run when the same prebuilt universe is reused.
+    data_load_end_at: datetime.datetime | None = None
+
     def __repr__(self):
         pair_count = self.data_universe.pairs.get_count()
         if pair_count <= 3:
@@ -675,6 +680,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         )
         return TradingStrategyUniverse(
             data_universe=new_universe,
+            data_load_end_at=getattr(self, "data_load_end_at", None),
             backtest_stop_loss_time_bucket=self.backtest_stop_loss_time_bucket,
             backtest_stop_loss_candles=self.backtest_stop_loss_candles,
             reserve_assets=self.reserve_assets,
@@ -1535,6 +1541,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
         strategy_universe = TradingStrategyUniverse(
             data_universe=universe,
+            data_load_end_at=dataset.end_at,
             reserve_assets=[reserve_asset],
             backtest_stop_loss_time_bucket=dataset.backtest_stop_loss_time_bucket,
             backtest_stop_loss_candles=stop_loss_candle_universe,

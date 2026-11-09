@@ -615,6 +615,16 @@ def run_backtest(
     # State is pristine and not used yet
     assert len(list(setup.state.portfolio.get_all_trades())) == 0
 
+    # Generated candles can extend beyond the source data. Check the requested
+    # load window before indicators or pricing treat a flat filled tail as fresh.
+    if setup.universe is not None:
+        loaded_end = getattr(setup.universe, "data_load_end_at", None)
+        if loaded_end is not None and setup.end_at is not None:
+            assert setup.end_at <= loaded_end, (
+                f"Backtest end {setup.end_at} exceeds universe load end {loaded_end}; "
+                "rebuild the universe with the requested backtest window"
+            )
+
     # Create empty state for this backtest
     store = NoneStore(setup.state)
 
