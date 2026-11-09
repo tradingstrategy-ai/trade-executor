@@ -1,6 +1,8 @@
 """Helper functions to translate Trading Strategy client data to trade executor data format."""
 from math import isnan
 
+from tradeexecutor.strategy.vault_protocol import enrich_vault_pair
+
 from eth_defi.erc_4626.core import GENERIC_ERC4626_PROTOCOL_SLUG
 
 from tradeexecutor.state.identifier import AssetIdentifier, AssetType, TradingPairIdentifier, TradingPairKind
@@ -286,6 +288,8 @@ def translate_trading_pair(dex_pair: DEXPair, cache: dict | None = None) -> Trad
 
     # if dex_pair.dex_type == ExchangeType.erc_4626_vault:
     #    import ipdb ; ipdb.set_trace()
+
+    enrich_vault_pair(pair)
 
     if cache is not None:
         cache[pair.internal_id] = pair

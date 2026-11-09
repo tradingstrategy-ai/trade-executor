@@ -1,6 +1,7 @@
 """Yield parking follows admission without disabling releases of existing holdings."""
 import datetime
 from decimal import Decimal
+from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -66,3 +67,8 @@ def test_yield_vault_admission_keeps_releases_available() -> None:
     pricing.assessment = assessment
     assert manager.generate_rebalance_trades(1, timestamp, {pair: holding}, buy) == ['trade intent']
     assert adjust.call_args.kwargs['dollar_delta'] == pytest.approx(100)
+
+    # Explicit entry policy blocks low-TVL parking but never the release path.
+    manager.rules = replace(manager.rules, entry_eligibility=lambda pair: False)
+    assert manager.generate_rebalance_trades(1, timestamp, {pair: holding}, buy) == []
+    assert manager.generate_rebalance_trades(1, timestamp, {pair: holding}, sell) == ['trade intent']

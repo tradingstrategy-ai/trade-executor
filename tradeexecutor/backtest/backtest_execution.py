@@ -9,6 +9,7 @@ from tabulate import tabulate
 
 from eth_defi.erc_4626.core import ERC4626Feature
 
+from tradeexecutor.strategy.vault_protocol import settlement_expectation
 from tradeexecutor.backtest.vault_fees import FEE_KEY, calculate_vault_fees, externalised_rates, vault_exit_rate
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel, BacktestRoutingState
 from tradeexecutor.backtest.simulated_wallet import SimulatedWallet, OutOfSimulatedBalance
@@ -184,6 +185,9 @@ class BacktestExecution(ExecutionModel):
             "Remove the strategy-local Hyper-AI fee wrapper; backtesting now charges vault fees automatically"
         )
         self.portfolio = portfolio
+        # Bind on the public pricing object used by strategy decisions, including GenericPricing.
+        pricing_model.vault_settlement_delay_overrides = self.vault_settlement_delay_overrides
+        pricing_model.vault_settlement_default_delay = self.vault_settlement_delay
         configurator = getattr(pricing_model, "pair_configurator", None)
         if configurator is not None:
             configurator.portfolio = portfolio
@@ -490,16 +494,13 @@ class BacktestExecution(ExecutionModel):
         :return:
             Whether this direction uses the simulated request/settle lifecycle.
         """
-        if not pair.is_vault():
-            return False
-        if pair.pool_address and pair.pool_address.lower() in self.vault_settlement_delay_overrides:
-            return True
-        requires_historical_deposit_settlement = self._requires_historical_deposit_settlement(pair)
-        if is_buy is True:
-            return pair.is_async_vault() or requires_historical_deposit_settlement
-        if is_buy is False:
-            return pair.has_delayed_vault_redemption()
-        return pair.is_async_vault() or pair.has_delayed_vault_redemption() or requires_historical_deposit_settlement
+        if is_buy is None:
+            return self._is_async_vault(pair, is_buy=True) or self._is_async_vault(pair, is_buy=False)
+        return settlement_expectation(
+            pair, datetime.datetime(2000, 1, 1), is_buy=is_buy,
+            overrides=self.vault_settlement_delay_overrides,
+            default_delay=self.vault_settlement_delay,
+        )[0]
 
     @staticmethod
     def _requires_historical_deposit_settlement(pair: TradingPairIdentifier) -> bool:
@@ -573,27 +574,11 @@ class BacktestExecution(ExecutionModel):
         :return:
             Earliest settlement timestamp under the selected simulation delay.
         """
-        if pair.pool_address:
-            override = self.vault_settlement_delay_overrides.get(pair.pool_address.lower())
-            if override is not None:
-                return ts + override
-
-        features = pair.get_vault_features() or set()
-        if self._uses_protocol_settlement_estimate(features):
-            estimated_settlement = pair.get_vault_estimated_settlement()
-            if estimated_settlement is not None:
-                return ts + estimated_settlement
-            fallback = next((delay for feature, delay in VAULT_SETTLEMENT_DELAY_FALLBACKS.items() if feature in features), None)
-            if fallback is not None:
-                return ts + fallback
-
-        if ERC4626Feature.ostium_like in features:
-            # Preserve the original Ostium backtest approximation instead of
-            # changing historical simulations when live vault intervals move.
-            next_day = ts + datetime.timedelta(days=1)
-            return next_day.replace(hour=OSTIUM_BACKTEST_SETTLEMENT_HOUR, minute=0, second=0, microsecond=0)
-
-        return ts + self.vault_settlement_delay
+        return settlement_expectation(
+            pair, ts, is_buy=False,
+            overrides=self.vault_settlement_delay_overrides,
+            default_delay=self.vault_settlement_delay,
+        )[1]
 
     def simulate_async_vault_request(self, ts: datetime.datetime, state: State, trade: TradeExecution) -> None:
         """Stage 1 of a two-stage async vault deposit/redeem in backtest.

@@ -11,6 +11,8 @@ from tradeexecutor.backtest.vault_fees import calculate_vault_fees, vault_exit_r
 from tradeexecutor.backtest.backtest_execution import BacktestExecution
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
 from tradeexecutor.backtest.vault_windows import VaultWindowSchedule
+from tradeexecutor.strategy.vault_protocol.d2 import early_window
+from dataclasses import replace
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import \
     UniswapV2Routing
 from tradeexecutor.state.portfolio import Portfolio
@@ -532,9 +534,9 @@ class BacktestPricing(PricingModel):
 
         if direction == "buy":
             # Get token tax
-            tax = pair.base.get_buy_tax() or 0
+            tax = pair.get_buy_tax() or 0
         elif direction == "sell":
-            tax = pair.base.get_sell_tax() or 0
+            tax = pair.get_sell_tax() or 0
         else:
             raise NotImplementedError(f"Unsupported direction {direction} for pair {pair}")
 
@@ -737,12 +739,29 @@ class BacktestPricing(PricingModel):
 
     def get_vault_closure(self, ts, pair, *, operation="deposit", position=None, **kwargs):
         """Supply original-clock, as-of evidence to the unified closure rule."""
-        return get_vault_closure(
-            pair, timestamp=ts, operation=operation,
-            historical_state=self._lookup_vault_state(ts, pair),
-            window_override=self._vault_window_overrides.get(pair.internal_id) if pair else None,
-            **kwargs,
+        state = self._lookup_vault_state(ts, pair)
+        override = self._vault_window_overrides.get(pair.internal_id) if pair else None
+        rules = getattr(pair, "vault_protocol_rules", None)
+        if override is None and rules is not None and rules.deposit_windowed:
+            flag = (state or {}).get("deposits_open" if operation == "deposit" else "redemption_open")
+            cap = (state or {}).get("max_deposit" if operation == "deposit" else "max_redeem")
+            reason = (state or {}).get("deposit_closed_reason" if operation == "deposit" else "redemption_closed_reason")
+            if (flag is None or pd.isna(flag) or flag == -1) and (cap is None or pd.isna(cap)) and not (isinstance(reason, str) and reason.strip()):
+                override = early_window(pair, ts)
+            if override is None and operation == "deposit":
+                if kwargs.get("unknown_is_closed") is None:
+                    kwargs["unknown_is_closed"] = True
+        result = get_vault_closure(
+            pair, timestamp=ts, operation=operation, historical_state=state,
+            window_override=override, position=position, **kwargs,
         )
+        # A published closure for an explicitly windowed protocol is a window;
+        # explicit capacity/permission reasons remain ordinary refusals.
+        if rules is not None and rules.deposit_windowed and result.reason == "explicit_closed":
+            reason = str((state or {}).get("deposit_closed_reason") or "").lower()
+            if not any(word in reason for word in ("capacity", "private", "permission", "paused", "shutdown")):
+                result = replace(result, reason="window_closed")
+        return result
 
     def can_deposit(self, ts, pair) -> bool:
         """Use the same operation decision as strategies and universe charts."""

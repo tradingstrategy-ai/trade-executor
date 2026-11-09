@@ -142,7 +142,9 @@ def calculate_vault_fees(position: TradingPosition, timestamp: datetime.datetime
     """
     rates = (Decimal(snapshot["management_rate"]), Decimal(snapshot["performance_rate"])) if snapshot else externalised_rates(position.pair)
     if rates is None:
-        return None
+        if not exit_rate:
+            return None
+        rates = Decimal(0), Decimal(0)
     assert quantity >= 0
     if snapshot:
         principal = Decimal(snapshot["principal"])
@@ -159,7 +161,7 @@ def calculate_vault_fees(position: TradingPosition, timestamp: datetime.datetime
         exposure *= fraction
     gross = quantity * Decimal(str(gross_price))
     assert gross.is_finite() and gross >= 0
-    exit_fee_rate = Decimal(str(exit_rate))
+    exit_fee_rate = Decimal(str(snapshot.get("exit_rate", exit_rate) if snapshot else exit_rate))
     assert exit_fee_rate.is_finite() and 0 <= exit_fee_rate <= 1
     nominal_management = exposure * rates[0]
     # A loss cannot create a negative payout; retain the uncapped accrual in the
@@ -171,5 +173,5 @@ def calculate_vault_fees(position: TradingPosition, timestamp: datetime.datetime
     values = dict(principal=principal, principal_years=exposure, gross=gross,
                   nominal_management=nominal_management, management=management,
                   performance=performance, exit_fee=exit_fee, net=after_fees - exit_fee,
-                  management_rate=rates[0], performance_rate=rates[1], quantity=quantity)
+                  management_rate=rates[0], performance_rate=rates[1], exit_rate=exit_fee_rate, quantity=quantity)
     return {"version": 1, "timestamp": timestamp.isoformat(), **{k: str(v) for k, v in values.items()}}

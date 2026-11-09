@@ -1,3 +1,5 @@
+from tradeexecutor.strategy.vault_protocol import settlement_expectation
+
 import abc
 import datetime
 import logging
@@ -43,6 +45,18 @@ class PricingModel(abc.ABC):
         on buy/sell transctions.
 
     """
+
+    def get_vault_settlement_expectation(self, ts, pair, *, operation="deposit"):
+        """Share the backtest operation timing/overrides with strategy horizon checks.
+
+        This is a minimum simulation estimate, never authority to claim a live ticket.
+        """
+        assert operation in ("deposit", "redemption")
+        return settlement_expectation(
+            pair, ts, is_buy=operation == "deposit",
+            overrides=getattr(self, "vault_settlement_delay_overrides", None),
+            default_delay=getattr(self, "vault_settlement_default_delay", datetime.timedelta(days=2)),
+        )
 
     @abc.abstractmethod
     def get_sell_price(self,

@@ -4,6 +4,7 @@ import logging
 from decimal import Decimal
 from functools import cached_property
 from typing import NamedTuple
+from collections.abc import Callable
 
 import dataclasses
 from pprint import pformat
@@ -111,6 +112,9 @@ class YieldRuleset:
 
     #: Max weights of each yield position
     weights: list[YieldWeightingRule]
+
+    #: Optional strategy entry policy; a refused purchase leaves cash liquid, never blocks exits.
+    entry_eligibility: Callable[[TradingPairIdentifier], bool] | None = None
 
     def validate(self):
         """Check all looks good."""
@@ -397,6 +401,7 @@ class YieldManager:
                         # Deposit restrictions must not trap capital already held here.
                         if dollar_delta > 0 and (
                             pair.get_ignore_reason() is not None
+                            or (self.rules.entry_eligibility is not None and not self.rules.entry_eligibility(pair))
                             or not can_interact_with_vault(
                                 pair, timestamp=timestamp,
                                 pricing_model=self.position_manager.pricing_model,

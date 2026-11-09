@@ -210,3 +210,23 @@ def style_ignored_vault_table(df: pd.DataFrame) -> Styler:
         return f'<a href="{url}" target="_blank">{label}</a>'
 
     return df.style.format({"Link": _linkify}).hide(axis="index")
+
+
+def validate_vault_fee_data(strategy_universe, *, allow_missing: bool = False) -> None:
+    """Require complete fees for selected backtest vaults unless explicitly overridden.
+
+    The override keeps incomplete vaults diagnostic-only; it never assumes zero
+    fees or changes existing strategies that do not call this policy helper.
+    """
+    missing = []
+    for pair in strategy_universe.iterate_pairs():
+        if pair.is_vault():
+            rules = pair.get_vault_protocol_rules()
+            if rules is not None:
+                assert rules.deposit_fee in (None, 0) or rules.deposit_fee_supported, f"Unsupported vault deposit fee: {pair}"
+                assert rules.redemption_fee in (None, 0) or rules.redemption_fee_supported, f"Unsupported vault redemption fee: {pair}"
+            fields = get_missing_vault_fee_data(pair.get_vault_metadata())
+            if fields:
+                missing.append(f"{pair.chain_id}:{pair.pool_address}: {', '.join(fields)}")
+    assert allow_missing or not missing, "Missing selected vault fee data:\n" + "\n".join(missing)
+    mark_missing_fee_vaults_ignored(strategy_universe)

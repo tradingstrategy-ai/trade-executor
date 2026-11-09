@@ -825,3 +825,10 @@ Open positions are valued net of estimated fees without debiting wallet cash.
 The existing resolver handles restart and duplicate-settlement protection.
 See `docs/reports/backtest-externalised-vault-fees.md` for real-data samples and
 validation, and `tests/backtest/test_externalised_vault_fees.py` for regressions.
+
+## Loaded protocol rules
+
+[Vault protocol overlays](../../docs/vault-protocol-overlays.md) documents the
+construction-time pair fields, D2 early-history fallback, shared operation timing,
+fixed-fee calculation and optional entry-policy callbacks. Protocol enrichment
+extends the existing managers and settlement lifecycle described above.
