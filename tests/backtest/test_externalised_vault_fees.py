@@ -53,6 +53,8 @@ def test_real_vault_fee_strategy(protocol: str, routing: TradeRouting) -> None:
     candles = universe.data_universe.candles.df
     start = candles.timestamp.min().to_pydatetime()
     end = candles.timestamp.max().to_pydatetime()
+    # Exercise the accepted boundary where execution ends at the requested load end.
+    universe.data_load_end_at = end
     # 2. Run real share prices through deposit, top-up and partial/full exits.
     if routing == TradeRouting.user_supplied_routing_model:
         setup_custom_log_levels()
