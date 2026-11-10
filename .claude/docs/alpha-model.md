@@ -104,6 +104,15 @@ happens.
 
 ## Weighting
 
+For capped proportional sizing (`size_risk_model`, `max_positions`,
+`waterfall=False`), `normalise_weights(priority_pair_ids={...})` funds the
+selected priority tier first, descending by raw weight, up to the existing
+concentration and size-risk caps. Ordinary signals then share the remaining
+budget proportionally. Both tiers' concentration caps use the original
+deployable budget. An empty priority set preserves ordinary sizing. Membership,
+admission and the subtraction of locked capital remain the caller's concern;
+carried-forward signals never compete for this budget.
+
 `assign_weights(method)` converts raw signals to unnormalised weights. Methods
 live in [tradeexecutor/strategy/weighting.py](../../tradeexecutor/strategy/weighting.py):
 
