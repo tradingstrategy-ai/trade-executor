@@ -1,6 +1,7 @@
 """Common functions for filtering and selecting top DeFi vaults."""
 
 import enum
+import re
 import json
 import sys
 from dataclasses import dataclass
@@ -520,3 +521,25 @@ def format_output(
             lines.append(f"{prefix}# https://tradingstrategy.ai/trading-view/vaults/address/{v.address}")
 
     return "\n".join(lines)
+
+
+def private_vault_exclusion_reasons(entry: dict) -> list[str]:
+    """Exclude known approval-only vaults without treating unknown access as private.
+
+    Producers express restrictions in permission fields, flags and free-text
+    notes. Check each explicit form so an inclusion by curator cannot bypass it.
+    """
+    reasons = []
+    #: Published private-access labels exclude candidates requiring operator approval.
+    restricted = {"private", "whitelisted", "permissioned", "restricted"}
+    permission = str(entry.get("deposit_permission") or "").casefold()
+    whitelist = entry.get("whitelist") or {}
+    status = str(whitelist.get("status") or "").casefold()
+    if permission in restricted or status in restricted:
+        reasons.append("Restricted deposit permission")
+    flags = {str(flag).casefold().replace("-", "_") for flag in entry.get("flags") or []}
+    if flags & {"private", "private_vault", "whitelisted", "permissioned"}:
+        reasons.append("Private or permissioned flag")
+    if re.search(r"\bprivate\s+(?:lagoon\s+)?vault\b", entry.get("notes") or "", re.IGNORECASE):
+        reasons.append("Explicit private-vault notes")
+    return reasons
