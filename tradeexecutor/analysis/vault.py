@@ -1,5 +1,10 @@
 """Vault analysis."""
 import logging
+from decimal import Decimal
+from tradingstrategy.vault import VaultMetadata
+from tradeexecutor.state.state import State
+from tradeexecutor.backtest.vault_fees import FEE_KEY
+from tradeexecutor.strategy.vault_fee_data import get_missing_vault_fee_data, get_vault_fee_internalised
 from typing import Callable, cast, Iterable
 
 import pandas as pd
@@ -59,8 +64,15 @@ def is_whitelisted_vault(pair: TradingPairIdentifier) -> bool:
 
 def mark_whitelisted_vaults_ignored(
     strategy_universe: TradingStrategyUniverse,
+    *,
+    historical_native_closure_keys: set[tuple[int, str]] | None = None,
 ) -> list[TradingPairIdentifier]:
     """Retain whitelist-gated vaults for diagnostics but exclude them from allocation.
+
+    ``historical_native_closure_keys`` may contain native identities whose raw
+    metadata passed ``is_native_public_deposit_closure`` and source access
+    checks. Their public closure is handled by historical admission instead of
+    a permanent ignore flag. Other reasons, including missing fees, are retained.
 
     - Call after constructing the strategy universe and loading vault metadata
     - The diagnostics flag is always set, including when another ignore reason
@@ -70,6 +82,10 @@ def mark_whitelisted_vaults_ignored(
     """
     flagged = []
     for pair in strategy_universe.iterate_pairs():
+        if historical_native_closure_keys and (pair.is_hyperliquid_vault() or pair.is_lighter_pool()):
+            key = (int(pair.chain_id), pair.pool_address.lower())
+            if key in historical_native_closure_keys:
+                continue
         if not is_whitelisted_vault(pair):
             continue
 
@@ -363,3 +379,63 @@ def display_vaults(
     else:
         # Backtesting uses HTML output
         display(df)
+
+
+def adjust_vault_period_returns(gross_period_returns: pd.Series, metadata: VaultMetadata, period_days: int) -> pd.Series:
+    """Approximate investor-net ranking returns; this is not realised fee accounting.
+
+    Manager charges follow NAV fee mode. Apply one entry and one exit charge.
+    Unknown fees remain missing. Annualisation is the caller's policy. Entry
+    and exit charges come from metadata, not pair-resolved execution rules.
+
+    :param gross_period_returns: NAV returns over the chosen lookback.
+    :param metadata: Published rates and fee mode for this vault.
+    :param period_days: Positive lookback length; management fees use 365.25 days.
+    :return: Same-index net period returns; NaN when fee evidence is incomplete.
+    """
+    if period_days <= 0:
+        raise ValueError("period_days must be positive")
+    if get_missing_vault_fee_data(metadata):
+        return pd.Series(float("nan"), index=gross_period_returns.index)
+    if get_vault_fee_internalised(metadata) or (metadata.management_fee == 0 and metadata.performance_fee == 0):
+        net = gross_period_returns
+    else:
+        net = gross_period_returns - metadata.management_fee * (period_days / 365.25)
+        net = net.where(net <= 0, net * (1 - metadata.performance_fee))
+    return (1 + net) * (1 - metadata.deposit_fee) * (1 - metadata.withdrawal_fee) - 1
+
+
+def summarise_native_vault_fees(state: State) -> list[dict]:
+    """Summarise deductions recorded on successful native exits, without estimating fees.
+
+    Backtest simulator records only; live execution does not populate these
+    records. Only Hyperliquid and Lighter positions are included, not ERC-4626
+    venues or whole-portfolio fees. Re-entering a vault produces separate rows.
+    Values sum management, performance and exit charges in the vault denomination.
+    The retained ``Recorded external fees USD`` column assumes USDC at USD parity;
+    this function performs no currency conversion. Compare totals only for the
+    same denomination.
+
+    :param state:
+        Saved backtest state, including closed and pending positions.
+    :return:
+        Per-position sale counts and recorded fee totals in USDC. A missing fee
+        record is reported as missing; it does not imply an unpaid fee.
+    """
+    rows = []
+    for position in state.portfolio.get_all_positions(pending=True):
+        pair = position.pair
+        if not (pair.is_hyperliquid_vault() or pair.is_lighter_pool()):
+            continue
+        sells = [trade for trade in position.trades.values() if trade.is_sell() and trade.is_success()]
+        recorded = [trade.other_data[FEE_KEY]['realised'] for trade in sells
+                    if trade.other_data.get(FEE_KEY, {}).get('realised') is not None]
+        rows.append({
+            'Vault': pair.get_vault_name() or pair.base.token_symbol,
+            'Successful sells': len(sells),
+            'Recorded fee sells': len(recorded),
+            'Recorded external fees USD': float(sum((Decimal(record[key]) for record in recorded
+                for key in ('management', 'performance', 'exit_fee')), Decimal(0))),
+            'Sells without external-fee record': len(sells) - len(recorded),
+        })
+    return rows

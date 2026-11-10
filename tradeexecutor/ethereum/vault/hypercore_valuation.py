@@ -53,6 +53,7 @@ from tradeexecutor.strategy.redemption import (
     parse_recorded_lockup_expires_at,
 )
 from tradeexecutor.strategy.trade_pricing import TradePricing
+from tradeexecutor.strategy.vault_closure import get_manual_deposit_closure
 from tradeexecutor.strategy.valuation import ValuationModel
 from tradeexecutor.testing.hypercore_replay import (
     HypercoreReplaySnapshot,
@@ -503,6 +504,9 @@ class HypercoreVaultPricing(PricingModel):
         :param stage: Decision stage for persisted diagnostics.
         :return: Permission result, any amount limit, reason, and source fields.
         """
+        manual = get_manual_deposit_closure(pair)
+        if manual is not None:
+            return manual.as_deposit_check(pair, ts, stage)
         result = DepositCheckResult(
             timestamp=ts,
             stage=stage,

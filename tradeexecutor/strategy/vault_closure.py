@@ -37,6 +37,7 @@ from eth_defi.vault.deposit_redeem import VaultFlowUnavailable
 from tradingstrategy.alternative_data.vault import HYPERCORE_DEPOSIT_STATE_CUTOFF
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
+from tradeexecutor.strategy.vault_protocol.hyperliquid import permanent_deposit_closure_reason
 from tradeexecutor.strategy.redemption import (
     DepositBlockReason, DepositCheckResult, DepositCheckStage, VaultClosureOutcome,
     RedemptionBlockReason, RedemptionCheckResult, RedemptionCheckStage,
@@ -58,7 +59,7 @@ class VaultClosure:
     blocked: bool
     #: ``unknown`` is not evidence of either open or closed admission.
     status: VaultClosureOutcome
-    #: Historical sample, synthetic schedule, protocol assumption or live adapter.
+    #: Historical sample, manual override, synthetic schedule, assumption or adapter.
     source: str
     #: Stable explanation, independent of human-readable message text.
     reason: str | None = None
@@ -76,6 +77,7 @@ class VaultClosure:
             **{reason.value: reason for reason in DepositBlockReason},
             "window_closed": DepositBlockReason.deposit_window_closed,
             "explicit_closed": DepositBlockReason.vault_deposits_closed,
+            "permanently_closed": DepositBlockReason.vault_deposits_closed,
             "capacity_zero": DepositBlockReason.vault_max_deposit_zero,
             "strategy_capacity": DepositBlockReason.vault_max_deposit_zero,
         }
@@ -92,6 +94,19 @@ class VaultClosure:
 
 def _present(value) -> bool:
     return value is not None and not pd.isna(value)
+
+
+def get_manual_deposit_closure(vault: TradingPairIdentifier) -> VaultClosure | None:
+    """Resolve an operator-specified deposit closure before provider assumptions.
+
+    The source remains a manual override even if historical/live fields claim
+    open admission. This does not assess redemption permission or remove data.
+    """
+    reason = permanent_deposit_closure_reason(vault)
+    if reason is not None:
+        return VaultClosure(True, VaultClosureOutcome.closed, "manual_override",
+                            "permanently_closed", reason, max_amount=0)
+    return None
 
 
 def _is_backtesting_always_open_protocol(pair) -> bool:
@@ -195,20 +210,27 @@ def get_vault_closure(
             raise ValueError("A deposit check cannot classify redemptions")
         if timestamp is not None or position is not None or trust_protocol_state or not apply_hypercore_cutoff:
             raise ValueError("A captured deposit check accepts only policy controls")
+    provider_getter = getattr(type(pricing_model), "get_vault_closure", None) if pricing_model is not None else None
+    if pricing_model is not None and provider_getter is None and (trust_protocol_state or not apply_hypercore_cutoff):
+        raise ValueError("Historical-only controls require a historical pricing provider")
+    # Operator-specified permanent closures must beat pre-collection assumptions,
+    # synthetic windows, captured open checks and permissive unknown policies.
+    if operation == "deposit":
+        manual = get_manual_deposit_closure(vault)
+        if manual is not None:
+            return manual
+    if deposit_check is not None:
         return _from_deposit_check(deposit_check, include_strategy_policy, unknown_is_closed)
     if pricing_model is not None:
         # Providers opt into the assessment interface through a class method.
         # Other providers retain the existing structured-check interface.
-        getter = getattr(type(pricing_model), "get_vault_closure", None)
-        if getter is not None:
+        if provider_getter is not None:
             return pricing_model.get_vault_closure(
                 timestamp, vault, operation=operation, position=position,
                 include_strategy_policy=include_strategy_policy,
                 unknown_is_closed=unknown_is_closed, trust_protocol_state=trust_protocol_state,
                 apply_hypercore_cutoff=apply_hypercore_cutoff,
             )
-        if trust_protocol_state or not apply_hypercore_cutoff:
-            raise ValueError("Historical-only controls require a historical pricing provider")
         # Native live providers retain their actual owner, exchange permission,
         # guard whitelist and lockup checks. Never replace them with maxDeposit.
         if operation == "deposit":
@@ -415,6 +437,9 @@ def check_live_deposit(
     read. This deliberately does not call raw ERC-4626 ``maxDeposit`` because
     several supported protocols use it as a non-capacity signal.
     """
+    manual = get_manual_deposit_closure(pair)
+    if manual is not None:
+        return manual.as_deposit_check(pair, timestamp, stage)
     result = DepositCheckResult(
         timestamp=timestamp,
         stage=stage,

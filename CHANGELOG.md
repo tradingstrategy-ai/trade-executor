@@ -1,7 +1,11 @@
     **Note**: A full changelog is not available as long as `trade-executor` package is in active beta developmnt.
 
 ## 0.2
+- Add an optional capped priority tier to proportional portfolio sizing, then allocate remaining capital with ordinary weights (2026-11-10).
+- Add a Hyperliquid manual vault-data overlay marking Growi HF-2 permanently closed for deposits, including before the historical collection cutoff (2026-11-10).
 - Stop the position chart endpoint warning about missing candle data for exchange-account positions, which have no asset price; it now points to the internal share price instead (2026-11-10).
+- Allow explicit historical native public-closure handling without dropping genuine private-access restrictions (2026-11-10).
+- Share vault restriction parsing, investor-net ranking returns, native fee reporting and sparse-cycle state access (2026-11-10).
 - Resolve vault fee and directional settlement rules on trading pairs, support Atoma fixed exit costs, and use observed D2 windows with a bounded early-history fallback (2026-11-09).
 - Reject a backtest end beyond a prebuilt universe's declared load window before indicators or trades can use a flat forward-filled tail (2026-11-09).
 - Add fixed USDC equity minimums alongside weighted Lighter sleeve rebalancing, with optional Safe cash retention and no profit trimming in minimum mode (2026-11-08).

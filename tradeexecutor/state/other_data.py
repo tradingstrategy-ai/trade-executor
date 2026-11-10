@@ -105,3 +105,19 @@ class OtherData:
         """
         latest_cycle = self.get_latest_stored_cycle()
         return self.data.get(latest_cycle, {}).get(name, default)
+
+    def load_latest_present(self, name: str, default=None) -> JsonSerialisableObject | None:
+        """Return the newest stored occurrence, including null, across omitted cycles.
+
+        JSON-restored string keys and newly saved integer keys are supported.
+        Numerically duplicate cycle keys are invalid rather than ambiguous.
+
+        :raises ValueError: If a cycle key is non-numeric or numerically duplicated.
+        """
+        cycles = sorted(((int(key), key) for key in self.data), key=lambda item: item[0])
+        if len({cycle for cycle, _ in cycles}) != len(cycles):
+            raise ValueError("Duplicate numeric cycle keys")
+        for _, key in reversed(cycles):
+            if name in self.data[key]:
+                return self.data[key][name]
+        return default

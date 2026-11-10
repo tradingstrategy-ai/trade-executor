@@ -1,6 +1,7 @@
 """Common functions for filtering and selecting top DeFi vaults."""
 
 import enum
+import re
 import json
 import sys
 from dataclasses import dataclass
@@ -520,3 +521,55 @@ def format_output(
             lines.append(f"{prefix}# https://tradingstrategy.ai/trading-view/vaults/address/{v.address}")
 
     return "\n".join(lines)
+
+
+def is_native_public_deposit_closure(entry: dict) -> bool:
+    """Recognise the producer's native public-closure compatibility label.
+
+    This is not approval-only access. Keep its history available and let the
+    historical pricing model decide admission. Explicit private flags and notes
+    are still checked separately by the source restriction parser.
+    """
+    protocols = {9998: "lighter", 9999: "hyperliquid"}
+    chain = entry.get("chain_id")
+    if chain is None or protocols.get(int(chain)) != (entry.get("protocol_slug") or "").casefold():
+        return False
+    whitelist = entry.get("whitelist") or {}
+    permission = str(entry.get("deposit_permission") or "").casefold()
+    status = str(whitelist.get("status") or "").casefold()
+    return (
+        "whitelisted" in (permission, status)
+        and permission in ("", "whitelisted") and status in ("", "whitelisted")
+        and "native perp dex compatibility status: public deposits are unavailable;" in str(whitelist.get("notes") or "").casefold()
+        and not re.search(r"\bprivate\s+(?:lagoon\s+)?vault\b", str(whitelist.get("notes") or ""), re.IGNORECASE)
+    )
+
+
+def private_vault_exclusion_reasons(entry: dict, *, historical_native_permissions: bool = False) -> list[str]:
+    """Reproduce the legacy source filter for explicit access labels and notes.
+
+    Set ``historical_native_permissions=True`` to retain producer-labelled
+    native public closures for point-in-time admission, while preserving genuine
+    private flags/notes. The default preserves the original source policy.
+
+    Unknown access is retained. This is a current-snapshot selection policy,
+    not historical admission evidence. Native producers also use ``whitelisted``
+    for currently unavailable public deposits; this legacy filter excludes
+    those compatibility labels too. Do not use it to infer permanent private
+    access or whether a native vault was historically open.
+    """
+    reasons = []
+    #: Preserve the source filter labels; native compatibility labels need separate review.
+    restricted = {"private", "whitelisted", "permissioned", "restricted"}
+    permission = str(entry.get("deposit_permission") or "").casefold()
+    whitelist = entry.get("whitelist") or {}
+    status = str(whitelist.get("status") or "").casefold()
+    compatibility_closure = historical_native_permissions and is_native_public_deposit_closure(entry)
+    if (permission in restricted or status in restricted) and not compatibility_closure:
+        reasons.append("Restricted deposit permission")
+    flags = {str(flag).casefold().replace("-", "_") for flag in entry.get("flags") or []}
+    if flags & {"private", "private_vault", "whitelisted", "permissioned"}:
+        reasons.append("Private or permissioned flag")
+    if re.search(r"\bprivate\s+(?:lagoon\s+)?vault\b", entry.get("notes") or "", re.IGNORECASE):
+        reasons.append("Explicit private-vault notes")
+    return reasons

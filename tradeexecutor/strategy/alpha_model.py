@@ -1561,6 +1561,7 @@ class AlphaModel:
         size_risk_model: SizeRiskModel | None = None,
         epsilon_usd=5.0,
         max_weight_function: Callable[["TradingPairSignal"], float] | None = None,
+        priority_pair_ids: set[int] | None = None,
     ):
         """Normalises position weights between 0 and 1.
 
@@ -1603,10 +1604,14 @@ class AlphaModel:
             # We want to iterate from the largest signal to smallest,
             # as we redistribute equity we cannot allocate in larger positions
             normalised = Counter(normalised)
+            priority_remaining = {
+                pair_id: weight for pair_id, weight in normalised.items()
+                if priority_pair_ids and pair_id in priority_pair_ids
+            }
             # For each signal, check if it exceeds
             # US dollar based size risk bsaed on the current market conditions
             s: TradingPairSignal
-            pair_id, weight = normalised.most_common()[0]
+            pair_id, weight = Counter(priority_remaining).most_common()[0] if priority_remaining else normalised.most_common()[0]
 
             # NOTE: Here we might have a conflict between given normal weight
             # and size risk, because size risk may overallocate to a position
@@ -1616,7 +1621,10 @@ class AlphaModel:
             assert s.old_weight is not None, f"TradingSignal.old_weight is not available: {s} - remember to call AlphaModel.update_old_weights()"
             assert s.raw_weight >= 0, "_normalise_weights_size_risk(): short or leverage not implemented"
 
-            asked_position_size = equity_left * weight
+            # Fund the priority tier to its existing concentration/size caps
+            # first. Once exhausted, the ordinary proportional allocator uses
+            # the remaining budget and weights without changing its caps.
+            asked_position_size = equity_left if priority_remaining else equity_left * weight
             effective_max = max_weight
             if max_weight_function is not None:
                 per_pair = max_weight_function(s)
@@ -1677,11 +1685,11 @@ class AlphaModel:
         clipped_weights = {}
         for pair_id in included_pair_ids:
             s = self.signals[pair_id]
-            clipped_weights[pair_id] = s.position_target / total_accetable_investments
+            clipped_weights[pair_id] = s.position_target / total_accetable_investments if total_accetable_investments else 0.0
 
         # Make sure we sum to 1.0, not over,
         # due to floating point issues
-        clipped_weights = clip_to_normalised(clipped_weights)
+        clipped_weights = clip_to_normalised(clipped_weights) if total_accetable_investments else clipped_weights
 
         # Put clipped weights into the model
         for pair_id, normal_weight in clipped_weights.items():
@@ -1876,6 +1884,7 @@ class AlphaModel:
         waterfall=False,
         max_protocol_weight: float | None = None,
         max_weight_function: Callable[["TradingPairSignal"], float] | None = None,
+        priority_pair_ids: set[int] | None = None,
     ):
         """Normalise weights to 0...1 scale.
 
@@ -1935,7 +1944,19 @@ class AlphaModel:
                     max_weight_function=my_max_weight,
                     ...
                 )
+
+        :param priority_pair_ids:
+            Fund these selected, allocatable pairs first, descending by raw
+            weight, up to the same concentration and size-risk caps. Ordinary
+            pairs then share the remaining budget proportionally to their raw
+            weights. Concentration caps remain relative to the original budget.
+            Requires ``size_risk_model``, ``max_positions`` and
+            ``waterfall=False``. Empty/absent priority preserves normal sizing;
+            this does not select members or override admission/locked positions.
         """
+
+        if priority_pair_ids and (size_risk_model is None or max_positions is None or waterfall):
+            raise ValueError("Priority allocation requires a size risk model, max_positions and waterfall=False")
 
         if not size_risk_model:
             # Easy path
@@ -1960,6 +1981,7 @@ class AlphaModel:
                     investable_equity=investable_equity,
                     size_risk_model=size_risk_model,
                     max_weight_function=max_weight_function,
+                    priority_pair_ids=priority_pair_ids,
                 )
             else:
                 # Method 2: weights normalised before TVL-based adjustment
