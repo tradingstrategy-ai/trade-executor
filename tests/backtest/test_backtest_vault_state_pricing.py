@@ -46,6 +46,10 @@ class _FakePair:
     def get_vault_protocol(self) -> str | None:
         return self._protocol
 
+    def get_vault_protocol_rules(self) -> None:
+        """Keep these historical-state fixtures independent of resolved protocol overlays."""
+        return None
+
     def is_hyperliquid_vault(self) -> bool:
         return self._hypercore
 
