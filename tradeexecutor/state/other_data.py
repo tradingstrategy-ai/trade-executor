@@ -111,6 +111,8 @@ class OtherData:
 
         JSON-restored string keys and newly saved integer keys are supported.
         Numerically duplicate cycle keys are invalid rather than ambiguous.
+
+        :raises ValueError: If a cycle key is non-numeric or numerically duplicated.
         """
         cycles = sorted(((int(key), key) for key in self.data), key=lambda item: item[0])
         if len({cycle for cycle, _ in cycles}) != len(cycles):

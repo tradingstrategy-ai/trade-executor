@@ -1,5 +1,10 @@
 """Vault analysis."""
 import logging
+from decimal import Decimal
+from tradingstrategy.vault import VaultMetadata
+from tradeexecutor.state.state import State
+from tradeexecutor.backtest.vault_fees import FEE_KEY
+from tradeexecutor.strategy.vault_fee_data import get_missing_vault_fee_data, get_vault_fee_internalised
 from typing import Callable, cast, Iterable
 
 import pandas as pd
@@ -365,18 +370,17 @@ def display_vaults(
         display(df)
 
 
-from decimal import Decimal
-from tradingstrategy.vault import VaultMetadata
-from tradeexecutor.state.state import State
-from tradeexecutor.backtest.vault_fees import FEE_KEY
-from tradeexecutor.strategy.vault_fee_data import get_missing_vault_fee_data, get_vault_fee_internalised
-
-
 def adjust_vault_period_returns(gross_period_returns: pd.Series, metadata: VaultMetadata, period_days: int) -> pd.Series:
     """Approximate investor-net ranking returns; this is not realised fee accounting.
 
     Manager charges follow NAV fee mode. Apply one entry and one exit charge.
-    Unknown fees remain missing. Annualisation is the caller's policy.
+    Unknown fees remain missing. Annualisation is the caller's policy. Entry
+    and exit charges come from metadata, not pair-resolved execution rules.
+
+    :param gross_period_returns: NAV returns over the chosen lookback.
+    :param metadata: Published rates and fee mode for this vault.
+    :param period_days: Positive lookback length; management fees use 365.25 days.
+    :return: Same-index net period returns; NaN when fee evidence is incomplete.
     """
     if period_days <= 0:
         raise ValueError("period_days must be positive")
@@ -393,8 +397,16 @@ def adjust_vault_period_returns(gross_period_returns: pd.Series, metadata: Vault
 def summarise_native_vault_fees(state: State) -> list[dict]:
     """Summarise deductions recorded on successful native exits, without estimating fees.
 
+    Backtest simulator records only; live execution does not populate these
+    records. Only Hyperliquid and Lighter positions are included, not ERC-4626
+    venues or whole-portfolio fees. Re-entering a vault produces separate rows.
+    Values sum management, performance and exit charges in the vault denomination.
+    The retained ``Recorded external fees USD`` column assumes USDC at USD parity;
+    this function performs no currency conversion. Compare totals only for the
+    same denomination.
+
     :param state:
-        Saved executor state, including closed and pending positions.
+        Saved backtest state, including closed and pending positions.
     :return:
         Per-position sale counts and recorded fee totals in USDC. A missing fee
         record is reported as missing; it does not imply an unpaid fee.

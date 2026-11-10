@@ -1,6 +1,8 @@
 """Public helpers preserve research semantics without changing execution policy."""
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
+from tradeexecutor.backtest.vault_fees import FEE_KEY
 
 import pandas as pd
 import pytest
@@ -13,7 +15,10 @@ from tradeexecutor.testing.vault_fee_sample import load_fee_sample
 
 
 def test_latest_present_restored_cycles():
-    """1. Restore sparse cycles. 2. Save a new cycle. 3. Reject ambiguous keys."""
+    """Keep weekly state available across skipped writes and JSON restoration.
+
+    1. Restore sparse cycles. 2. Save a new cycle. 3. Reject ambiguous keys.
+    """
     # 1. Restore sparse cycles, including a stored null.
     store = OtherData(data={'2': {'members': [7]}, '10': {'null': None}})
     assert store.load_latest_present('members') == [7]
@@ -32,7 +37,10 @@ def test_latest_present_restored_cycles():
 
 
 def test_restriction_evidence():
-    """1. Test unknown/public cases. 2. Test each explicit restriction form."""
+    """Preserve legacy filtering without making unknown access a restriction.
+
+    1. Test unknown/public cases. 2. Test each explicit restriction form.
+    """
     # 1. Unknown evidence and private-credit descriptions are not prohibitions.
     for row in ({}, {'notes': None, 'whitelist': None}, {'notes': 'private credit'}):
         assert private_vault_exclusion_reasons(row) == []
@@ -43,9 +51,12 @@ def test_restriction_evidence():
 
 
 def test_fee_ranking_independent_arithmetic():
-    """1. Load real externalised metadata. 2. Check net arithmetic. 3. Check unknown/zero charges."""
+    """Preserve ranking arithmetic independently of the helper implementation.
+
+    1. Load real externalised metadata. 2. Check net arithmetic. 3. Check unknown/zero charges.
+    """
     # 1. Load the existing frozen fixture; no network or fee-model mocks.
-    universe = load_fee_sample(Path('tests/backtest/fixtures/vault_externalised_fees'), 'hyperliquid')
+    universe = load_fee_sample(Path(__file__).resolve().parents[1] / 'backtest/fixtures/vault_externalised_fees', 'hyperliquid')
     metadata = next(universe.iterate_pairs()).get_vault_metadata()
     gross = pd.Series([.1, -.1, float('nan')])
     metadata = replace(metadata, management_fee=.02, performance_fee=.1, deposit_fee=.01, withdrawal_fee=.005)
@@ -58,7 +69,7 @@ def test_fee_ranking_independent_arithmetic():
     assert adjust_vault_period_returns(gross, replace(metadata, deposit_fee=None), 90).isna().all()
     zero = replace(metadata, management_fee=0, performance_fee=0, deposit_fee=0, withdrawal_fee=0)
     pd.testing.assert_series_equal(adjust_vault_period_returns(gross, zero, 90), (1 + gross) - 1)
-    internal = next(load_fee_sample(Path('tests/backtest/fixtures/vault_externalised_fees'), 'lagoon').iterate_pairs()).get_vault_metadata()
+    internal = next(load_fee_sample(Path(__file__).resolve().parents[1] / 'backtest/fixtures/vault_externalised_fees', 'lagoon').iterate_pairs()).get_vault_metadata()
     internal = replace(internal, fee_internalised=True)
     pd.testing.assert_series_equal(adjust_vault_period_returns(gross, internal, 90),
         (1 + gross) * (1 - internal.deposit_fee) * (1 - internal.withdrawal_fee) - 1)
@@ -72,8 +83,6 @@ def test_native_fee_report_missing_failed_and_pending():
     Minimal stand-ins isolate reporting from trading; actual fee execution is
     covered by the existing externalised-vault-fee integration fixture.
     """
-    from types import SimpleNamespace
-    from tradeexecutor.backtest.vault_fees import FEE_KEY
     # 1. Include successful, unrecorded, failed and pending sales, plus non-native.
     def sale(success, record=None):
         return SimpleNamespace(is_sell=lambda: True, is_success=lambda: success,

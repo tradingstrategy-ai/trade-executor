@@ -524,13 +524,16 @@ def format_output(
 
 
 def private_vault_exclusion_reasons(entry: dict) -> list[str]:
-    """Exclude known approval-only vaults without treating unknown access as private.
+    """Reproduce the legacy source filter for explicit access labels and notes.
 
-    Producers express restrictions in permission fields, flags and free-text
-    notes. Check each explicit form so an inclusion by curator cannot bypass it.
+    Unknown access is retained. This is a current-snapshot selection policy,
+    not historical admission evidence. Native producers also use ``whitelisted``
+    for currently unavailable public deposits; this legacy filter excludes
+    those compatibility labels too. Do not use it to infer permanent private
+    access or whether a native vault was historically open.
     """
     reasons = []
-    #: Published private-access labels exclude candidates requiring operator approval.
+    #: Preserve the source filter labels; native compatibility labels need separate review.
     restricted = {"private", "whitelisted", "permissioned", "restricted"}
     permission = str(entry.get("deposit_permission") or "").casefold()
     whitelist = entry.get("whitelist") or {}
