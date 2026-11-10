@@ -14,15 +14,22 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          submodules: 'recursive'
+          # Fetch Python dependencies and the API spec without cloning every
+          # upstream protocol source tree and its nested dependencies.
+          submodules: true
 
-      - name: Verify recursive submodules
+      - name: Check out required nested submodules
         run: |
-          git submodule sync --recursive
-          git submodule update --init --recursive
+          # Chain metadata is needed at runtime; its website submodule is not.
+          git -C deps/trading-strategy submodule update --init --depth 1 tradingstrategy/chains
+          # Lagoon deploys from source, and Guard builds need OpenZeppelin and
+          # forge-std. ABIs for other protocols are already shipped by eth-defi.
+          git -C deps/web3-ethereum-defi submodule update --init --depth 1 contracts/lagoon-v0 contracts/guard/lib/openzeppelin-contracts contracts/guard/lib/forge-std
           test -f spec/trade-executor-api.yaml
+          test -d deps/trading-strategy/tradingstrategy/chains/_data/chains
           test -f deps/web3-ethereum-defi/contracts/lagoon-v0/src/protocol-v2/ProtocolRegistry.sol
           test -f deps/web3-ethereum-defi/contracts/guard/lib/openzeppelin-contracts/contracts/access/Ownable.sol
+          test -f deps/web3-ethereum-defi/contracts/guard/lib/forge-std/src/Test.sol
       - name: Set up Python 3.14
         # The id exposes the resolved patch version to the venv cache key below,
         # so a runner Python upgrade cannot restore a venv with a dangling interpreter.

@@ -141,6 +141,8 @@ otherwise the test cannot find environment variables.
 - Only run specific test cases you need and if you need to run multiple tests, run them one by one to deal with timeout issues
 - If you are running more than five tests in one command, you need to use `pytest -n auto` because the command will fail due to long test duration, use this also if you run a single test module with multiple slow test cases
 - Use `pytest --log-cli-level=info` when diagnosing failingtests
+- Prefer in-process Typer calls (`get_command(app).main()` or `CliRunner.invoke()`) over black-box subprocess/CLI tests. Keep subprocess tests for behaviour that specifically requires process isolation, shell integration or a fresh-process restart.
+- Multiprocessing inside tests is discouraged because startup, resource contention and process cleanup slow CI and make failures harder to diagnose. Prefer single-process execution unless multiprocessing itself is being tested; use the existing pytest-xdist configuration for suite parallelism.
 
 Timeouts
 
@@ -202,6 +204,8 @@ source .local-test.env && PYTHONPATH="$(pwd):$PYTHONPATH" poetry run pytest test
 
 ### Pytest
 
+- Before changing Anvil fork scope, pooling or snapshot/revert behaviour, read [PR #1626](https://github.com/tradingstrategy-ai/trade-executor/pull/1626) and its corrective [PR #1630](https://github.com/tradingstrategy-ai/trade-executor/pull/1630), plus [the fork isolation guidance](docs/testing.md#anvil-fork-isolation).
+- Keep deployment-heavy Lagoon tests on a fresh Anvil process per test. Repeated Safe/Lagoon/Guard deployment and snapshot/revert cycles wedged shared forks in CI and a local module run; a between-test liveness probe cannot fix a mid-test hang. Fixed blocks and graceful shutdown retain RPC cache reuse without sharing a mutable process. Validate any scope change on the full affected modules under the CI xdist configuration, not only individual tests.
 - Never use test classes in pytest
 - `pytest` tests should not have stdout output like `print`
 - Use `pytest.approx()` to compare values of data and money `assert abs(aave_total_pnl - 96.6087) < 0.01` 

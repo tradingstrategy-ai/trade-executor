@@ -2,6 +2,7 @@
 
 from base64 import b64decode, b64encode
 from collections import Counter
+from pathlib import Path
 from types import SimpleNamespace
 
 import plotly.graph_objects as go
@@ -289,7 +290,7 @@ def test_legend_sort_does_not_reorder_chart_traces() -> None:
     ]
 
 
-def test_cross_chain_vault_repeats_the_legend_row_for_each_chain(tmp_path) -> None:
+def test_cross_chain_vault_repeats_the_legend_row_for_each_chain(tmp_path: Path, plotly_renderer: None) -> None:
     """gTrade's Base and Arbitrum allocations get separate legend rows.
 
     1. Create one aggregated chart trace with metadata from two chains.
@@ -345,7 +346,7 @@ def test_cross_chain_vault_repeats_the_legend_row_for_each_chain(tmp_path) -> No
     assert rendered.read_bytes().startswith(b"\x89PNG")
 
 
-def test_vertical_legend_is_below_the_chart_with_doubled_rows(tmp_path) -> None:
+def test_vertical_legend_is_below_the_chart_with_doubled_rows(tmp_path: Path, plotly_renderer: None) -> None:
     """The below-chart legend grows the figure and doubles its visual scale.
 
     1. Create a two-row asset-weight legend.
@@ -416,7 +417,7 @@ def test_vertical_legend_is_below_the_chart_with_doubled_rows(tmp_path) -> None:
     assert rendered.read_bytes().startswith(b"\x89PNG")
 
 
-def test_render_xchain2_legend_has_aligned_columns(tmp_path) -> None:
+def test_render_xchain2_legend_has_aligned_columns(tmp_path: Path, plotly_renderer: None) -> None:
     """Render all 121 mock vaults and keep each heading/icon column aligned."""
     metadata_items = _xchain2_mock_metadata()
     chain_ids = [

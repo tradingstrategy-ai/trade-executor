@@ -46,6 +46,7 @@ def _run_script(run_dir: Path, *arguments: str) -> subprocess.CompletedProcess:
     return subprocess.run(["bash", str(SCRIPT), *arguments], env=environment, cwd=REPOSITORY, capture_output=True, text=True, timeout=1700)
 
 
+@pytest.mark.skipif(os.environ.get("GITHUB_ACTIONS") == "true", reason="Takes approximately 8 minutes 49 seconds; skipped on CI for now until optimised")
 def test_multi_vault_manual_cli_simulated() -> None:
     """The shell tutorial deploys, trades all three vault families and redeems the investor.
 

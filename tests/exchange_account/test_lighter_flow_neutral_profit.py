@@ -57,7 +57,7 @@ def test_lighter_timeline_profit_is_flow_neutral(timeline: Timeline) -> None:
     assert all(position.share_price_state.total_withdrawn is not None for name, position in replay.positions.items() if name in timeline.expected)
 
 
-def test_lighter_flow_neutral_profit_old_state_recovery_and_reports() -> None:
+def test_lighter_flow_neutral_profit_old_state_recovery_and_reports(plotly_renderer: None) -> None:
     """States saved before the withdrawn total existed stay on the old figures, recovery counts once, and the outputs carry the new figures.
 
     1. Book a deposit and a transfer, then save and reload the state without the new key
