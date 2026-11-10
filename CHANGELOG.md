@@ -1,6 +1,7 @@
     **Note**: A full changelog is not available as long as `trade-executor` package is in active beta developmnt.
 
 ## 0.2
+- Stop the position chart endpoint warning about missing candle data for exchange-account positions, which have no asset price; it now points to the internal share price instead (2026-11-10).
 - Resolve vault fee and directional settlement rules on trading pairs, support Atoma fixed exit costs, and use observed D2 windows with a bounded early-history fallback (2026-11-09).
 - Reject a backtest end beyond a prebuilt universe's declared load window before indicators or trades can use a flat forward-filled tail (2026-11-09).
 - Add fixed USDC equity minimums alongside weighted Lighter sleeve rebalancing, with optional Safe cash retention and no profit trimming in minimum mode (2026-11-08).
