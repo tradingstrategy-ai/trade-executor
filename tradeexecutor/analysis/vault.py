@@ -64,8 +64,15 @@ def is_whitelisted_vault(pair: TradingPairIdentifier) -> bool:
 
 def mark_whitelisted_vaults_ignored(
     strategy_universe: TradingStrategyUniverse,
+    *,
+    historical_native_closure_keys: set[tuple[int, str]] | None = None,
 ) -> list[TradingPairIdentifier]:
     """Retain whitelist-gated vaults for diagnostics but exclude them from allocation.
+
+    ``historical_native_closure_keys`` may contain native identities whose raw
+    metadata passed ``is_native_public_deposit_closure`` and source access
+    checks. Their public closure is handled by historical admission instead of
+    a permanent ignore flag. Other reasons, including missing fees, are retained.
 
     - Call after constructing the strategy universe and loading vault metadata
     - The diagnostics flag is always set, including when another ignore reason
@@ -75,6 +82,10 @@ def mark_whitelisted_vaults_ignored(
     """
     flagged = []
     for pair in strategy_universe.iterate_pairs():
+        if historical_native_closure_keys and (pair.is_hyperliquid_vault() or pair.is_lighter_pool()):
+            key = (int(pair.chain_id), pair.pool_address.lower())
+            if key in historical_native_closure_keys:
+                continue
         if not is_whitelisted_vault(pair):
             continue
 

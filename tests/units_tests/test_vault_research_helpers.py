@@ -6,6 +6,9 @@ from tradeexecutor.backtest.vault_fees import FEE_KEY
 
 import pandas as pd
 import pytest
+from tradingstrategy.vault import VaultDepositPermission
+from tradeexecutor.analysis.vault import mark_whitelisted_vaults_ignored
+from tradeexecutor.curator.vault_universe_creation import is_native_public_deposit_closure
 
 from tradeexecutor.analysis.vault import adjust_vault_period_returns, summarise_native_vault_fees
 from tradeexecutor.curator.vault_universe_creation import private_vault_exclusion_reasons
@@ -102,3 +105,32 @@ def test_native_fee_report_missing_failed_and_pending():
         'Recorded fee sells':1,'Recorded external fees USD':3.6,'Sells without external-fee record':1}]
     assert calls == [True]
     assert recorded.other_data[FEE_KEY]['realised']['management'] == '1.10'
+
+
+def test_native_closure_compatibility_preserves_real_access_restrictions():
+    """Keep native closure histories without treating genuine private access as public.
+
+    1. Recognise only the native producer compatibility label.
+    2. Preserve the old default and genuine private restrictions with the opt-in.
+    3. Exempt approved history identities from blanket ignores, retaining other reasons.
+    """
+    # 1. A currently closed native public pool is different from a private EVM vault.
+    row = {'chain_id':9998, 'protocol_slug':'lighter', 'deposit_permission':'whitelisted',
+           'whitelist':{'status':'whitelisted','notes':'Native perp DEX compatibility status: public deposits are unavailable; this does not imply an approved-account route.'}}
+    assert is_native_public_deposit_closure(row)
+    assert not is_native_public_deposit_closure(dict(row,chain_id=1))
+    # 2. The legacy control stays intact; private flags and notes remain restrictions.
+    assert private_vault_exclusion_reasons(row)
+    assert not private_vault_exclusion_reasons(row,historical_native_permissions=True)
+    assert private_vault_exclusion_reasons(dict(row,flags=['private-vault']),historical_native_permissions=True)
+    assert private_vault_exclusion_reasons(dict(row,notes='private vault'),historical_native_permissions=True)
+    # 3. Use a real loaded native pair with incomplete-fee ignore reason already applied.
+    universe = load_fee_sample(Path(__file__).resolve().parents[1] / 'backtest/fixtures/vault_externalised_fees', 'hyperliquid')
+    pair = next(universe.iterate_pairs())
+    metadata = pair.get_vault_metadata()
+    pair.other_data["token_metadata"] = replace(metadata,deposit_permission=VaultDepositPermission.whitelisted)
+    pair.set_ignore_reason('lacks_fee_data')
+    keys = {(int(pair.chain_id),pair.pool_address.lower())}
+    assert mark_whitelisted_vaults_ignored(universe,historical_native_closure_keys=keys) == []
+    assert pair.get_ignore_reason() == 'lacks_fee_data'
+    assert mark_whitelisted_vaults_ignored(universe) == [pair]
