@@ -1,6 +1,7 @@
     **Note**: A full changelog is not available as long as `trade-executor` package is in active beta developmnt.
 
 ## 0.2
+- Add a Hyperliquid manual vault-data overlay marking Growi HF-2 permanently closed for deposits, including before the historical collection cutoff (2026-11-10).
 - Stop the position chart endpoint warning about missing candle data for exchange-account positions, which have no asset price; it now points to the internal share price instead (2026-11-10).
 - Allow explicit historical native public-closure handling without dropping genuine private-access restrictions (2026-11-10).
 - Share vault restriction parsing, investor-net ranking returns, native fee reporting and sparse-cycle state access (2026-11-10).

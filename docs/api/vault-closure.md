@@ -9,6 +9,13 @@ Module: [`tradeexecutor.strategy.vault_closure`](../../tradeexecutor/strategy/va
 | `can_interact_with_vault(vault, **kwargs)` | `bool`: chosen policy allows the operation |
 | `VaultClosureOutcome` | Enum: `open`, `closed`, `unknown`, `policy_blocked`, `account_restricted` |
 | `VaultClosure` | Frozen evidence and decision record; `as_deposit_check()` adapts it to existing diagnostics |
+| `get_manual_deposit_closure(vault)` | Optional manual closure; deposit adapters check this before querying a provider |
+
+An explicit permanent deposit closure takes precedence over provider responses,
+captured checks, synthetic windows and pre-collection assumptions. It cannot be
+waived by unknown-state or strategy-policy controls. Its evidence source is
+`manual_override`, distinct from historical observations. Input-route validation
+still applies. Redemption queries use their existing independent rules.
 
 When the first argument is a vault, all three functions accept the following controls through `get_vault_closure`:
 

@@ -25,7 +25,8 @@ neither source return `None`.
 
 Pure overlays in
 `tradeexecutor/strategy/vault_protocol/` resolve published fee data and existing
-simulation assumptions. They perform no acquisition or account permission checks.
+simulation assumptions and explicit manual vault-data corrections. They perform
+no acquisition or account permission checks.
 
 - `atoma.py` describes the two reviewed standard-fee public deployments. Their
   zero-entry/0.005-exit profile is distinct from mechanical support for a fee.
@@ -38,6 +39,18 @@ simulation assumptions. They perform no acquisition or account permission checks
   flag, capacity or restriction. Later missing HYPE++ deposit history fails closed;
   other D2 vaults retain the existing unknown-state policy. The existing
   unknown-redemption policy is preserved.
+- `hyperliquid.py` records manual native-vault overrides. Growi HF-2
+  (`9999`, `0x9b5b1931fa5838a891973f9877c7648c93ee80cc`) is permanently closed
+  for deposits at the operator's explicit instruction on 10 November 2026.
+  This all-time override precedes the pre-11-April-2026 assumed-open policy,
+  synthetic windows and provider/captured-open responses. It also applies to
+  live/replay/simulated HyperCore pricing and the final buy execution preflight.
+  Evidence is labelled
+  `manual_override` / `permanently_closed`; it is not a newly recovered historical
+  observation. Other native vaults retain their existing admission rules.
+  Price histories remain loaded and redemption checks remain operation-specific.
+  Earlier NB04 results using assumed Growi admission predate this correction;
+  they must not be described as results of the corrected engine.
 - The dispatcher retains existing Lagoon/D2 event gates, metadata-estimate
   eligibility, protocol/default delays and Ostium's next-day 18:00 UTC rule.
   The shared settlement helper applies explicit backtest overrides first;
@@ -88,3 +101,9 @@ These fixtures establish engine wiring and accounting, not economic performance
 or live deployment readiness. No old-State migration framework is introduced.
 See the existing vault lifecycle and state-persistence guides for claim/recovery
 and accounting invariants.
+
+`tests/units_tests/test_hyperliquid_protocol_overrides.py` checks the actual NB04
+purchase dates through backtest pricing, precedence over optimistic provider and
+window assumptions, direct live/simulation pricing, exact venue/address scope,
+retained history and independently permitted redemptions. No new historical
+backtest result is implied by this correction.

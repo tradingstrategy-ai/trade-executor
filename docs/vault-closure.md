@@ -57,6 +57,14 @@ The Lagoon/Morpho/Yearn interpretation follows [the earlier Hyper AI investigati
 
 ## Ownership and integration
 
+Manual vault-data overrides in `strategy/vault_protocol/` take precedence over
+deposit providers, captured checks, synthetic schedules and historical unknown
+policies. Growi HF-2 on native HyperCore is permanently deposit-closed by explicit
+operator instruction (10 November 2026), including before the collection cutoff.
+Its source is `manual_override`, reason `permanently_closed`, and outcome `closed`.
+This is a recorded operator correction, not observed-open/closed history recovered
+from the API. It neither removes the vault's data nor blocks supported redemptions.
+
 - **eth-defi:** one Hyperliquid protocol classifier, shared by exporters, live pricing and execution revalidation.
 - **trading-strategy:** loads observations, calls that classifier when projecting legacy sidecars, preserves explicit null capacities and selects coherent original-clock evidence. It does not import the executor or implement another leader-share threshold.
 - **BacktestPricing:** performs as-of/freshness selection, then supplies evidence to `get_vault_closure()`; existing structured pricing methods are adapters around that rule.

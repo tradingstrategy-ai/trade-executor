@@ -204,13 +204,15 @@ halt/restart recovery limits. This does not change the native withdrawal phases.
 A deposit transfers USDC from the HyperEVM Safe into the HyperCore vault.
 Before starting a new buy, sequential execution calls
 `GenericRouting.check_trade_before_execution()`, which forwards the check to
-`HypercoreVaultRouting`. The router fetches new `vaultDetails` so a permission
+`HypercoreVaultRouting`. A manual permanent deposit closure is checked first,
+including in simulate mode. The router otherwise fetches new `vaultDetails` so a permission
 change after strategy sizing is caught before cash reservation or bridging.
 
 Explicit closure, missing permission flags, the low-leader-share policy, and
 an API request or decoding failure all block the buy. The executor marks it
 expired, saves `execution_preflight_reason` in `trade.other_data`, and continues
-with the remaining trades. Sells, simulate mode and rebroadcasts skip this check.
+with the remaining trades. Sells, simulate mode and rebroadcasts skip the API
+deposit check; a manual permanent closure still blocks a new simulated buy.
 If all trades in a new, empty position have expired, the position moves to
 `portfolio.expired_positions`. Inspect that mapping for the rejected opening
 trade: `get_all_positions()` and `get_trade_by_id()` do not search it.

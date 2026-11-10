@@ -133,6 +133,7 @@ from tradeexecutor.state.trade import (
 )
 from tradeexecutor.state.types import JSONHexAddress
 from tradeexecutor.strategy.routing import RoutingState, RoutingModel
+from tradeexecutor.strategy.vault_closure import get_manual_deposit_closure
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
 from tradeexecutor.utils.blockchain import get_block_timestamp
@@ -653,16 +654,23 @@ class HypercoreVaultRouting(RoutingModel):
         sizing. A block, missing flags, or an API request/decoding failure
         returns a reason that causes the executor to expire the planned buy.
 
+        A manual permanent deposit closure is checked first, including for a
+        simulated buy or a trade constructed without consulting pricing.
+
         A full close is expired when the live equity cannot fund a verifiable
         withdrawal above :py:data:`HYPERCORE_FULL_CLOSE_MIN_REMAINDER_RAW`.
         Such a position stays open and valued instead of halting the executor
         in :py:meth:`_get_live_withdrawal_amount_for_close`. Other sells and
-        simulate mode proceed without a read. The executor skips this check
+        simulate mode avoid the API read. The executor skips this check
         when rebroadcasting an already-started trade.
 
         :param trade: Still-planned HyperCore vault trade.
         :return: No-trade reason for a blocked or unknown trade, else ``None``.
         """
+        if trade.is_buy():
+            manual = get_manual_deposit_closure(trade.pair)
+            if manual is not None:
+                return manual.message
         if self.simulate:
             return None
         if not trade.is_buy():
