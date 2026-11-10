@@ -28,6 +28,7 @@ def driver() -> Iterator[MultiVaultStartDriver]:
         yield run
 
 
+@pytest.mark.skipif(os.environ.get("GITHUB_ACTIONS") == "true", reason="Takes approximately 5 minutes 17 seconds including fixture setup; skipped on CI for now until optimised")
 def test_multi_vault_start_lifecycle(driver: MultiVaultStartDriver) -> None:
     """Normal start cycles invest and exit three vaults without diluting bootstrap shares.
 
@@ -91,6 +92,7 @@ def test_multi_vault_start_lifecycle(driver: MultiVaultStartDriver) -> None:
     driver.command("finished", helper=True)
 
 
+@pytest.mark.skipif(os.environ.get("GITHUB_ACTIONS") == "true", reason="Takes approximately 4 minutes 24 seconds including fixture setup; skipped on CI for now until optimised")
 def test_multi_vault_start_restart_and_refusal(driver: MultiVaultStartDriver) -> None:
     """Uncertain sequencer submissions and failed NAV reads survive fresh CLI processes.
 

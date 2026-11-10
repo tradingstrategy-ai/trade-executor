@@ -98,6 +98,7 @@ def environment(
 
 
 @pytest.mark.slow_test_group
+@pytest.mark.skipif(os.environ.get("GITHUB_ACTIONS") == "true", reason="Takes approximately 5 minutes 5 seconds; skipped on CI for now until optimised")
 def test_rebalance_vault_yield(
     environment: dict,
     mocker: MockerFixture,

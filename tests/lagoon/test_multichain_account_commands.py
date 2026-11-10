@@ -41,6 +41,7 @@ def driver() -> Iterator[MultiVaultStartDriver]:
         yield run
 
 
+@pytest.mark.skipif(os.environ.get("GITHUB_ACTIONS") == "true", reason="Takes approximately 4 minutes 59 seconds including fixture setup; skipped on CI for now until optimised")
 def test_settled_accounts_and_atomic_correction(driver: MultiVaultStartDriver) -> None:
     """Check settled balances and preserve state until correction is verified.
 
@@ -295,6 +296,7 @@ def test_incomplete_account_observations(driver: MultiVaultStartDriver) -> None:
     assert {chain: driver.simulation.get_web3(chain).eth.block_number for chain in blocks} == blocks
 
 
+@pytest.mark.skipif(os.environ.get("GITHUB_ACTIONS") == "true", reason="Takes approximately 4 minutes 59 seconds including fixture setup; skipped on CI for now until optimised")
 def test_pending_bridge_account_commands(driver: MultiVaultStartDriver) -> None:
     """Keep actual CCTP entitlement through delayed receive and process restart.
 

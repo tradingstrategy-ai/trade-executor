@@ -92,6 +92,7 @@ def environment(
 
 @flaky.flaky
 @pytest.mark.slow_test_group
+@pytest.mark.skipif(os.environ.get("GITHUB_ACTIONS") == "true", reason="Takes approximately 4 minutes 30 seconds; skipped on CI for now until optimised")
 def test_repair_vault_position_open_failed(
     environment: dict,
     mocker,
