@@ -12,6 +12,7 @@ import pytest
 import requests
 from eth_defi.compat import native_datetime_utc_now
 
+from tradeexecutor.exchange_account.lighter import LIGHTER_ROLE_SUB_ACCOUNT, create_lighter_exchange_account_pair
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.metadata import Metadata
 from tradeexecutor.state.portfolio import Portfolio
@@ -312,6 +313,72 @@ def test_position_chart_without_pair_internal_id_returns_partial_data(
     payload = response.json()
     assert payload["price_history"] == []
     assert any("internal id" in warning.lower() for warning in payload["warnings"])
+
+
+def test_position_chart_exchange_account_has_no_price_warning(
+    chart_pair: TradingPairIdentifier,
+    strategy_universe: TradingStrategyUniverse,
+    create_position_chart_server: Callable[[State, TradingStrategyUniverse | None], str],
+) -> None:
+    """Position chart does not warn about missing candles for an exchange account.
+
+    1. Create a state with a funded Lighter sub-account position and an internal share price sample.
+    2. Query the position chart endpoint with a candle-backed universe loaded.
+    3. Check price history is empty with an informational status message and no warnings.
+    """
+    # 1. Create a state with a funded Lighter sub-account position and an internal share price sample.
+    pair = create_lighter_exchange_account_pair(
+        chart_pair.quote,
+        account_index=281474976433218,
+        role=LIGHTER_ROLE_SUB_ACCOUNT,
+        master_account_index=767043,
+        sub_account_id="long-short",
+    )
+    state = State(portfolio=Portfolio())
+    funded_at = datetime.datetime(2024, 1, 2)
+    position, trade, _ = state.create_trade(
+        strategy_cycle_at=funded_at,
+        pair=pair,
+        quantity=None,
+        reserve=Decimal("1000"),
+        assumed_price=1.0,
+        trade_type=TradeType.rebalance,
+        reserve_currency=pair.quote,
+        reserve_currency_price=1.0,
+    )
+    trade.mark_success(
+        executed_at=funded_at,
+        executed_price=1.0,
+        executed_quantity=Decimal("1000"),
+        executed_reserve=Decimal("1000"),
+        lp_fees=0.0,
+        native_token_price=0.0,
+        force=True,
+    )
+    state.stats.add_positions_stats(
+        position.position_id,
+        PositionStatistics(
+            calculated_at=funded_at,
+            last_valuation_at=funded_at,
+            profitability=0.0,
+            profit_usd=0.0,
+            quantity=1000.0,
+            value=1000.0,
+            internal_share_price=1.0,
+        ),
+    )
+    server_url = create_position_chart_server(state, strategy_universe)
+
+    # 2. Query the position chart endpoint with a candle-backed universe loaded.
+    response = requests.get(f"{server_url}/position-chart/{position.position_id}")
+
+    # 3. Check price history is empty with an informational status message and no warnings.
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["price_history"] == []
+    assert "internal share price" in payload["price_history_status_message"]
+    assert payload["warnings"] == []
+    assert payload["position_statistics"][0]["internal_share_price"] == 1.0
 
 
 def test_position_chart_unknown_position_returns_404(

@@ -34,6 +34,7 @@ from tradeexecutor.webhook.json_helper import NaNToNullEncoder
 logger = logging.getLogger(__name__)
 
 PRICE_HISTORY_AVAILABLE_MESSAGE = "Historical price data is available."
+EXCHANGE_ACCOUNT_PRICE_HISTORY_MESSAGE = "Exchange account positions have no asset price history; see the internal share price."
 
 
 def _json_response(payload: dict, status_code: int = 200) -> Response:
@@ -64,6 +65,12 @@ def _get_position_chart_price_history(
     warnings: list[str],
 ) -> tuple[list[tuple[float, float]], str]:
     """Export candle close price history for a single position."""
+    if position.is_exchange_account():
+        # An exchange account is valued in USD and has no market, so it never
+        # has candles. Its performance is the internal share price in the
+        # position statistics; missing candles are expected, not a warning.
+        return [], EXCHANGE_ACCOUNT_PRICE_HISTORY_MESSAGE
+
     strategy_input_indicators = run_state.latest_indicators
     if strategy_input_indicators is None:
         message = "Historical price data is not available because the strategy universe is not loaded in the live executor."
