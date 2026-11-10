@@ -70,6 +70,29 @@ a function-scoped `evm_snapshot_revert()` fixture when sharing Anvil or a
 function-scoped isolated Anvil fixture. Refer to
 `eth_defi.testing.anvil_fork_pool` for the pool contract and marker conventions.
 
+### Anvil fork isolation
+
+Read [PR #1626](https://github.com/tradingstrategy-ai/trade-executor/pull/1626)
+and its corrective [PR #1630](https://github.com/tradingstrategy-ai/trade-executor/pull/1630)
+before changing fork scope or replacing isolated forks with snapshot/revert pooling.
+PR #1626 pooled the deployment-heavy Lagoon Base tests. Two CI attempts and a
+CI-like local module run then left Anvil unresponsive during repeated Safe,
+Lagoon and Guard deployments, followed by an `evm_revert` timeout. PR #1630
+restored a fresh Anvil process per test in `tests/lagoon/conftest.py`.
+
+Keep that process isolation for deployment-heavy Lagoon tests. A pool's liveness
+probe runs between tests and cannot recover a process that wedges midway through
+a deployment. Pooling remains appropriate for read-only or demonstrably
+snapshot-safe groups; snapshot/revert alone is not evidence of that safety.
+
+A fixed fork block and a shared Anvil process are separate optimisations.
+Isolated forks still replay the committed Foundry RPC cache, and graceful
+shutdown lets Anvil save newly fetched entries. Preserve fixed blocks, cache
+seeding and graceful shutdown when retaining or restoring process isolation.
+Validate any proposed scope change with the full affected modules under their
+CI xdist configuration, including repeated deployment cases, rather than relying
+on a single passing test or increasing timeouts around an unresponsive process.
+
 
 ## Interactive tests
 

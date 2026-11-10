@@ -204,6 +204,8 @@ source .local-test.env && PYTHONPATH="$(pwd):$PYTHONPATH" poetry run pytest test
 
 ### Pytest
 
+- Before changing Anvil fork scope, pooling or snapshot/revert behaviour, read [PR #1626](https://github.com/tradingstrategy-ai/trade-executor/pull/1626) and its corrective [PR #1630](https://github.com/tradingstrategy-ai/trade-executor/pull/1630), plus [the fork isolation guidance](docs/testing.md#anvil-fork-isolation).
+- Keep deployment-heavy Lagoon tests on a fresh Anvil process per test. Repeated Safe/Lagoon/Guard deployment and snapshot/revert cycles wedged shared forks in CI and a local module run; a between-test liveness probe cannot fix a mid-test hang. Fixed blocks and graceful shutdown retain RPC cache reuse without sharing a mutable process. Validate any scope change on the full affected modules under the CI xdist configuration, not only individual tests.
 - Never use test classes in pytest
 - `pytest` tests should not have stdout output like `print`
 - Use `pytest.approx()` to compare values of data and money `assert abs(aave_total_pnl - 96.6087) < 0.01` 

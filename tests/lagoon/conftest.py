@@ -66,6 +66,10 @@ def usdc_holder() -> HexAddress:
 def anvil_base_fork(usdc_holder: HexAddress) -> AnvilLaunch:
     """Create an isolated fork of Base at the cached canonical block.
 
+    Keep one process per test: PR #1626's pooled snapshot/revert fork wedged
+    during repeated Safe/Lagoon/Guard deployments and was reverted in PR #1630.
+    See docs/testing.md#anvil-fork-isolation for the evidence and constraints.
+
     :return: JSON-RPC URL for Web3
     """
     rpc_url = os.environ.get("JSON_RPC_BASE") or JSON_RPC_BASE
