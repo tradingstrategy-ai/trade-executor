@@ -1,10 +1,21 @@
 # Vault protocol overlays
 
-`translate_trading_pair()` attaches immutable `VaultProtocolRules` after loading
-vault metadata and before caching the pair. Strategies read
+`DEXPair` already carries `VaultMetadata` in `other_data["token_metadata"]`,
+including published fees, protocol identity and feature flags. Pair translation
+reuses these and the existing asynchronous-deposit, delayed-redemption and
+settlement-estimate helpers; no extra upstream metadata schema is needed.
+`DEXPair.buy_tax`/`sell_tax` describe token-transfer taxes and are translated onto
+the base asset. They do not describe operation queues or fee-support profiles;
+vault economics must not mutate that shared asset metadata.
+
+The remaining derived execution profiles and simulation defaults are stored as
+plain values in `TradingPairIdentifier.other_data["vault_protocol_rules"]`, after
+loading metadata and before caching the pair. There is no dedicated pair field.
+Normal State JSON preserves these values; the typed accessor reconstructs an
+immutable `VaultProtocolRules` view. Strategies read
 `pair.get_vault_protocol_rules()` for capabilities and use pricing for dated
-availability and settlement expectations. Existing pair constructors may leave
-the optional field unset; existing strategy APIs remain supported.
+availability and settlement expectations. Older/manual pair constructors may have no rules entry; the accessor returns
+`None` and existing strategy APIs remain supported.
 
 Rules are declared in `tradeexecutor/state/vault_protocol.py`. Pure overlays in
 `tradeexecutor/strategy/vault_protocol/` resolve published fee data and existing

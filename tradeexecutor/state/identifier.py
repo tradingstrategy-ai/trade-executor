@@ -683,12 +683,10 @@ class TradingPairIdentifier:
     #:
     #: .. warning::
     #:
-    #:     To keep state size in check, other_data is not serialised.
+    #:     Heavy external metadata is removed when serialising to keep State small.
+    #:     Plain execution metadata, including resolved vault rules, is retained.
     #:
     other_data: Optional[dict] = field(default_factory=dict, metadata=config(encoder=_reduce_other_data))
-
-    #: Optional resolved vault rules; additive default preserves existing strategies.
-    vault_protocol_rules: VaultProtocolRules | None = None
 
     def __post_init__(self):
         # CCTP bridge pairs are cross-chain by design (base on destination, quote on source)
@@ -724,8 +722,16 @@ class TradingPairIdentifier:
             return f"<Pair {self.base.token_symbol}-{self.quote.token_symbol} {type_name} at {exchange_name}>"
 
     def get_vault_protocol_rules(self) -> VaultProtocolRules | None:
-        """Resolved protocol data, or None for older/manual pair constructors."""
-        return self.vault_protocol_rules
+        """Read resolved capabilities from existing pair metadata storage.
+
+        Published fees/features come from ``VaultMetadata`` during translation;
+        only their resolved execution profile and simulation defaults are stored
+        under ``other_data["vault_protocol_rules"]``. The dictionary uses plain
+        values so the normal State JSON path preserves it without a schema field.
+        Older/manual pairs without loaded rules return ``None``.
+        """
+        rules = (self.other_data or {}).get("vault_protocol_rules")
+        return VaultProtocolRules(**rules) if rules is not None else None
 
     def __hash__(self):
         """Trading pair hash is hash(base, quote, fee).
@@ -1613,8 +1619,9 @@ class TradingPairIdentifier:
 
         if self.base.get_buy_tax() is not None:
             return self.base.get_buy_tax()
-        if self.vault_protocol_rules is not None and self.vault_protocol_rules.deposit_fee_supported:
-            return self.vault_protocol_rules.deposit_fee
+        rules = self.get_vault_protocol_rules()
+        if rules is not None and rules.deposit_fee_supported:
+            return rules.deposit_fee
         return self.base.get_buy_tax()
 
     def get_sell_tax(self) -> Percent | None:
@@ -1632,8 +1639,9 @@ class TradingPairIdentifier:
 
         if self.base.get_sell_tax() is not None:
             return self.base.get_sell_tax()
-        if self.vault_protocol_rules is not None and self.vault_protocol_rules.redemption_fee_supported:
-            return self.vault_protocol_rules.redemption_fee
+        rules = self.get_vault_protocol_rules()
+        if rules is not None and rules.redemption_fee_supported:
+            return rules.redemption_fee
         return self.base.get_sell_tax()
 
     def set_tradeable(self, value: bool, reason: str | None = None):

@@ -1,6 +1,7 @@
 """Pure construction-time vault overlays; no acquisition, state ledger or strategy imports."""
 
 import datetime
+from dataclasses import asdict
 
 from eth_defi.erc_4626.core import ERC4626Feature
 
@@ -64,9 +65,9 @@ def resolve_vault_protocol_rules(pair) -> VaultProtocolRules:
 
 
 def enrich_vault_pair(pair):
-    """Attach immutable per-pair economics before the translator caches the pair."""
+    """Store resolved economics in pair metadata before the translator caches it."""
     if pair.is_vault():
-        pair.vault_protocol_rules = resolve_vault_protocol_rules(pair)
+        pair.other_data["vault_protocol_rules"] = asdict(resolve_vault_protocol_rules(pair))
     return pair
 
 
@@ -77,7 +78,7 @@ def settlement_expectation(pair, timestamp, *, is_buy, overrides=None, default_d
     override = (overrides or {}).get(pair.pool_address.lower())
     if override is not None:
         return True, timestamp + override
-    rules = pair.vault_protocol_rules or resolve_vault_protocol_rules(pair)
+    rules = pair.get_vault_protocol_rules() or resolve_vault_protocol_rules(pair)
     # Pair estimates are mutable request-time inputs, including values loaded by
     # translation. Refresh timing; persisted requests retain their original due time.
     if pair.other_data.get("vault_estimated_settlement") is not None:

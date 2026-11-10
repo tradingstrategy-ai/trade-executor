@@ -742,7 +742,7 @@ class BacktestPricing(PricingModel):
         """Supply original-clock, as-of evidence to the unified closure rule."""
         state = self._lookup_vault_state(ts, pair)
         override = self._vault_window_overrides.get(pair.internal_id) if pair else None
-        rules = getattr(pair, "vault_protocol_rules", None)
+        rules = pair.get_vault_protocol_rules() if pair is not None else None
         if override is None and rules is not None and rules.deposit_windowed:
             flag = (state or {}).get("deposits_open" if operation == "deposit" else "redemption_open")
             cap = (state or {}).get("max_deposit" if operation == "deposit" else "max_redeem")

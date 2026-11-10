@@ -1,4 +1,4 @@
-"""Resolved vault economics carried by a trading pair, independently of strategy code."""
+"""Typed view of resolved vault economics stored in a pair's existing other_data."""
 
 from dataclasses import dataclass
 

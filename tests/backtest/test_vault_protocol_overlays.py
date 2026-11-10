@@ -1,7 +1,7 @@
 """Integration checks for construction-time protocol data and its actual consumers."""
 
 import datetime
-from dataclasses import replace
+from dataclasses import fields, replace
 from types import SimpleNamespace
 
 import pandas as pd
@@ -14,6 +14,7 @@ from tradeexecutor.backtest.backtest_pricing import BacktestPricing
 from tradeexecutor.backtest.backtest_runner import run_backtest_inline
 from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
 from tradeexecutor.backtest.vault_fees import FEE_KEY
+from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.execution_context import ExecutionMode
@@ -208,3 +209,22 @@ def test_atoma_missing_entry_fee_override_is_data_only():
         validate_vault_fee_data(universe)
     validate_vault_fee_data(universe, allow_missing=True)
     assert pair.get_ignore_reason() == 'lacks_fee_data'
+
+
+def test_protocol_rules_use_other_data_and_survive_state_json():
+    """Use existing pair storage and preserve fees/timing through ordinary JSON."""
+    universe = create_vault_protocol_universe()
+    pair = next(p for p in universe.iterate_pairs() if p.get_vault_metadata().vault_name == 'Atoma')
+    assert 'vault_protocol_rules' not in {f.name for f in fields(TradingPairIdentifier)}
+    assert pair.other_data['vault_protocol_rules']['redemption_fee'] == 0.005
+    ts = datetime.datetime(2025, 4, 1)
+    execution = BacktestExecution(SimulatedWallet())
+    expected_due = execution._get_settlement_due(pair, ts)
+    expected_rules = pair.get_vault_protocol_rules()
+    restored = TradingPairIdentifier.from_json(pair.to_json())
+    assert restored.get_vault_protocol_rules() == expected_rules
+    assert restored.get_sell_tax() == pytest.approx(0.005)
+    assert restored.get_buy_tax() == 0
+    assert execution._get_settlement_due(restored, ts) == expected_due == ts + datetime.timedelta(days=7)
+    restored.other_data.pop('vault_protocol_rules')
+    assert restored.get_vault_protocol_rules() is None
