@@ -6,6 +6,7 @@ from logging import Logger
 from pathlib import Path
 
 import pytest
+import kaleido
 
 from eth_defi.testing.anvil_fork_pool import AnvilForkPool
 from eth_defi.testing.token_cache import (
@@ -20,6 +21,24 @@ from tradeexecutor.testing.pytest_helpers import phase_report_key
 from tradingstrategy.client import Client
 
 from tradeexecutor.cli.log import setup_pytest_logging
+
+
+@pytest.fixture(scope="session")
+def plotly_renderer() -> Iterator[None]:
+    """Reuse a real browser for PNG assertions within a pytest worker.
+
+    1. Start Kaleido's synchronous server on the first rendering test.
+    2. Render each figure through the normal Plotly APIs using this browser.
+    3. Close the browser when the worker finishes, including after test failures.
+    """
+    # 1. Start the real renderer; image output is not mocked.
+    kaleido.start_sync_server(n=1)
+    try:
+        # 2. Plotly automatically reuses the running Kaleido server.
+        yield
+    finally:
+        # 3. Release the worker's browser even when an assertion fails.
+        kaleido.stop_sync_server()
 
 
 @pytest.fixture(scope="session", autouse=True)

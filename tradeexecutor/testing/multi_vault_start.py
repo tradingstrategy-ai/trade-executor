@@ -8,11 +8,15 @@ import os
 import subprocess
 import sys
 import tempfile
+import traceback
 from contextlib import contextmanager
 from collections.abc import Iterator
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
+from unittest import mock
+
+from typer.testing import CliRunner
 
 from eth_defi.provider.anvil import mine
 from eth_defi.hotwallet import HotWallet
@@ -29,6 +33,7 @@ from tradeexecutor.state.identifier import TradingPairKind
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, create_pair_universe_from_code
 from tradeexecutor.testing.lighter_core import FakeLighterCore
 from tradeexecutor.testing.lighter_manual import broadcast_and_wait
+from tradeexecutor.testing.multi_vault_manual import app as manual_app
 
 
 @contextmanager
@@ -144,8 +149,13 @@ class MultiVaultStartDriver:
         })
         return environment
 
-    def command(self, *arguments: str, timestamp: datetime.datetime | None = None, controls: tuple[str, ...] = (), helper: bool = False, check: bool = True, environment_overrides: dict[str, str | None] | None = None) -> subprocess.CompletedProcess:
-        """Invoke the registered CLI in a new process with bounded execution."""
+    def command(self, *arguments: str, timestamp: datetime.datetime | None = None, controls: tuple[str, ...] = (), helper: bool = False, check: bool = True, environment_overrides: dict[str, str | None] | None = None, in_process: bool = False) -> subprocess.CompletedProcess:
+        """Invoke the registered CLI, retaining subprocesses for restart coverage.
+
+        Validation-only tests can opt into in-process execution to avoid
+        repeated interpreter startup. Both modes reload the normal state and
+        simulated venue through the same public entry point.
+        """
         args = [sys.executable, "-m", "tradeexecutor.testing.multi_vault_manual"]
         if not helper:
             args += ["cli", *controls]
@@ -160,7 +170,16 @@ class MultiVaultStartDriver:
                 environment.pop(key, None)
             else:
                 environment[key] = value
-        result = subprocess.run(args + list(arguments), env=environment, cwd=self.repository, capture_output=True, text=True, timeout=900)
+        if in_process:
+            with mock.patch.dict(os.environ, environment, clear=True):
+                invocation = CliRunner().invoke(manual_app, args[3:] + list(arguments))
+            # CliRunner combines terminal output on the project's Click version.
+            stderr = ""
+            if invocation.exception and not isinstance(invocation.exception, SystemExit):
+                stderr += "".join(traceback.format_exception(invocation.exception))
+            result = subprocess.CompletedProcess(args + list(arguments), invocation.exit_code, invocation.output, stderr)
+        else:
+            result = subprocess.run(args + list(arguments), env=environment, cwd=self.repository, capture_output=True, text=True, timeout=900)
         if check and result.returncode:
             raise AssertionError(result.stdout[-8000:] + result.stderr[-8000:])
         return result

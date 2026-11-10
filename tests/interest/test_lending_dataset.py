@@ -302,6 +302,7 @@ def polygon_lending_dataset(persistent_test_client: Client):
     - Reused across test_can_open_short and test_analyse_long_short_universe
       to avoid duplicate API calls
     - Date range covers MaticX enablement (2023-03-07) with minimal buffer
+    - Only load MaticX, its WMATIC quote and the USDC reserve used by the assertions
     """
     return load_trading_and_lending_data(
         persistent_test_client,
@@ -313,6 +314,7 @@ def polygon_lending_dataset(persistent_test_client: Client):
         chain_id=ChainId.polygon,
         exchange_slugs="quickswap",
         time_bucket=TimeBucket.d7,
+        asset_ids={"MaticX", "WMATIC"},
         any_quote=True,
     )
 

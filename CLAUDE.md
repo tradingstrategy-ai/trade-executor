@@ -141,6 +141,8 @@ otherwise the test cannot find environment variables.
 - Only run specific test cases you need and if you need to run multiple tests, run them one by one to deal with timeout issues
 - If you are running more than five tests in one command, you need to use `pytest -n auto` because the command will fail due to long test duration, use this also if you run a single test module with multiple slow test cases
 - Use `pytest --log-cli-level=info` when diagnosing failingtests
+- Prefer in-process Typer calls (`get_command(app).main()` or `CliRunner.invoke()`) over black-box subprocess/CLI tests. Keep subprocess tests for behaviour that specifically requires process isolation, shell integration or a fresh-process restart.
+- Multiprocessing inside tests is discouraged because startup, resource contention and process cleanup slow CI and make failures harder to diagnose. Prefer single-process execution unless multiprocessing itself is being tested; use the existing pytest-xdist configuration for suite parallelism.
 
 Timeouts
 

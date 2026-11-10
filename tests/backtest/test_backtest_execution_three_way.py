@@ -52,7 +52,7 @@ def execution_context(request) -> ExecutionContext:
 def universe(request, persistent_test_client, execution_context) -> TradingStrategyUniverse:
     """Backtesting data universe.
 
-    This contains only data for WBNB-BUSD pair on PancakeSwap v2 since 2021-01-01.
+    Load the two routing pairs around the trades on 2021-06-01.
     """
 
     client = persistent_test_client
@@ -72,7 +72,7 @@ def universe(request, persistent_test_client, execution_context) -> TradingStrat
         ("Cake", "WBNB"),
     }
 
-    # Load all datas we can get for our candle time bucket
+    # Load only the fortnight around the execution timestamp used below.
     dataset = load_pair_data_for_single_exchange(
         client,
         execution_context,
@@ -80,7 +80,9 @@ def universe(request, persistent_test_client, execution_context) -> TradingStrat
         chain_id,
         exchange_slug,
         trading_pairs,
-        UniverseOptions()
+        UniverseOptions(),
+        start_time=datetime.datetime(2021, 5, 25),
+        end_time=datetime.datetime(2021, 6, 8),
     )
 
     # Filter down to the single pair we are interested in
@@ -107,7 +109,7 @@ def strategy_universe(universe):
 def stop_loss_universe(request, persistent_test_client, execution_context) -> TradingStrategyUniverse:
     """Backtesting data universe w/stop loss data.
 
-    This contains only data for WBNB-BUSD pair on PancakeSwap v2 since 2021-01-01.
+    Load matching daily and four-hour candles around the trades on 2021-06-01.
     """
 
     client = persistent_test_client
@@ -129,7 +131,7 @@ def stop_loss_universe(request, persistent_test_client, execution_context) -> Tr
         ("Cake", "WBNB"),
     }
 
-    # Load all datas we can get for our candle time bucket
+    # Keep daily and stop-loss candles on the same bounded historical window.
     dataset = load_pair_data_for_single_exchange(
         client,
         execution_context,
@@ -139,6 +141,8 @@ def stop_loss_universe(request, persistent_test_client, execution_context) -> Tr
         trading_pairs,
         UniverseOptions(),
         stop_loss_time_bucket=stop_loss_time_bucket,
+        start_time=datetime.datetime(2021, 5, 25),
+        end_time=datetime.datetime(2021, 6, 8),
     )
 
     # Filter down to the single pair we are interested in
