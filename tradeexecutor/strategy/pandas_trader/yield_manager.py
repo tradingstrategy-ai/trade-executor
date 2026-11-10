@@ -113,7 +113,8 @@ class YieldRuleset:
     #: Max weights of each yield position
     weights: list[YieldWeightingRule]
 
-    #: Optional strategy entry policy; a refused purchase leaves cash liquid, never blocks exits.
+    #: Apply strategy limits such as a TVL floor to parking purchases as well as
+    #: directional buys. Refusal leaves cash liquid; sales remain available for funding.
     entry_eligibility: Callable[[TradingPairIdentifier], bool] | None = None
 
     def validate(self):

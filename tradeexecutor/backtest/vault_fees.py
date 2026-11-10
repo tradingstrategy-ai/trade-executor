@@ -127,6 +127,7 @@ def calculate_vault_fees(position: TradingPosition, timestamp: datetime.datetime
         Denomination-token value per share before manager fees or exit charges.
     :param exit_rate:
         Fractional fixed exit charge, applied once after management/performance fees.
+        A saved request's exit rate takes precedence so settlement preserves its terms.
     :param snapshot:
         Prior result for this request, or ``None`` to derive proportional basis
         from the current ledger. The snapshot fixes principal, principal-years,
@@ -134,8 +135,8 @@ def calculate_vault_fees(position: TradingPosition, timestamp: datetime.datetime
     :return:
         JSON-compatible record with version, ISO timestamp and decimal strings
         for basis, rates, quantities, fee components and net proceeds. Monetary
-        values use denomination-token units. ``None`` means no externalised fee
-        calculation applies or the unsnapshotted ledger has no shares.
+        values use denomination-token units. ``None`` means neither externalised
+        manager fees nor an exit charge apply, or a fresh quote has no held shares.
     :raises AssertionError:
         Rates, amounts or metadata are invalid, or a fresh reduction exceeds holdings.
     """
@@ -143,6 +144,8 @@ def calculate_vault_fees(position: TradingPosition, timestamp: datetime.datetime
     if rates is None:
         if not exit_rate:
             return None
+        # NAV can already include manager fees while redemption still incurs a
+        # separate charge. Use the same ledger without charging manager fees again.
         rates = Decimal(0), Decimal(0)
     assert quantity >= 0
     if snapshot:
@@ -160,6 +163,8 @@ def calculate_vault_fees(position: TradingPosition, timestamp: datetime.datetime
         exposure *= fraction
     gross = quantity * Decimal(str(gross_price))
     assert gross.is_finite() and gross >= 0
+    # A queued request retains its quoted exit terms if metadata changes before
+    # settlement. Older snapshots without this field use the supplied rate.
     exit_fee_rate = Decimal(str(snapshot.get("exit_rate", exit_rate) if snapshot else exit_rate))
     assert exit_fee_rate.is_finite() and 0 <= exit_fee_rate <= 1
     nominal_management = exposure * rates[0]

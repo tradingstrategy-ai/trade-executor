@@ -765,6 +765,8 @@ class BacktestPricing(PricingModel):
             flag = (state or {}).get("deposits_open" if operation == "deposit" else "redemption_open")
             cap = (state or {}).get("max_deposit" if operation == "deposit" else "max_redeem")
             reason = (state or {}).get("deposit_closed_reason" if operation == "deposit" else "redemption_closed_reason")
+            # A missing flag alone is insufficient: a zero cap or explicit
+            # restriction must not be overridden by assumed early availability.
             if (flag is None or pd.isna(flag) or flag == -1) and (cap is None or pd.isna(cap)) and not (isinstance(reason, str) and reason.strip()):
                 override = early_window(pair, ts)
             if override is None and operation == "deposit" and unknown_deposit_is_closed(pair, ts):
@@ -774,8 +776,8 @@ class BacktestPricing(PricingModel):
             pair, timestamp=ts, operation=operation, historical_state=state,
             window_override=override, position=position, **kwargs,
         )
-        # A published closure for an explicitly windowed protocol is a window;
-        # explicit capacity/permission reasons remain ordinary refusals.
+        # Parking is appropriate for a phase closure, but reserving capital for
+        # an administrative refusal could strand it indefinitely. Preserve those reasons.
         if rules is not None and rules.deposit_windowed and result.reason == "explicit_closed":
             reason = (state or {}).get("deposit_closed_reason" if operation == "deposit" else "redemption_closed_reason")
             if not isinstance(reason, str) or not reason.strip() or reason.startswith(

@@ -213,10 +213,11 @@ def style_ignored_vault_table(df: pd.DataFrame) -> Styler:
 
 
 def validate_vault_fee_data(strategy_universe: "TradingStrategyUniverse", *, allow_missing: bool = False) -> None:
-    """Require complete fees for selected backtest vaults unless explicitly overridden.
+    """Stop a backtest from reporting net returns for fees it cannot account for.
 
     The override keeps incomplete vaults data-only; it never assumes zero
-    fees or changes existing strategies that do not call this policy helper.
+    fees. Call after universe construction, once pair rules have been resolved.
+    This opt-in validation leaves existing strategies' construction policy unchanged.
 
     :param strategy_universe:
         Loaded backtest universe whose vault fees must be modelled.

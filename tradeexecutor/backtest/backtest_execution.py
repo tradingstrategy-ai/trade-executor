@@ -171,7 +171,8 @@ class BacktestExecution(ExecutionModel):
             "Remove the strategy-local Hyper-AI fee wrapper; backtesting now charges vault fees automatically"
         )
         self.portfolio = portfolio
-        # Bind on the public pricing object used by strategy decisions, including GenericPricing.
+        # Strategy horizon checks must use the execution model's overrides too;
+        # otherwise they can approve a deposit that cannot settle before the run ends.
         pricing_model.vault_settlement_delay_overrides = self.vault_settlement_delay_overrides
         pricing_model.vault_settlement_default_delay = self.vault_settlement_delay
         configurator = getattr(pricing_model, "pair_configurator", None)
@@ -482,6 +483,8 @@ class BacktestExecution(ExecutionModel):
         """
         if is_buy is None:
             return self._is_async_vault(pair, is_buy=True) or self._is_async_vault(pair, is_buy=False)
+        # Only the queue flag is needed. This fixed date avoids consulting a live
+        # clock; queue classification depends on the operation, not request time.
         return settlement_expectation(
             pair, datetime.datetime(2000, 1, 1), is_buy=is_buy,
             overrides=self.vault_settlement_delay_overrides,

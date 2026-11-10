@@ -629,6 +629,9 @@ def test_redemption_wait_events_lifecycle():
 def test_entry_policy_releases_parked_capital() -> None:
     """A promotion rejected by the entry policy releases its old earmark.
 
+    Use the existing manager doubles to isolate queue reconciliation from order
+    execution; a rejected buy must not leave capital unavailable indefinitely.
+
     1. Create an open park event and a newly targeted buy using existing test doubles.
     2. Refuse the buy through the shared entry callback and reconcile the event log.
     3. Check that neither a buy nor an indefinitely reserved park remains.

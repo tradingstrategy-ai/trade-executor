@@ -1,4 +1,9 @@
-"""Resolve loaded vault metadata into shared fee and settlement capabilities."""
+"""Keep strategy admission and simulated execution consistent about vault terms.
+
+Resolve fees and directional settlement once during pair translation. Pricing
+and execution also share the timing helper so per-run overrides affect both
+entry-horizon checks and the resulting settlement requests.
+"""
 
 import datetime
 from dataclasses import asdict, replace
@@ -10,23 +15,29 @@ from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.strategy.vault_protocol import atoma, d2
 
 
-#: Existing historical minimum delays when a positive protocol estimate is absent.
+#: Preserve historical waits for protocols lacking a positive metadata estimate.
+#: These prevent immediate reuse of queued capital; they do not establish live claimability.
 VAULT_SETTLEMENT_DELAY_FALLBACKS: dict[ERC4626Feature, datetime.timedelta] = {
     ERC4626Feature.atoma_like: datetime.timedelta(seconds=atoma.REDEMPTION_DELAY_SECONDS),
     ERC4626Feature.d2_like: datetime.timedelta(seconds=d2.SETTLEMENT_DELAY_SECONDS),
     ERC4626Feature.plutus_like: datetime.timedelta(days=14),
 }
-#: Preserve Ostium's next-day UTC backtest approximation; live claims use the adapter.
+#: Keep historical Ostium runs on the existing next-day 18:00 UTC approximation
+#: when no delay is supplied; changing live intervals must not rewrite that assumption.
 OSTIUM_BACKTEST_SETTLEMENT_HOUR = 18
 
 
 def classify_vault_fee_profile(
     chain_id: int, address: str, deposit_fee: float | None, redemption_fee: float | None,
 ) -> str | None:
-    """Name supported entry/exit terms; selection policy decides which names to admit.
+    """Separate a strategy's acceptable fee terms from the executor's ability to charge them.
 
     Rates are fractions of deposited or redeemed value. ``None`` means unknown,
     so an incomplete profile cannot be classified as zero-fee.
+
+    :return:
+        A profile name for selection filters, or ``None`` when either fee is
+        unknown or the combination has no recognised profile.
     """
     if deposit_fee == 0 and redemption_fee == 0:
         return "zero_entry_exit"
@@ -34,11 +45,15 @@ def classify_vault_fee_profile(
 
 
 def resolve_vault_protocol_rules(pair: TradingPairIdentifier) -> VaultProtocolRules:
-    """Derive execution capabilities from a vault's loaded metadata and features.
+    """Resolve fees and waits centrally so strategies need no protocol-specific branches.
 
     Published positive settlement estimates take precedence over protocol
     simulation defaults. Deposit and redemption queues are resolved separately:
     a delayed exit must not queue an otherwise immediate deposit.
+
+    Unsupported or missing rates are retained for the universe validator to
+    reject. Translation itself must also work for data-only vaults and existing
+    strategies that have not opted into strict fee validation.
     """
     metadata = pair.get_vault_metadata()
     features = pair.get_vault_features() or set()
@@ -59,6 +74,8 @@ def resolve_vault_protocol_rules(pair: TradingPairIdentifier) -> VaultProtocolRu
     fallback = next((delay.total_seconds() for feature, delay in VAULT_SETTLEMENT_DELAY_FALLBACKS.items()
                      if feature in features), None)
     uses_estimate = fallback is not None or bool(features & {ERC4626Feature.lagoon_like, ERC4626Feature.upshift_like})
+    # Preserve the established timing policy: a reported estimate must not
+    # replace schedules for protocol families that never used it.
     estimate = pair.get_vault_estimated_settlement() if uses_estimate else None
     delay = estimate.total_seconds() if estimate is not None else fallback
     hour = OSTIUM_BACKTEST_SETTLEMENT_HOUR if ERC4626Feature.ostium_like in features and delay is None else None
@@ -77,19 +94,18 @@ def resolve_vault_protocol_rules(pair: TradingPairIdentifier) -> VaultProtocolRu
 
 
 def enrich_vault_pair(pair: TradingPairIdentifier) -> TradingPairIdentifier:
-    """Attach derived rules before caching a translated pair and return the pair.
+    """Make one resolved rule set available to both fresh and restored pairs.
 
     Replace frozen metadata rather than modifying the source DEXPair's shared
     instance. Keep a plain snapshot because State omits the full metadata.
-    Non-vault pairs are returned unchanged.
+    Non-vault pairs are returned unchanged. The input pair is mutated in place
+    so the translation cache and callers retain the same object.
     """
     if pair.is_vault():
         rules = resolve_vault_protocol_rules(pair)
         metadata = pair.get_vault_metadata()
         if metadata is not None:
             pair.other_data["token_metadata"] = replace(metadata, vault_protocol_rules=rules)
-        # Full VaultMetadata is transient. Preserve the small resolved snapshot
-        # for fees/timing on position pairs restored through the existing State path.
         pair.other_data["vault_protocol_rules"] = asdict(rules)
     return pair
 
@@ -102,7 +118,7 @@ def settlement_expectation(
     overrides: dict[str, datetime.timedelta] | None = None,
     default_delay: datetime.timedelta = datetime.timedelta(days=2),
 ) -> tuple[bool, datetime.datetime]:
-    """Return whether the operation queues and its earliest simulated settlement.
+    """Use one timing policy for strategy horizon checks and simulated requests.
 
     ``timestamp`` is the naive UTC request time; ``is_buy`` selects deposits.
     Overrides use lower-case vault addresses and queue both directions, even

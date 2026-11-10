@@ -44,6 +44,11 @@ def early_window(pair: TradingPairIdentifier, timestamp: datetime.datetime | Non
 
 
 def unknown_deposit_is_closed(pair: TradingPairIdentifier, timestamp: datetime.datetime | None) -> bool:
-    """Refuse missing later HYPE++ evidence without changing other D2 histories."""
+    """Prevent the early-history assumption from becoming an indefinite deposit permission.
+
+    Once collection has begun, missing HYPE++ observations must block new deposits.
+    Other vaults retain the caller's unknown-state policy because this history
+    reconstruction provides no evidence about their opening schedules.
+    """
     return (timestamp is not None and timestamp >= HISTORY_END
             and (pair.chain_id, pair.pool_address.lower()) == HYPE_VAULT)

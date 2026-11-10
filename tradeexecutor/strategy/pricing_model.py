@@ -52,12 +52,16 @@ class PricingModel(abc.ABC):
         *,
         operation: Literal["deposit", "redemption"] = "deposit",
     ) -> tuple[bool, datetime.datetime]:
-        """Share the backtest operation timing/overrides with strategy horizon checks.
+        """Prevent strategy horizon checks from using different waits than execution.
 
         ``ts`` is the naive UTC request time. The returned flag identifies a
         queued operation; the timestamp is its minimum simulated due time.
         Use deposit timing for entry-horizon checks. Actual claims still require
         the protocol manager's eligibility checks.
+
+        Backtest execution binds its overrides to this pricing object. Without
+        that binding the shared protocol defaults apply; the result is a
+        simulation estimate, not a live guarantee that funds can be claimed.
         """
         assert operation in ("deposit", "redemption")
         return settlement_expectation(

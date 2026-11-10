@@ -462,6 +462,8 @@ class PhaseAwareAlphaModel(AlphaModel):
             if vault_id not in self.window_gated_pair_ids:
                 continue
             if self.entry_eligibility is not None and not self.entry_eligibility(signal.pair):
+                # Zero the intent before stale-event reconciliation so rejected
+                # promotions release their old earmark instead of reserving cash forever.
                 signal.position_adjust_usd = 0
                 signal.position_adjust_quantity = 0
                 signal.position_adjust_ignored = True
@@ -471,6 +473,8 @@ class PhaseAwareAlphaModel(AlphaModel):
                     self._promote_candidates.add(vault_id)
             else:
                 if signal.pair.get_vault_protocol_rules() is not None:
+                    # Only a temporary window closure justifies waiting in the queue.
+                    # Permission or capacity refusals follow the ordinary skipped-buy path.
                     closure = get_vault_closure(signal.pair, timestamp=self.timestamp, pricing_model=pricing_model)
                     if closure.reason != "window_closed":
                         continue

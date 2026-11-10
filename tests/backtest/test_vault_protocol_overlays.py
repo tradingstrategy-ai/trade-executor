@@ -1,4 +1,8 @@
-"""Integration checks for construction-time protocol data and its actual consumers."""
+"""Catch lost or misinterpreted vault terms between loading, pricing and settlement.
+
+Use the production conversion and backtest paths with fixed local metadata so
+the assertions cover field propagation and accounting without network variability.
+"""
 
 import datetime
 from dataclasses import fields, replace
@@ -35,7 +39,7 @@ from tradeexecutor.testing.vault_protocol_universe import create_vault_protocol_
 
 
 def test_loaded_protocol_rules_and_real_settlement() -> None:
-    """Loaded fields drive a real immediate deposit and fee-bearing delayed exit.
+    """Prevent loaded exit terms from delaying deposits or charging redemption twice.
 
     1. Load raw hardcoded metadata through normal universe and pair constructors.
     2. Check direction-specific rules and matching strategy/executor timing.
@@ -59,7 +63,8 @@ def test_loaded_protocol_rules_and_real_settlement() -> None:
     assert not execution._is_async_vault(atoma, is_buy=True)
     assert execution._is_async_vault(atoma, is_buy=False)
     assert execution._get_settlement_due(atoma, ts) == ts + datetime.timedelta(days=7)
-    # A real pricing instance receives overrides through the ordinary runner binding.
+    # Binding must expose execution overrides to strategy-side horizon checks,
+    # otherwise the same request can appear to have two different due times.
     pricing = BacktestPricing(universe.data_universe.candles, BacktestRoutingIgnoredModel(universe.reserve_assets[0].address), pairs=universe.data_universe.pairs)
     execution.bind_vault_fee_pricing(pricing, SimpleNamespace())
     assert pricing.get_vault_settlement_expectation(ts, atoma)[1] == ts
@@ -67,7 +72,7 @@ def test_loaded_protocol_rules_and_real_settlement() -> None:
     assert pricing.get_vault_settlement_expectation(ts, atoma)[1] == execution._get_settlement_due(atoma, ts)
     # 3. Run normal pricing, wallet and settlement; verify the single realised charge.
     def decide(input: StrategyInput) -> list[TradeExecution]:
-        """Open, request an exit, then verify pending proceeds remain unavailable."""
+        """Leave a cycle between redemption request and settlement to detect premature cash release."""
         manager = input.get_position_manager()
         if input.cycle == 1:
             return manager.open_spot(atoma, value=1000)
@@ -145,7 +150,7 @@ def test_fee_override_and_observed_window_boundary() -> None:
 
 @pytest.mark.parametrize('with_protocol', [True, False])
 def test_partial_loader_preserves_protocol_for_window_buckets(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, with_protocol: bool) -> None:
-    """The public parquet loader preserves D2 bucketing and accepts older schemas.
+    """Catch column projection dropping the protocol needed to prevent D2 look-ahead.
 
     1. Write hardcoded observations with and without the optional protocol field.
     2. Load through the actual partial-universe projection and parquet reader.
@@ -200,7 +205,10 @@ def test_other_d2_unknown_history_keeps_existing_policy() -> None:
 
 
 def test_invalid_fee_enrichment_does_not_add_global_assertion() -> None:
-    """Keep invalid fee refusal in explicit universe policy rather than translation.
+    """Allow data-only translation without weakening the selected-universe fee validator.
+
+    Other strategies can load incomplete data for diagnostics, so a global
+    construction assertion would change their behaviour even without opting in.
 
     1. Load a vault and replace its entry fee with an invalid value.
     2. Resolve capabilities without a global construction assertion.

@@ -413,21 +413,21 @@ class AssetIdentifier:
         self.other_data["tags"] = tags
 
     def get_buy_tax(self) -> Percent | None:
-        """Get buy tax associated with this token if any.
+        """Expose supported vault entry charges through the existing pricing tax path.
 
-        .. note ::
-
-            This property should be per trading pair, but all other DEX systems use per token tax values.
+        Explicit base-token tax takes precedence, including a configured zero.
+        Otherwise use a supported entry fee from this pair's rules; keeping it
+        on the pair avoids changing other routes that share the same base asset.
+        ``None`` means no supported rate was found, not proof of free entry.
         """
         return self.other_data.get("buy_tax")
 
     def get_sell_tax(self) -> Percent | None:
-        """Get sell tax associated with this token if any.
+        """Expose one exit charge so pricing does not add token tax and vault fees twice.
 
-        .. note ::
-
-            This property should be per trading pair, but all other DEX systems use per token tax values.
-
+        Prefer explicit base-token tax, otherwise use the supported redemption
+        fee from this pair's rules. ``None`` does not establish a zero fee;
+        strategies requiring complete costs must validate metadata at construction.
         """
         return self.other_data.get("sell_tax")
 
@@ -722,7 +722,7 @@ class TradingPairIdentifier:
             return f"<Pair {self.base.token_symbol}-{self.quote.token_symbol} {type_name} at {exchange_name}>"
 
     def get_vault_protocol_rules(self) -> VaultProtocolRules | None:
-        """Read resolved capabilities from VaultMetadata, or the saved-State snapshot.
+        """Keep fee and timing decisions available after a pair is restored from State.
 
         Translation enriches ``VaultMetadata`` from its published fees/features.
         The accessor uses its typed rules when available, then falls back to

@@ -288,6 +288,7 @@ def translate_trading_pair(dex_pair: DEXPair, cache: dict | None = None) -> Trad
     # if dex_pair.dex_type == ExchangeType.erc_4626_vault:
     #    import ipdb ; ipdb.set_trace()
 
+    # Resolve before caching so every consumer of this pair sees the same rules.
     enrich_vault_pair(pair)
 
     if cache is not None:

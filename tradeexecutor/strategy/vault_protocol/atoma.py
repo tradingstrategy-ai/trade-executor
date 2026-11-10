@@ -20,8 +20,8 @@ def fee_profile(chain_id: int, address: str, deposit_fee: float | None, redempti
     """Require both a reviewed identity and matching rates before admitting this profile.
 
     An address match must not override changed or missing fee data. Rates are
-    fractions of deposited or redeemed value; ``None`` leaves selection policy
-    to reject the unrecognised terms.
+    fractions of deposited or redeemed value. Return ``None`` for unrecognised
+    terms so selection cannot treat the identity alone as sufficient evidence.
     """
     if (chain_id, address.lower()) in STANDARD_FEE_VAULTS and deposit_fee == 0 and redemption_fee == 0.005:
         return "atoma_standard_exit"

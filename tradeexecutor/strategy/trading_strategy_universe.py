@@ -3163,9 +3163,10 @@ def load_partial_data(
                     "timestamp",
                     "share_price",
                     "total_assets",
+                    # State conversion needs the protocol to keep intraday D2
+                    # observations out of earlier decision buckets. The reader
+                    # tolerates its absence, and absent state fields, in older bundles.
                     "protocol",
-                    # Protocol and optional deposit/redemption availability columns;
-                    # silently dropped by read_vault_price_history_parquet for older sources.
                     *VAULT_STATE_COLUMNS,
                     *VAULT_STATE_METADATA_COLUMNS,
                 ],
