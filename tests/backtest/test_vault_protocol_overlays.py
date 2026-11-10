@@ -38,6 +38,7 @@ def test_loaded_protocol_rules_and_real_settlement() -> None:
     atoma = pairs['Atoma']
     assert universe.get_pair_by_id(atoma.internal_id) is atoma
     assert atoma.get_vault_protocol_rules().fee_profile == 'atoma_standard_exit'
+    assert atoma.get_vault_metadata().vault_protocol_rules is atoma.get_vault_protocol_rules()
     assert atoma.get_sell_tax() == pytest.approx(0.005)
     assert atoma.base.get_sell_tax() is None
     assert pairs['HYPE++'].get_vault_protocol_rules().deposit_windowed
@@ -221,6 +222,7 @@ def test_protocol_rules_use_other_data_and_survive_state_json():
     execution = BacktestExecution(SimulatedWallet())
     expected_due = execution._get_settlement_due(pair, ts)
     expected_rules = pair.get_vault_protocol_rules()
+    assert pair.get_vault_metadata().vault_protocol_rules is expected_rules
     restored = TradingPairIdentifier.from_json(pair.to_json())
     assert restored.get_vault_protocol_rules() == expected_rules
     assert restored.get_sell_tax() == pytest.approx(0.005)

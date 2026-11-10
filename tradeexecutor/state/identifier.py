@@ -24,7 +24,7 @@ from tradingstrategy.types import PrimaryKey
 from tradingstrategy.exchange import ExchangeType
 
 from tradeexecutor.utils.accuracy import sum_decimal, ensure_exact_zero, SUM_EPSILON
-from tradeexecutor.state.vault_protocol import VaultProtocolRules
+from tradingstrategy.vault import VaultMetadata, VaultProtocolRules
 from tradeexecutor.state.types import JSONHexAddress, USDollarAmount, LeverageMultiplier, USDollarPrice, Percent
 
 #: Asset unique id as a human-readable string.
@@ -722,14 +722,18 @@ class TradingPairIdentifier:
             return f"<Pair {self.base.token_symbol}-{self.quote.token_symbol} {type_name} at {exchange_name}>"
 
     def get_vault_protocol_rules(self) -> VaultProtocolRules | None:
-        """Read resolved capabilities from existing pair metadata storage.
+        """Read resolved capabilities from VaultMetadata, or the saved-State snapshot.
 
-        Published fees/features come from ``VaultMetadata`` during translation;
-        only their resolved execution profile and simulation defaults are stored
-        under ``other_data["vault_protocol_rules"]``. The dictionary uses plain
-        values so the normal State JSON path preserves it without a schema field.
+        Translation enriches ``VaultMetadata`` from its published fees/features.
+        The accessor uses its typed rules when available, then falls back to
+        ``other_data["vault_protocol_rules"]`` after State JSON strips full metadata.
+        That snapshot uses plain values and needs no dedicated pair schema field.
         Older/manual pairs without loaded rules return ``None``.
         """
+        metadata = self.get_vault_metadata() if self.other_data else None
+        rules = getattr(metadata, "vault_protocol_rules", None)
+        if rules is not None:
+            return rules
         rules = (self.other_data or {}).get("vault_protocol_rules")
         return VaultProtocolRules(**rules) if rules is not None else None
 
@@ -1263,8 +1267,6 @@ class TradingPairIdentifier:
         :return:
             VaultMetadata object or None
         """
-        from tradingstrategy.vault import VaultMetadata
-
         metadata = self.other_data.get("token_metadata")
         if isinstance(metadata, VaultMetadata):
             return metadata

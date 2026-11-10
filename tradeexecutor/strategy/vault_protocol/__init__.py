@@ -1,11 +1,11 @@
 """Pure construction-time vault overlays; no acquisition, state ledger or strategy imports."""
 
 import datetime
-from dataclasses import asdict
+from dataclasses import asdict, replace
 
 from eth_defi.erc_4626.core import ERC4626Feature
 
-from tradeexecutor.state.vault_protocol import VaultProtocolRules
+from tradingstrategy.vault import VaultProtocolRules
 from tradeexecutor.strategy.vault_protocol import atoma, d2
 
 
@@ -67,7 +67,13 @@ def resolve_vault_protocol_rules(pair) -> VaultProtocolRules:
 def enrich_vault_pair(pair):
     """Store resolved economics in pair metadata before the translator caches it."""
     if pair.is_vault():
-        pair.other_data["vault_protocol_rules"] = asdict(resolve_vault_protocol_rules(pair))
+        rules = resolve_vault_protocol_rules(pair)
+        metadata = pair.get_vault_metadata()
+        if metadata is not None:
+            pair.other_data["token_metadata"] = replace(metadata, vault_protocol_rules=rules)
+        # Full VaultMetadata is transient. Preserve the small resolved snapshot
+        # for fees/timing on position pairs restored through the existing State path.
+        pair.other_data["vault_protocol_rules"] = asdict(rules)
     return pair
 
 

@@ -8,16 +8,22 @@ settlement-estimate helpers; no extra upstream metadata schema is needed.
 the base asset. They do not describe operation queues or fee-support profiles;
 vault economics must not mutate that shared asset metadata.
 
-The remaining derived execution profiles and simulation defaults are stored as
-plain values in `TradingPairIdentifier.other_data["vault_protocol_rules"]`, after
-loading metadata and before caching the pair. There is no dedicated pair field.
-Normal State JSON preserves these values; the typed accessor reconstructs an
-immutable `VaultProtocolRules` view. Strategies read
-`pair.get_vault_protocol_rules()` for capabilities and use pricing for dated
-availability and settlement expectations. Older/manual pair constructors may have no rules entry; the accessor returns
-`None` and existing strategy APIs remain supported.
+`VaultMetadata.vault_protocol_rules` holds the typed derived execution profile
+and simulation defaults after the executor resolves them from loaded metadata.
+The optional field defaults to `None`: raw data loaders do not select simulation
+policy. Raw `DEXPair` metadata remains unchanged during executor translation;
+only the translated pair receives the enriched metadata instance.
+`VaultProtocolRules` is defined in `tradingstrategy.vault`, so the data
+package has no dependency on trade-executor.
 
-Rules are declared in `tradeexecutor/state/vault_protocol.py`. Pure overlays in
+`pair.get_vault_protocol_rules()` reads this metadata field first. Full
+`VaultMetadata` is transient in State JSON, so translation also stores the small
+resolved snapshot as plain values in `other_data["vault_protocol_rules"]`.
+Restored position pairs use that snapshot without losing fees or timing. There
+is no dedicated `TradingPairIdentifier` schema field. Older/manual pairs with
+neither source return `None`.
+
+Pure overlays in
 `tradeexecutor/strategy/vault_protocol/` resolve published fee data and existing
 simulation assumptions. They perform no acquisition or account permission checks.
 
