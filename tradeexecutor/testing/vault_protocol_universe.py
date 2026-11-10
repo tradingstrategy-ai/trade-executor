@@ -1,4 +1,9 @@
-"""Hardcoded raw metadata universe exercising normal vault loading and translation."""
+"""Detect missing protocol rules along the metadata-to-execution path.
+
+Tests must start before pair translation: supplying resolved rules directly would
+hide a broken loader. Fixed share prices make fees and settlement timing the
+only causes of changes in portfolio value and available cash.
+"""
 
 import pandas as pd
 from tradingstrategy.alternative_data.vault import load_vault_database_with_metadata, convert_vaults_to_trading_pairs
@@ -12,9 +17,15 @@ from tradingstrategy.universe import Universe
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 
 
-#: Reserve denomination used by every test venue, avoiding unrelated bridge transport.
+#: Use Arbitrum USDC for every vault so fee and settlement assertions do not
+#: depend on currency conversion or bridge accounting.
 USDC = "0xaf88d065e77c8cc2239327c5edb3a432268e5831"
-#: Declarations are raw input, not pre-enriched pair fields.
+#: Cover immediate execution, event-gated deposits, delayed redemptions, deposit
+#: windows, a charged exit and yield parking through the normal metadata loader.
+#: Each row is (name, protocol slug, feature flags, address, withdrawal fee fraction).
+#: HYPE++ and Atoma need their real addresses to exercise identity-specific rules;
+#: other rows use synthetic addresses because their rules depend on features.
+#: Leave derived rules out so a missing translation step causes test failures.
 VAULTS = (
     ("Generic", "erc-4626", [], "0x" + "1" * 40, 0),
     ("Lagoon", "lagoon-finance", ["lagoon_like", "erc_7540_like"], "0x" + "2" * 40, 0),
@@ -26,10 +37,17 @@ VAULTS = (
 
 
 def create_vault_protocol_universe() -> TradingStrategyUniverse:
-    """Construct a fixed-price universe through real parser and lazy pair conversion.
+    """Exercise protocol enrichment without network access or market price changes.
 
-    Flat NAVs isolate fee and settlement effects. Protocol capabilities come
-    from the real metadata translator; this helper does not inject resolved rules.
+    Pass the declarations through the production metadata parser and pair
+    converter so tests detect lost fields at either boundary. Set each share
+    price to one USDC so a portfolio loss can be attributed to a fee, and use
+    the pairs' common quote asset as the reserve to avoid conversion trades.
+
+    :return:
+        Six vaults with daily candles from 1 April to 10 May 2025 inclusive.
+        Availability observations are omitted so tests can supply their own
+        history or exercise the missing-history policy.
     """
     entries = [dict(chain_id=42161, address=address, name=name, protocol_slug=protocol,
                     features=features, denomination="USDC", normalised_denomination="USDC",

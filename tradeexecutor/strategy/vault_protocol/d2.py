@@ -9,16 +9,22 @@ import datetime
 from tradeexecutor.backtest.vault_windows import VaultWindowSchedule
 from tradeexecutor.state.identifier import TradingPairIdentifier
 
-#: Existing conservative minimum delay for D2 historical requests without an estimate.
+#: Keep requests pending for the existing fourteen-day backtest assumption when
+#: metadata supplies no estimate, preventing immediate reuse of unsettled cash.
 SETTLEMENT_DELAY_SECONDS = 14 * 86400
 
-#: Arbitrum HYPE++ identity whose early observation gap was inspected.
+#: Restrict the reconstructed history to the inspected HYPE++ deployment;
+#: other D2 vaults may have different epochs and must not inherit its schedule.
 HYPE_VAULT = (42161, "0x75288264fdfea8ce68e6d852696ab1ce2f3e5004")
-#: Beginning of actual price coverage; no tradability is fabricated before it.
+#: Start the assumed schedule at the first available price sample so it cannot
+#: imply deposit availability before the vault can be valued.
 HISTORY_START = datetime.datetime(2024, 11, 20, 9, 20, 49)
-#: First populated availability observation becomes usable at the next daily boundary.
+#: Stop the assumption at the daily boundary after the first availability sample.
+#: Using that intraday sample at the start of its own day would introduce look-ahead.
 HISTORY_END = datetime.datetime(2026, 2, 12)
-#: Original research epoch assumption: fourteen-day cadence, two open days.
+#: Preserve the source research's two-day deposit window every fourteen days
+#: only within the observation gap bounded above; this is assumed history, not
+#: evidence that the vault was open on those dates.
 EARLY_SCHEDULE = VaultWindowSchedule(
     cadence=datetime.timedelta(days=14),
     open_duration=datetime.timedelta(days=2),
