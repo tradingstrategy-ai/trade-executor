@@ -16,7 +16,9 @@ cycle, so a "quiet" queue cycle still exists in the store without the queue key)
 """
 import dataclasses
 from typing import Iterable
-from tradeexecutor.strategy.vault_closure import can_interact_with_vault
+from collections.abc import Callable
+from tradeexecutor.state.identifier import TradingPairIdentifier
+from tradeexecutor.strategy.vault_closure import can_interact_with_vault, get_vault_closure
 
 from tradeexecutor.state.other_data import OtherData
 from tradeexecutor.state.portfolio import Portfolio
@@ -342,6 +344,7 @@ class PhaseAwareAlphaModel(AlphaModel):
         cycle: int | None = None,
         venue_pair_ids: set | None = None,
         window_gated_pair_ids: set | None = None,
+        entry_eligibility: Callable[[TradingPairIdentifier], bool] | None = None,
         **kwargs,
     ):
         """
@@ -364,10 +367,17 @@ class PhaseAwareAlphaModel(AlphaModel):
             Only these pairs may use the park -> deposit-on-open flow. A synchronous
             vault that reports deposits closed or zero capacity must fall through to
             the normal skipped-buy path instead of reserving queue capital indefinitely.
+
+        :param entry_eligibility:
+            Optional strategy policy for window-gated deposit adjustments during
+            the park pass, such as a historical TVL floor. Other entries need
+            their own entry guard. Refusal releases any old park earmark; it does
+            not prevent an existing holding from being redeemed.
         """
         super().__init__(timestamp=timestamp, **kwargs)
         # This subclass is intentionally not slotted, so instances get a __dict__
         # for these transient per-cycle attributes (not part of the serialised state).
+        self.entry_eligibility = entry_eligibility
         self.phase_aware_cycle = cycle
         self.venue_pair_ids: set = set(venue_pair_ids) if venue_pair_ids else set()
         self.window_gated_pair_ids: set = set(window_gated_pair_ids) if window_gated_pair_ids else set()
@@ -451,10 +461,23 @@ class PhaseAwareAlphaModel(AlphaModel):
                 continue
             if vault_id not in self.window_gated_pair_ids:
                 continue
+            if self.entry_eligibility is not None and not self.entry_eligibility(signal.pair):
+                # Zero the intent before stale-event reconciliation so rejected
+                # promotions release their old earmark instead of reserving cash forever.
+                signal.position_adjust_usd = 0
+                signal.position_adjust_quantity = 0
+                signal.position_adjust_ignored = True
+                continue
             if can_interact_with_vault(signal.pair, timestamp=self.timestamp, pricing_model=pricing_model):
                 if vault_id in open_events:
                     self._promote_candidates.add(vault_id)
             else:
+                if signal.pair.get_vault_protocol_rules() is not None:
+                    # Only a temporary window closure justifies waiting in the queue.
+                    # Permission or capacity refusals follow the ordinary skipped-buy path.
+                    closure = get_vault_closure(signal.pair, timestamp=self.timestamp, pricing_model=pricing_model)
+                    if closure.reason != "window_closed":
+                        continue
                 self._park_signal(other_data, signal, open_events.get(vault_id))
 
         # 2. Stale-close open park events whose vault is no longer a live parked deposit.

@@ -7,6 +7,7 @@ from typing import Callable, Literal, Optional, Protocol
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.types import USDollarPrice, Percent, USDollarAmount, TokenAmount
+from tradeexecutor.strategy.vault_protocol import settlement_expectation
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.redemption import (
     DepositBlockReason,
@@ -43,6 +44,31 @@ class PricingModel(abc.ABC):
         on buy/sell transctions.
 
     """
+
+    def get_vault_settlement_expectation(
+        self,
+        ts: datetime.datetime,
+        pair: TradingPairIdentifier,
+        *,
+        operation: Literal["deposit", "redemption"] = "deposit",
+    ) -> tuple[bool, datetime.datetime]:
+        """Prevent strategy horizon checks from using different waits than execution.
+
+        ``ts`` is the naive UTC request time. The returned flag identifies a
+        queued operation; the timestamp is its minimum simulated due time.
+        Use deposit timing for entry-horizon checks. Actual claims still require
+        the protocol manager's eligibility checks.
+
+        Backtest execution binds its overrides to this pricing object. Without
+        that binding the shared protocol defaults apply; the result is a
+        simulation estimate, not a live guarantee that funds can be claimed.
+        """
+        assert operation in ("deposit", "redemption")
+        return settlement_expectation(
+            pair, ts, is_buy=operation == "deposit",
+            overrides=getattr(self, "vault_settlement_delay_overrides", None),
+            default_delay=getattr(self, "vault_settlement_default_delay", datetime.timedelta(days=2)),
+        )
 
     @abc.abstractmethod
     def get_sell_price(self,

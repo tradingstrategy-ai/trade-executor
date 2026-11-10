@@ -24,6 +24,7 @@ from tradingstrategy.types import PrimaryKey
 from tradingstrategy.exchange import ExchangeType
 
 from tradeexecutor.utils.accuracy import sum_decimal, ensure_exact_zero, SUM_EPSILON
+from tradingstrategy.vault import VaultMetadata, VaultProtocolRules
 from tradeexecutor.state.types import JSONHexAddress, USDollarAmount, LeverageMultiplier, USDollarPrice, Percent
 
 #: Asset unique id as a human-readable string.
@@ -412,21 +413,21 @@ class AssetIdentifier:
         self.other_data["tags"] = tags
 
     def get_buy_tax(self) -> Percent | None:
-        """Get buy tax associated with this token if any.
+        """Expose supported vault entry charges through the existing pricing tax path.
 
-        .. note ::
-
-            This property should be per trading pair, but all other DEX systems use per token tax values.
+        Explicit base-token tax takes precedence, including a configured zero.
+        Otherwise use a supported entry fee from this pair's rules; keeping it
+        on the pair avoids changing other routes that share the same base asset.
+        ``None`` means no supported rate was found, not proof of free entry.
         """
         return self.other_data.get("buy_tax")
 
     def get_sell_tax(self) -> Percent | None:
-        """Get sell tax associated with this token if any.
+        """Expose one exit charge so pricing does not add token tax and vault fees twice.
 
-        .. note ::
-
-            This property should be per trading pair, but all other DEX systems use per token tax values.
-
+        Prefer explicit base-token tax, otherwise use the supported redemption
+        fee from this pair's rules. ``None`` does not establish a zero fee;
+        strategies requiring complete costs must validate metadata at construction.
         """
         return self.other_data.get("sell_tax")
 
@@ -682,7 +683,8 @@ class TradingPairIdentifier:
     #:
     #: .. warning::
     #:
-    #:     To keep state size in check, other_data is not serialised.
+    #:     Heavy external metadata is removed when serialising to keep State small.
+    #:     Plain execution metadata, including resolved vault rules, is retained.
     #:
     other_data: Optional[dict] = field(default_factory=dict, metadata=config(encoder=_reduce_other_data))
 
@@ -718,6 +720,22 @@ class TradingPairIdentifier:
         else:
             # Backtesting with CEX data
             return f"<Pair {self.base.token_symbol}-{self.quote.token_symbol} {type_name} at {exchange_name}>"
+
+    def get_vault_protocol_rules(self) -> VaultProtocolRules | None:
+        """Keep fee and timing decisions available after a pair is restored from State.
+
+        Translation enriches ``VaultMetadata`` from its published fees/features.
+        The accessor uses its typed rules when available, then falls back to
+        ``other_data["vault_protocol_rules"]`` after State JSON strips full metadata.
+        That snapshot uses plain values and needs no dedicated pair schema field.
+        Older/manual pairs without loaded rules return ``None``.
+        """
+        metadata = self.get_vault_metadata() if self.other_data else None
+        rules = getattr(metadata, "vault_protocol_rules", None)
+        if rules is not None:
+            return rules
+        rules = (self.other_data or {}).get("vault_protocol_rules")
+        return VaultProtocolRules(**rules) if rules is not None else None
 
     def __hash__(self):
         """Trading pair hash is hash(base, quote, fee).
@@ -1249,8 +1267,6 @@ class TradingPairIdentifier:
         :return:
             VaultMetadata object or None
         """
-        from tradingstrategy.vault import VaultMetadata
-
         metadata = self.other_data.get("token_metadata")
         if isinstance(metadata, VaultMetadata):
             return metadata
@@ -1603,6 +1619,11 @@ class TradingPairIdentifier:
             # Shortcut for untaxable pairs
             return 0
 
+        if self.base.get_buy_tax() is not None:
+            return self.base.get_buy_tax()
+        rules = self.get_vault_protocol_rules()
+        if rules is not None and rules.deposit_fee_supported:
+            return rules.deposit_fee
         return self.base.get_buy_tax()
 
     def get_sell_tax(self) -> Percent | None:
@@ -1618,6 +1639,11 @@ class TradingPairIdentifier:
             # Shortcut for untaxable pairs
             return 0
 
+        if self.base.get_sell_tax() is not None:
+            return self.base.get_sell_tax()
+        rules = self.get_vault_protocol_rules()
+        if rules is not None and rules.redemption_fee_supported:
+            return rules.redemption_fee
         return self.base.get_sell_tax()
 
     def set_tradeable(self, value: bool, reason: str | None = None):

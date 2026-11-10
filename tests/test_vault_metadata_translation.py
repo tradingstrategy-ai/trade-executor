@@ -1,6 +1,5 @@
 """Test vault metadata translation into trade-executor pair identifiers."""
 
-import pytest
 from tradingstrategy.chain import ChainId
 from tradingstrategy.exchange import ExchangeType
 from tradingstrategy.pair import DEXPair
@@ -32,15 +31,15 @@ def _make_vault_dex_pair(metadata: VaultMetadata) -> DEXPair:
     )
 
 
-def test_translate_trading_pair_preserves_vault_display_flags(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Vault display flags are reduced from metadata into pair other data.
+def test_translate_trading_pair_preserves_vault_display_flags() -> None:
+    """Preserve display flags when translation copies metadata to attach execution rules.
 
-    1. Build a vault metadata object and simulate a newer metadata attribute.
+    1. Build immutable vault metadata with display flags using its public constructor.
     2. Translate a DEX pair carrying the metadata.
     3. Assert the translated pair exposes the flags to trade-ui.
     """
 
-    # 1. Build a vault metadata object and simulate a newer metadata attribute.
+    # 1. Build immutable vault metadata with display flags using its public constructor.
     display_flags = [
         {"severity": "yellow", "type": "not_whitelisted", "source": "morpho"},
     ]
@@ -49,10 +48,8 @@ def test_translate_trading_pair_preserves_vault_display_flags(monkeypatch: pytes
         protocol_name="Morpho",
         protocol_slug="morpho",
         features=[],
+        vault_display_flags=display_flags,
     )
-    # Use class-level monkeypatching so this test works both before and after
-    # trading-strategy adds the field to the slotted frozen VaultMetadata class.
-    monkeypatch.setattr(VaultMetadata, "vault_display_flags", display_flags, raising=False)
 
     # 2. Translate a DEX pair carrying the metadata.
     pair = translate_trading_pair(_make_vault_dex_pair(metadata))

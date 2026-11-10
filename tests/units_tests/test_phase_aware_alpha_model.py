@@ -624,3 +624,29 @@ def test_redemption_wait_events_lifecycle():
     _cycle(4, None)
     assert read_open_redeem_block_events(other_data) == {}
     assert sum(1 for e in iter_all_events(other_data) if e.kind == EVENT_REDEEM_CLEAR) == 1
+
+
+def test_entry_policy_releases_parked_capital() -> None:
+    """A promotion rejected by the entry policy releases its old earmark.
+
+    Use the existing manager doubles to isolate queue reconciliation from order
+    execution; a rejected buy must not leave capital unavailable indefinitely.
+
+    1. Create an open park event and a newly targeted buy using existing test doubles.
+    2. Refuse the buy through the shared entry callback and reconcile the event log.
+    3. Check that neither a buy nor an indefinitely reserved park remains.
+    """
+    # 1. Create an open park event and a newly targeted buy using existing test doubles.
+    pair = _make_pair(101)
+    other_data = OtherData()
+    append_queue_event(other_data, QueueVaultEvent(EVENT_PARK, 101, 1000., 1))
+    manager = _make_pm(other_data, open_pairs={101})
+    alpha = PhaseAwareAlphaModel(datetime.datetime(2024, 1, 2), cycle=2,
+        window_gated_pair_ids={101}, entry_eligibility=lambda pair: False)
+    signal = _make_signal(pair, 1000.)
+    alpha.signals = {101: signal}
+    # 2. Refuse the buy through the shared entry callback and reconcile the event log.
+    alpha.apply_phase_aware_intent(manager)
+    # 3. Check that neither a buy nor an indefinitely reserved park remains.
+    assert signal.position_adjust_usd == 0
+    assert read_open_park_events(other_data) == {}

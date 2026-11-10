@@ -9,6 +9,9 @@ from tabulate import tabulate
 
 from eth_defi.erc_4626.core import ERC4626Feature
 
+from tradeexecutor.strategy.vault_protocol import (
+    settlement_expectation, OSTIUM_BACKTEST_SETTLEMENT_HOUR, VAULT_SETTLEMENT_DELAY_FALLBACKS,
+)
 from tradeexecutor.backtest.vault_fees import FEE_KEY, calculate_vault_fees, externalised_rates, vault_exit_rate
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel, BacktestRoutingState
 from tradeexecutor.backtest.simulated_wallet import SimulatedWallet, OutOfSimulatedBalance
@@ -95,22 +98,6 @@ DEFAULT_VAULT_SETTLEMENT_DELAY = datetime.timedelta(days=2)
 #: settle after this grace period instead of permanently stranding capital.
 NO_HISTORICAL_SETTLEMENT_OBSERVATION_GRACE_PERIOD = datetime.timedelta(days=2)
 
-#: Hour of day (UTC, naive) when Ostium-style vaults settle in backtesting.
-#:
-#: Live Ostium V1.5 exposes settlement eligibility through the request
-#: settlement id and ``lastSettlementTs + maxSettlementInterval``. Backtests
-#: keep the earlier next-day approximation for reproducibility. Override the
-#: schedule per vault with ``vault_settlement_delay_overrides``.
-OSTIUM_BACKTEST_SETTLEMENT_HOUR = 18
-
-
-#: Conservative protocol delays when no positive settlement estimate exists.
-#: Per-vault ``vault_settlement_delay_overrides`` take precedence over these defaults.
-VAULT_SETTLEMENT_DELAY_FALLBACKS: dict[ERC4626Feature, datetime.timedelta] = {
-    ERC4626Feature.d2_like: datetime.timedelta(days=14),
-    ERC4626Feature.plutus_like: datetime.timedelta(days=14),
-    ERC4626Feature.atoma_like: datetime.timedelta(days=7),
-}
 
 
 class BacktestExecution(ExecutionModel):
@@ -184,6 +171,10 @@ class BacktestExecution(ExecutionModel):
             "Remove the strategy-local Hyper-AI fee wrapper; backtesting now charges vault fees automatically"
         )
         self.portfolio = portfolio
+        # Strategy horizon checks must use the execution model's overrides too;
+        # otherwise they can approve a deposit that cannot settle before the run ends.
+        pricing_model.vault_settlement_delay_overrides = self.vault_settlement_delay_overrides
+        pricing_model.vault_settlement_default_delay = self.vault_settlement_delay
         configurator = getattr(pricing_model, "pair_configurator", None)
         if configurator is not None:
             configurator.portfolio = portfolio
@@ -490,16 +481,15 @@ class BacktestExecution(ExecutionModel):
         :return:
             Whether this direction uses the simulated request/settle lifecycle.
         """
-        if not pair.is_vault():
-            return False
-        if pair.pool_address and pair.pool_address.lower() in self.vault_settlement_delay_overrides:
-            return True
-        requires_historical_deposit_settlement = self._requires_historical_deposit_settlement(pair)
-        if is_buy is True:
-            return pair.is_async_vault() or requires_historical_deposit_settlement
-        if is_buy is False:
-            return pair.has_delayed_vault_redemption()
-        return pair.is_async_vault() or pair.has_delayed_vault_redemption() or requires_historical_deposit_settlement
+        if is_buy is None:
+            return self._is_async_vault(pair, is_buy=True) or self._is_async_vault(pair, is_buy=False)
+        # Only the queue flag is needed. This fixed date avoids consulting a live
+        # clock; queue classification depends on the operation, not request time.
+        return settlement_expectation(
+            pair, datetime.datetime(2000, 1, 1), is_buy=is_buy,
+            overrides=self.vault_settlement_delay_overrides,
+            default_delay=self.vault_settlement_delay,
+        )[0]
 
     @staticmethod
     def _requires_historical_deposit_settlement(pair: TradingPairIdentifier) -> bool:
@@ -526,28 +516,7 @@ class BacktestExecution(ExecutionModel):
             ERC4626Feature.d2_like,
         })
 
-    @staticmethod
-    def _uses_protocol_settlement_estimate(features: set[ERC4626Feature]) -> bool:
-        """Whether a queued backtest request can use the vault's reported delay.
-
-        :py:meth:`_get_settlement_due` uses this after explicit overrides.
-        Lagoon, Upshift and :py:data:`VAULT_SETTLEMENT_DELAY_FALLBACKS` families
-        prefer a positive metadata estimate; others keep their existing schedule.
-        Call :py:meth:`_is_async_vault` for the trade direction first: this
-        timing policy must not turn synchronous deposits into queued ones.
-
-        :param features:
-            Protocol features of the vault being simulated; empty if unknown.
-        :return:
-            Whether to consult the estimate before using a protocol/global fallback.
-        """
-        estimate_features = {
-            ERC4626Feature.lagoon_like,
-            ERC4626Feature.upshift_like,
-        } | VAULT_SETTLEMENT_DELAY_FALLBACKS.keys()
-        return bool(features & estimate_features)
-
-    def _get_settlement_due(self, pair: TradingPairIdentifier, ts: datetime.datetime) -> datetime.datetime:
+    def _get_settlement_due(self, pair: TradingPairIdentifier, ts: datetime.datetime, *, is_buy: bool = False) -> datetime.datetime:
         """Compute the minimum simulated settlement time for a queued request.
 
         Historical deposit-event checks may defer completion beyond this time.
@@ -570,30 +539,16 @@ class BacktestExecution(ExecutionModel):
             Vault pair already selected for delayed execution in this direction.
         :param ts:
             Naive UTC request timestamp.
+        :param is_buy:
+            Select deposit timing when true; otherwise use redemption timing.
         :return:
             Earliest settlement timestamp under the selected simulation delay.
         """
-        if pair.pool_address:
-            override = self.vault_settlement_delay_overrides.get(pair.pool_address.lower())
-            if override is not None:
-                return ts + override
-
-        features = pair.get_vault_features() or set()
-        if self._uses_protocol_settlement_estimate(features):
-            estimated_settlement = pair.get_vault_estimated_settlement()
-            if estimated_settlement is not None:
-                return ts + estimated_settlement
-            fallback = next((delay for feature, delay in VAULT_SETTLEMENT_DELAY_FALLBACKS.items() if feature in features), None)
-            if fallback is not None:
-                return ts + fallback
-
-        if ERC4626Feature.ostium_like in features:
-            # Preserve the original Ostium backtest approximation instead of
-            # changing historical simulations when live vault intervals move.
-            next_day = ts + datetime.timedelta(days=1)
-            return next_day.replace(hour=OSTIUM_BACKTEST_SETTLEMENT_HOUR, minute=0, second=0, microsecond=0)
-
-        return ts + self.vault_settlement_delay
+        return settlement_expectation(
+            pair, ts, is_buy=is_buy,
+            overrides=self.vault_settlement_delay_overrides,
+            default_delay=self.vault_settlement_delay,
+        )[1]
 
     def simulate_async_vault_request(self, ts: datetime.datetime, state: State, trade: TradeExecution) -> None:
         """Stage 1 of a two-stage async vault deposit/redeem in backtest.
@@ -639,7 +594,7 @@ class BacktestExecution(ExecutionModel):
             self.wallet.update_balance(base, request_quantity, f"vault redeem request #{trade.trade_id}")
             trade.other_data[VAULT_SETTLEMENT_REQUEST_QUANTITY_KEY] = str(request_quantity)
 
-        settles_at = self._get_settlement_due(trade.pair, ts)
+        settles_at = self._get_settlement_due(trade.pair, ts, is_buy=trade.is_buy())
         trade.other_data["vault_settlement_estimated_at"] = settles_at.isoformat()
         if trade.is_buy() and self._requires_historical_deposit_settlement(trade.pair):
             trade.other_data["vault_settlement_historical_event_required"] = True

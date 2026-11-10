@@ -201,6 +201,10 @@ class _FakePair:
     def get_ticker(self) -> str:
         return f"VAULT{self.internal_id}-USDC"
 
+    def get_vault_protocol_rules(self) -> None:
+        """Isolate explicit window overrides from construction-time protocol assumptions."""
+        return None
+
     def is_hyperliquid_vault(self) -> bool:
         """Keep generic window fixtures outside the HyperCore-specific policy.
 

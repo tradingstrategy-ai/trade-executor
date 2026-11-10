@@ -210,3 +210,32 @@ def style_ignored_vault_table(df: pd.DataFrame) -> Styler:
         return f'<a href="{url}" target="_blank">{label}</a>'
 
     return df.style.format({"Link": _linkify}).hide(axis="index")
+
+
+def validate_vault_fee_data(strategy_universe: "TradingStrategyUniverse", *, allow_missing: bool = False) -> None:
+    """Stop a backtest from reporting net returns for fees it cannot account for.
+
+    The override keeps incomplete vaults data-only; it never assumes zero
+    fees. Call after universe construction, once pair rules have been resolved.
+    This opt-in validation leaves existing strategies' construction policy unchanged.
+
+    :param strategy_universe:
+        Loaded backtest universe whose vault fees must be modelled.
+    :param allow_missing:
+        Retain incomplete records for price data while prohibiting new entries.
+        Known unsupported charges still raise, even with this override.
+    :raises AssertionError:
+        Selected fees are missing without an override, or cannot be modelled.
+    """
+    missing = []
+    for pair in strategy_universe.iterate_pairs():
+        if pair.is_vault():
+            rules = pair.get_vault_protocol_rules()
+            if rules is not None:
+                assert rules.deposit_fee in (None, 0) or rules.deposit_fee_supported, f"Unsupported vault deposit fee: {pair}"
+                assert rules.redemption_fee in (None, 0) or rules.redemption_fee_supported, f"Unsupported vault redemption fee: {pair}"
+            fields = get_missing_vault_fee_data(pair.get_vault_metadata())
+            if fields:
+                missing.append(f"{pair.chain_id}:{pair.pool_address}: {', '.join(fields)}")
+    assert allow_missing or not missing, "Missing selected vault fee data:\n" + "\n".join(missing)
+    mark_missing_fee_vaults_ignored(strategy_universe)

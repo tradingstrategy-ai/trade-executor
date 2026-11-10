@@ -54,10 +54,9 @@ def externalised_rates(pair: TradingPairIdentifier) -> tuple[Decimal, Decimal] |
 def vault_exit_rate(pair: TradingPairIdentifier) -> float:
     """Keep fixed exit costs on the existing sell-tax path, separately from manager fees.
 
-    Metadata withdrawal fees are not automatically mapped to a tax by the
-    backtester. Using them only for externalised-fee vaults would give otherwise
-    identical vaults different fixed-cost treatment. Callers must model these
-    costs explicitly or exclude the route, as NB05 already does.
+    Explicit legacy share-token taxes take precedence. Otherwise the pair getter
+    exposes only supported loaded exit fees, independently of the manager-fee
+    mode; unsupported costs must be refused by the selecting strategy.
 
     :param pair:
         Pair whose base share token may carry an explicitly configured sell tax.
@@ -128,6 +127,7 @@ def calculate_vault_fees(position: TradingPosition, timestamp: datetime.datetime
         Denomination-token value per share before manager fees or exit charges.
     :param exit_rate:
         Fractional fixed exit charge, applied once after management/performance fees.
+        A saved request's exit rate takes precedence so settlement preserves its terms.
     :param snapshot:
         Prior result for this request, or ``None`` to derive proportional basis
         from the current ledger. The snapshot fixes principal, principal-years,
@@ -135,14 +135,18 @@ def calculate_vault_fees(position: TradingPosition, timestamp: datetime.datetime
     :return:
         JSON-compatible record with version, ISO timestamp and decimal strings
         for basis, rates, quantities, fee components and net proceeds. Monetary
-        values use denomination-token units. ``None`` means no externalised fee
-        calculation applies or the unsnapshotted ledger has no shares.
+        values use denomination-token units. ``None`` means neither externalised
+        manager fees nor an exit charge apply, or a fresh quote has no held shares.
     :raises AssertionError:
         Rates, amounts or metadata are invalid, or a fresh reduction exceeds holdings.
     """
     rates = (Decimal(snapshot["management_rate"]), Decimal(snapshot["performance_rate"])) if snapshot else externalised_rates(position.pair)
     if rates is None:
-        return None
+        if not exit_rate:
+            return None
+        # NAV can already include manager fees while redemption still incurs a
+        # separate charge. Use the same ledger without charging manager fees again.
+        rates = Decimal(0), Decimal(0)
     assert quantity >= 0
     if snapshot:
         principal = Decimal(snapshot["principal"])
@@ -159,7 +163,9 @@ def calculate_vault_fees(position: TradingPosition, timestamp: datetime.datetime
         exposure *= fraction
     gross = quantity * Decimal(str(gross_price))
     assert gross.is_finite() and gross >= 0
-    exit_fee_rate = Decimal(str(exit_rate))
+    # A queued request retains its quoted exit terms if metadata changes before
+    # settlement. Older snapshots without this field use the supplied rate.
+    exit_fee_rate = Decimal(str(snapshot.get("exit_rate", exit_rate) if snapshot else exit_rate))
     assert exit_fee_rate.is_finite() and 0 <= exit_fee_rate <= 1
     nominal_management = exposure * rates[0]
     # A loss cannot create a negative payout; retain the uncapped accrual in the
@@ -171,5 +177,5 @@ def calculate_vault_fees(position: TradingPosition, timestamp: datetime.datetime
     values = dict(principal=principal, principal_years=exposure, gross=gross,
                   nominal_management=nominal_management, management=management,
                   performance=performance, exit_fee=exit_fee, net=after_fees - exit_fee,
-                  management_rate=rates[0], performance_rate=rates[1], quantity=quantity)
+                  management_rate=rates[0], performance_rate=rates[1], exit_rate=exit_fee_rate, quantity=quantity)
     return {"version": 1, "timestamp": timestamp.isoformat(), **{k: str(v) for k, v in values.items()}}

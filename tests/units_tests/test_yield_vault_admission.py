@@ -1,6 +1,7 @@
 """Yield parking follows admission without disabling releases of existing holdings."""
 import datetime
 from decimal import Decimal
+from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -27,6 +28,7 @@ def test_yield_vault_admission_keeps_releases_available() -> None:
     1. Build real pair/rule objects and substitute external pricing and trade generation.
     2. Check explicit exclusions and historical closure refuse new parking deposits.
     3. Check withdrawal still emits, then allow an unknown historical assumption.
+    4. Refuse purchases through strategy policy and confirm releases still work.
 
     Pricing returns captured closure assessments and trade generation is mocked
     to inspect intents without a chain, wallet execution or provider downloads.
@@ -66,3 +68,8 @@ def test_yield_vault_admission_keeps_releases_available() -> None:
     pricing.assessment = assessment
     assert manager.generate_rebalance_trades(1, timestamp, {pair: holding}, buy) == ['trade intent']
     assert adjust.call_args.kwargs['dollar_delta'] == pytest.approx(100)
+
+    # 4. Refuse purchases through strategy policy and confirm releases still work.
+    manager.rules = replace(manager.rules, entry_eligibility=lambda pair: False)
+    assert manager.generate_rebalance_trades(1, timestamp, {pair: holding}, buy) == []
+    assert manager.generate_rebalance_trades(1, timestamp, {pair: holding}, sell) == ['trade intent']
