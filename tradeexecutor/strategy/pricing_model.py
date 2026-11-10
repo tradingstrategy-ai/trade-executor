@@ -45,10 +45,19 @@ class PricingModel(abc.ABC):
 
     """
 
-    def get_vault_settlement_expectation(self, ts, pair, *, operation="deposit"):
+    def get_vault_settlement_expectation(
+        self,
+        ts: datetime.datetime,
+        pair: TradingPairIdentifier,
+        *,
+        operation: Literal["deposit", "redemption"] = "deposit",
+    ) -> tuple[bool, datetime.datetime]:
         """Share the backtest operation timing/overrides with strategy horizon checks.
 
-        This is a minimum simulation estimate, never authority to claim a live ticket.
+        ``ts`` is the naive UTC request time. The returned flag identifies a
+        queued operation; the timestamp is its minimum simulated due time.
+        Use deposit timing for entry-horizon checks. Actual claims still require
+        the protocol manager's eligibility checks.
         """
         assert operation in ("deposit", "redemption")
         return settlement_expectation(

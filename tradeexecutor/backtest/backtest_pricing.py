@@ -4,7 +4,7 @@ import math
 import warnings
 from dataclasses import replace
 from decimal import ROUND_DOWN, Decimal
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 import numpy as np
 import pandas as pd
@@ -17,11 +17,12 @@ from tradeexecutor.strategy.vault_protocol.d2 import early_window, unknown_depos
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import \
     UniswapV2Routing
 from tradeexecutor.state.portfolio import Portfolio
+from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.types import (AnyTimestamp, Percent, USDollarAmount,
                                        USDollarPrice)
 from tradeexecutor.strategy.execution_model import ExecutionModel
-from tradeexecutor.strategy.vault_closure import get_vault_closure, can_interact_with_vault
+from tradeexecutor.strategy.vault_closure import VaultClosure, get_vault_closure, can_interact_with_vault
 from tradeexecutor.strategy.generic.generic_router import GenericRouting
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.redemption import (
@@ -738,8 +739,25 @@ class BacktestPricing(PricingModel):
         """
         return self._lookup_cap(ts, pair, "max_redeem")
 
-    def get_vault_closure(self, ts, pair, *, operation="deposit", position=None, **kwargs):
-        """Supply original-clock, as-of evidence to the unified closure rule."""
+    def get_vault_closure(
+        self,
+        ts: datetime.datetime | None,
+        pair: TradingPairIdentifier | None,
+        *,
+        operation: Literal["deposit", "redemption"] = "deposit",
+        position: TradingPosition | None = None,
+        **kwargs: Any,
+    ) -> VaultClosure:
+        """Evaluate as-of availability with the protocol's historical unknown policy.
+
+        Explicit window overrides take precedence. The early HYPE++ assumption
+        applies only when flags, capacity and restriction reasons are unknown.
+        Forward caller options to the shared closure rule, including any explicit
+        choice of whether unknown evidence blocks the operation. By default,
+        later unknown HYPE++ deposits are refused after the early-history cutoff.
+        A windowed protocol's phase closure is labelled ``window_closed`` so
+        phase-aware allocation can distinguish it from an administrative refusal.
+        """
         state = self._lookup_vault_state(ts, pair)
         override = self._vault_window_overrides.get(pair.internal_id) if pair else None
         rules = pair.get_vault_protocol_rules() if pair is not None else None

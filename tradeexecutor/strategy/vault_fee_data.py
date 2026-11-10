@@ -212,11 +212,19 @@ def style_ignored_vault_table(df: pd.DataFrame) -> Styler:
     return df.style.format({"Link": _linkify}).hide(axis="index")
 
 
-def validate_vault_fee_data(strategy_universe, *, allow_missing: bool = False) -> None:
+def validate_vault_fee_data(strategy_universe: "TradingStrategyUniverse", *, allow_missing: bool = False) -> None:
     """Require complete fees for selected backtest vaults unless explicitly overridden.
 
-    The override keeps incomplete vaults diagnostic-only; it never assumes zero
+    The override keeps incomplete vaults data-only; it never assumes zero
     fees or changes existing strategies that do not call this policy helper.
+
+    :param strategy_universe:
+        Loaded backtest universe whose vault fees must be modelled.
+    :param allow_missing:
+        Retain incomplete records for price data while prohibiting new entries.
+        Known unsupported charges still raise, even with this override.
+    :raises AssertionError:
+        Selected fees are missing without an override, or cannot be modelled.
     """
     missing = []
     for pair in strategy_universe.iterate_pairs():

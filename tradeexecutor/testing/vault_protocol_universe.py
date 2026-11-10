@@ -28,8 +28,8 @@ VAULTS = (
 def create_vault_protocol_universe() -> TradingStrategyUniverse:
     """Construct a fixed-price universe through real parser and lazy pair conversion.
 
-    Raw availability samples pass through the real state converter. No protocol
-    rule, queue classification or tax is injected by this helper.
+    Flat NAVs isolate fee and settlement effects. Protocol capabilities come
+    from the real metadata translator; this helper does not inject resolved rules.
     """
     entries = [dict(chain_id=42161, address=address, name=name, protocol_slug=protocol,
                     features=features, denomination="USDC", normalised_denomination="USDC",

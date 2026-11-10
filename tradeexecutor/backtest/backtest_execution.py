@@ -536,6 +536,8 @@ class BacktestExecution(ExecutionModel):
             Vault pair already selected for delayed execution in this direction.
         :param ts:
             Naive UTC request timestamp.
+        :param is_buy:
+            Select deposit timing when true; otherwise use redemption timing.
         :return:
             Earliest settlement timestamp under the selected simulation delay.
         """

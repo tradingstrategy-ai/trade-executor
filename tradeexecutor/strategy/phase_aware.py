@@ -367,6 +367,12 @@ class PhaseAwareAlphaModel(AlphaModel):
             Only these pairs may use the park -> deposit-on-open flow. A synchronous
             vault that reports deposits closed or zero capacity must fall through to
             the normal skipped-buy path instead of reserving queue capital indefinitely.
+
+        :param entry_eligibility:
+            Optional strategy policy for window-gated deposit adjustments during
+            the park pass, such as a historical TVL floor. Other entries need
+            their own entry guard. Refusal releases any old park earmark; it does
+            not prevent an existing holding from being redeemed.
         """
         super().__init__(timestamp=timestamp, **kwargs)
         # This subclass is intentionally not slotted, so instances get a __dict__

@@ -5,7 +5,7 @@ days is the existing backtest estimate, not a guaranteed live claim time.
 Fee exemptions for fee-recipient accounts stay with the live deposit manager.
 """
 
-#: Reviewed NB07 public vault deployments; other deployments do not inherit admission.
+#: Deployments with confirmed zero-entry/0.5%-exit terms; other addresses stay unclassified.
 STANDARD_FEE_VAULTS = {
     (42161, "0x1c788e14d8e5b446e3f71b5142e2edabcab36da1"),
     (42161, "0xcc56410e1a136af0eceb7241c6ae394f4d8b581c"),
@@ -14,8 +14,8 @@ STANDARD_FEE_VAULTS = {
 REDEMPTION_DELAY_SECONDS = 7 * 86400
 
 
-def fee_profile(chain_id: int, address: str, deposit_fee, redemption_fee) -> str | None:
-    """Identify the exact standard public terms without allowing arbitrary 0.5% fees."""
+def fee_profile(chain_id: int, address: str, deposit_fee: float | None, redemption_fee: float | None) -> str | None:
+    """Classify confirmed standard public terms; other fee-bearing deployments return None."""
     if (chain_id, address.lower()) in STANDARD_FEE_VAULTS and deposit_fee == 0 and redemption_fee == 0.005:
         return "atoma_standard_exit"
     return None

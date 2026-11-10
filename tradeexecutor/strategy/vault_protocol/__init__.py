@@ -1,4 +1,4 @@
-"""Pure construction-time vault overlays; no acquisition, state ledger or strategy imports."""
+"""Resolve loaded vault metadata into shared fee and settlement capabilities."""
 
 import datetime
 from dataclasses import asdict, replace
@@ -6,6 +6,7 @@ from dataclasses import asdict, replace
 from eth_defi.erc_4626.core import ERC4626Feature
 
 from tradingstrategy.vault import VaultProtocolRules
+from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.strategy.vault_protocol import atoma, d2
 
 
@@ -19,15 +20,26 @@ VAULT_SETTLEMENT_DELAY_FALLBACKS: dict[ERC4626Feature, datetime.timedelta] = {
 OSTIUM_BACKTEST_SETTLEMENT_HOUR = 18
 
 
-def classify_vault_fee_profile(chain_id, address, deposit_fee, redemption_fee):
-    """Resolve contractual fee terms without changing a strategy's allowed profiles."""
+def classify_vault_fee_profile(
+    chain_id: int, address: str, deposit_fee: float | None, redemption_fee: float | None,
+) -> str | None:
+    """Name supported entry/exit terms; selection policy decides which names to admit.
+
+    Rates are fractions of deposited or redeemed value. ``None`` means unknown,
+    so an incomplete profile cannot be classified as zero-fee.
+    """
     if deposit_fee == 0 and redemption_fee == 0:
         return "zero_entry_exit"
     return atoma.fee_profile(chain_id, address, deposit_fee, redemption_fee)
 
 
-def resolve_vault_protocol_rules(pair) -> VaultProtocolRules:
-    """Resolve data once, preserving the existing framework's operation classification."""
+def resolve_vault_protocol_rules(pair: TradingPairIdentifier) -> VaultProtocolRules:
+    """Derive execution capabilities from a vault's loaded metadata and features.
+
+    Published positive settlement estimates take precedence over protocol
+    simulation defaults. Deposit and redemption queues are resolved separately:
+    a delayed exit must not queue an otherwise immediate deposit.
+    """
     metadata = pair.get_vault_metadata()
     features = pair.get_vault_features() or set()
     deposit_fee = getattr(metadata, "deposit_fee", None)
@@ -64,8 +76,13 @@ def resolve_vault_protocol_rules(pair) -> VaultProtocolRules:
     )
 
 
-def enrich_vault_pair(pair):
-    """Store resolved economics in pair metadata before the translator caches it."""
+def enrich_vault_pair(pair: TradingPairIdentifier) -> TradingPairIdentifier:
+    """Attach derived rules before caching a translated pair and return the pair.
+
+    Replace frozen metadata rather than modifying the source DEXPair's shared
+    instance. Keep a plain snapshot because State omits the full metadata.
+    Non-vault pairs are returned unchanged.
+    """
     if pair.is_vault():
         rules = resolve_vault_protocol_rules(pair)
         metadata = pair.get_vault_metadata()
@@ -77,8 +94,24 @@ def enrich_vault_pair(pair):
     return pair
 
 
-def settlement_expectation(pair, timestamp, *, is_buy, overrides=None, default_delay=datetime.timedelta(days=2)):
-    """Return (queued, minimum due time) using existing override and protocol precedence."""
+def settlement_expectation(
+    pair: TradingPairIdentifier,
+    timestamp: datetime.datetime,
+    *,
+    is_buy: bool,
+    overrides: dict[str, datetime.timedelta] | None = None,
+    default_delay: datetime.timedelta = datetime.timedelta(days=2),
+) -> tuple[bool, datetime.datetime]:
+    """Return whether the operation queues and its earliest simulated settlement.
+
+    ``timestamp`` is the naive UTC request time; ``is_buy`` selects deposits.
+    Overrides use lower-case vault addresses and queue both directions, even
+    when the protocol would settle that operation immediately. This includes
+    zero-delay overrides. Without an override, use the loaded estimate, protocol
+    delay or next-day settlement hour, then ``default_delay``.
+    The result is a lower bound: historical events and claim resolvers may defer
+    settlement. Immediate operations return the request time.
+    """
     if not pair.is_vault():
         return False, timestamp
     override = (overrides or {}).get(pair.pool_address.lower())
