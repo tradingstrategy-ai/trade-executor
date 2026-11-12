@@ -1,6 +1,7 @@
     **Note**: A full changelog is not available as long as `trade-executor` package is in active beta developmnt.
 
 ## 0.2
+- Add an optional alpha model no-trade band that can be relative to each position's target, with rules at portfolio, vault category and single vault level set from `decide_trades()` (2026-11-12).
 - Add an optional capped priority tier to proportional portfolio sizing, then allocate remaining capital with ordinary weights (2026-11-10).
 - Add a Hyperliquid manual vault-data overlay marking Growi HF-2 permanently closed for deposits, including before the historical collection cutoff (2026-11-10).
 - Stop the position chart endpoint warning about missing candle data for exchange-account positions, which have no asset price; it now points to the internal share price instead (2026-11-10).

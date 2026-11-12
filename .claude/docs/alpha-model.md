@@ -160,6 +160,70 @@ phase-aware subclass for an example override.
 details (pending deposits valued into old value, non-redeemable positions
 pinned) are documented in `vault-deposit-redeem.md`.
 
+## No-trade band
+
+`apply_no_trade_band(policy, portfolio_equity=None)` suppresses small
+adjustments to positions that stay open, so a portfolio does not trade every
+cycle as weights drift. It is optional: nothing calls it unless the strategy
+does. Call it after `calculate_target_positions()` and before trade generation;
+a phase-aware strategy calls it before `apply_phase_aware_intent()`.
+
+The rules live in
+[tradeexecutor/strategy/no_trade_band.py](../../tradeexecutor/strategy/no_trade_band.py).
+A `NoTradeBandRule` sets the band as `max(pct × basis, min_usd)`, where the
+basis is either the signal's own `position_target` (the default) or
+whole-portfolio equity. A `pct` of zero disables the rule, floor included: a
+fixed-dollar band with no percentage is not available here. It can apply to top-ups, reductions or both. A
+`NoTradeBandPolicy` holds rules at three levels, and the most specific wins:
+
+1. **vault:** `pairs`, keyed by `(chain_id, pool address)`, any address case;
+2. **category:** `categories`, by the name a strategy-supplied
+   `category_function(pair)` returns;
+3. **portfolio:** `default`.
+
+The strategy builds the policy in `decide_trades()` each cycle, so any level can
+depend on parameters or that cycle's state:
+
+```python
+policy = NoTradeBandPolicy(
+    default=NoTradeBandRule(pct=parameters.no_trade_band_pct),
+    categories={"hft": NoTradeBandRule(pct=parameters.hft_no_trade_band_pct)},
+    pairs={(9999, "0x…"): NoTradeBandRule.disabled()},
+    category_function=lambda pair: "hft" if is_hft(pair) else None,
+)
+alpha_model.apply_no_trade_band(policy)
+```
+
+What it never suppresses: new entries (`old_value == 0`), carried-forward
+signals, zero or already-ignored adjustments, and positions whose weight is
+below `close_position_weight_epsilon`, which trade generation closes whatever
+the sign of the adjustment. A leveraged or flipping signal that would otherwise
+be evaluated fails an assertion; the band supports long-only spot and vault
+positions.
+
+A suppressed signal has its adjustment zeroed and ignored, keeps its
+`position_target`, and gets the `inside_no_trade_band` flag plus an
+`other_data["no_trade_band"]` record (band, basis, pct, level and the
+suppressed amount). The band applies to the requested adjustment, not the
+executed size: a later cash cap can still shrink a surviving buy below it, and a
+suppressed sell funds nothing.
+
+Behaviour to expect from a target-relative band:
+- a trade that passes the band moves the holding to its target, unless a later
+  cash cap or threshold shrinks it, so the band itself does not make a position
+  trade back and forth;
+- the trigger moves with the target: if the target jumps by more than the band
+  (for example when a TVL cap or the number of members changes), the position
+  trades even though its holding did not change. A smaller band means more such
+  trades, so measure turnover when choosing a width;
+- a rule with `apply_to_reductions=False` trims any excess at once but waits for
+  shortfalls to reach the band, so holdings sit between about `(1 − pct)` and
+  1.0 of target rather than around it;
+- a rule that does hold back reductions can keep a holding above a target that
+  a concentration, pool-size or strategy ceiling has just lowered, by up to
+  the band. If those ceilings must be enforced promptly, set
+  `apply_to_reductions=False` for the positions they govern.
+
 ## Trade generation
 
 `generate_rebalance_trades_and_triggers(position_manager, ...)` compares target
@@ -260,3 +324,4 @@ registered there and rendered in backtest notebooks and the live web UI alike.
 | [tradeexecutor/strategy/weighting.py](../../tradeexecutor/strategy/weighting.py) | Weighting methods and weight normalisation helpers |
 | [tradeexecutor/strategy/size_risk_model.py](../../tradeexecutor/strategy/size_risk_model.py) | Size-risk base class; `USDTVLSizeRiskModel` in `tvl_size_risk.py` |
 | [tests/units_tests/test_alpha_model_sync_cash_cap.py](../../tests/units_tests/test_alpha_model_sync_cash_cap.py) | Sync cash cap unit coverage |
+| [tradeexecutor/strategy/no_trade_band.py](../../tradeexecutor/strategy/no_trade_band.py) | No-trade band rules and policy; unit coverage in `tests/units_tests/test_alpha_model_no_trade_band.py` |

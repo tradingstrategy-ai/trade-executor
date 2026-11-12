@@ -84,6 +84,7 @@ alpha.assign_weights(...)
 alpha.normalise_weights(...)                                     # any variant
 alpha.update_old_weights(state.portfolio, ignore_credit=False)   # venue excluded (invariant 2)
 alpha.calculate_target_positions(position_manager)
+alpha.apply_no_trade_band(policy)                                # optional; before the phase-aware step
 alpha.apply_phase_aware_intent(position_manager)                 # park closed-window deposits; mark promotes
 trades = alpha.generate_rebalance_trades_and_triggers(...)       # cap counts venue cash (invariant 4)
 alpha.reconcile_phase_aware_events(position_manager, trades)     # finalise promotes that actually emitted
@@ -152,6 +153,14 @@ success: if the emitted deposit later fails at execution, the park is already
 closed, but the still-targeted vault simply gets a normal directional buy on
 the next open cycle, funded from the venue via the invariant-4 widening — the
 mechanism self-heals without the event log.
+
+**No-trade band.** `apply_no_trade_band()` runs before
+`apply_phase_aware_intent()`. A top-up it suppresses has a zero adjustment, so
+the phase-aware step neither re-parks it nor makes it a promotion candidate,
+and stale-closes its park whatever the window state. The cash stays in the
+venue and competes again next cycle, as when an entry is refused. Running the
+band after the phase-aware step instead would miss adjustments that parking has
+already zeroed.
 
 **Redemption side — passive.** `apply_phase_aware_intent` adds no redemption
 logic. Window-gated or async redemptions are owned by the existing settlement

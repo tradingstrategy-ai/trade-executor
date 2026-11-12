@@ -24,6 +24,7 @@ from tradeexecutor.strategy.redemption import DepositCheckResult
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.other_data import OtherData
 from tradeexecutor.strategy.alpha_model import AlphaModel, TradingPairSignal, TradingPairSignalFlags
+from tradeexecutor.strategy.no_trade_band import NoTradeBandPolicy, NoTradeBandRule
 from tradeexecutor.strategy.phase_aware import (
     EVENT_PARK,
     EVENT_REDEEM_BLOCK,
@@ -650,3 +651,61 @@ def test_entry_policy_releases_parked_capital() -> None:
     # 3. Check that neither a buy nor an indefinitely reserved park remains.
     assert signal.position_adjust_usd == 0
     assert read_open_park_events(other_data) == {}
+
+
+def test_no_trade_band_releases_park_and_can_cancel_cycle():
+    """A band-suppressed top-up releases its park, and can leave the cycle below the min-trade gate.
+
+    The no-trade band runs before the phase-aware step. A top-up it suppresses
+    has a zero adjustment, so the phase-aware step neither re-parks it nor makes
+    it a promotion candidate, and stale-closes its park whatever the window
+    state. This is the same as a refused entry releasing its earmark.
+
+    1. Vault 101 (window closed) and vault 102 (window open) each hold a position and an open park;
+       both get a $400 top-up towards a $5,000 target. Vault 303 has a $5 adjustment.
+    2. A 15% target-relative band ($750) suppresses both top-ups.
+    3. The phase-aware step closes both parks and parks nothing.
+    4. With the top-ups gone, the $5 adjustment is below the $50 gate and the cycle is cancelled.
+    """
+    # 1. Vault 101 (window closed) and vault 102 (window open) each hold a position and an open park;
+    #    both get a $400 top-up towards a $5,000 target. Vault 303 has a $5 adjustment.
+    other_data = OtherData()
+    append_queue_event(other_data, QueueVaultEvent(EVENT_PARK, 101, 400.0, 1))
+    append_queue_event(other_data, QueueVaultEvent(EVENT_PARK, 102, 400.0, 1))
+    signals = {}
+    for pair_id, old_value, target in ((101, 4_600.0, 5_000.0), (102, 4_600.0, 5_000.0), (303, 995.0, 1_000.0)):
+        pair = _make_pair(pair_id)
+        signal = _make_signal(pair, target - old_value)
+        signal.old_value = old_value
+        signal.position_target = target
+        signal.normalised_weight = 0.05
+        signal.synthetic_pair = pair
+        signals[pair_id] = signal
+    pm = _make_pm(other_data, open_pairs={102, 303})
+    alpha = PhaseAwareAlphaModel(
+        datetime.datetime(2024, 1, 2),
+        cycle=2,
+        venue_pair_ids={999},
+        window_gated_pair_ids={101, 102},
+    )
+    alpha.signals = signals
+
+    # 2. A 15% target-relative band ($750) suppresses both top-ups.
+    policy = NoTradeBandPolicy(
+        default=NoTradeBandRule(pct=0.15),
+        categories={"small": NoTradeBandRule.disabled()},
+        category_function=lambda pair: "small" if pair.internal_id == 303 else None,
+    )
+    suppressed = alpha.apply_no_trade_band(policy)
+    assert {s.pair.internal_id for s in suppressed} == {101, 102}
+
+    # 3. The phase-aware step closes both parks and parks nothing.
+    alpha.apply_phase_aware_intent(pm)
+    assert read_open_park_events(other_data) == {}
+    assert alpha._promote_candidates == set()
+    assert all(TradingPairSignalFlags.parked_in_queue_vault not in s.flags for s in signals.values())
+
+    # 4. With the top-ups gone, the $5 adjustment is below the $50 gate and the cycle is cancelled.
+    trades = alpha.generate_rebalance_trades_and_triggers(pm, min_trade_threshold=50.0)
+    assert trades == []
+    assert alpha.max_position_adjust_usd == pytest.approx(5.0)
