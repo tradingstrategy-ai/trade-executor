@@ -26,6 +26,7 @@ from tradeexecutor.strategy.dust import (
     get_close_epsilon_for_pair,
 )
 from tradeexecutor.strategy.execution_context import ExecutionContext
+from tradeexecutor.strategy.no_trade_band import NoTradeBandPolicy
 from tradeexecutor.strategy.pandas_trader.position_manager import \
     HypercorePositionReductionPlan, PositionManager
 from tradeexecutor.strategy.vault_closure import can_interact_with_vault
@@ -133,6 +134,11 @@ class TradingPairSignalFlags(enum.Enum):
     #: A full-close intent executed despite falling below the normal sell
     #: softband. Its proceeds are not used to fund same-cycle buys.
     full_close_softband_bypassed = "full_close_softband_bypassed"
+
+    #: The adjustment of an existing position was suppressed because it fell
+    #: inside the strategy's no-trade band (:py:meth:`AlphaModel.apply_no_trade_band`).
+    #: The target is kept; ``other_data["no_trade_band"]`` records the band.
+    inside_no_trade_band = "inside_no_trade_band"
 
 
 class SellExecutionClassification(enum.Enum):
@@ -2252,6 +2258,100 @@ class AlphaModel:
                         # for these transactions
                         s.position_adjust_quantity = position_manager.estimate_asset_quantity(s.pair, s.position_adjust_usd)
                         assert type(s.position_adjust_quantity) == float
+
+    def apply_no_trade_band(
+        self,
+        policy: NoTradeBandPolicy,
+        portfolio_equity: USDollarAmount | None = None,
+    ) -> list[TradingPairSignal]:
+        """Suppress rebalance adjustments that fall inside the no-trade band.
+
+        A no-trade band stops a portfolio trading every cycle as weights drift:
+        an adjustment to an existing position smaller than the band is skipped
+        and the position keeps its current size. The band can be a share of each
+        position's own target or of whole-portfolio equity, and can differ for
+        the whole portfolio, a category of vaults and a single vault; see
+        :py:mod:`tradeexecutor.strategy.no_trade_band`.
+
+        Call after :py:meth:`calculate_target_positions` and before
+        :py:meth:`generate_rebalance_trades_and_triggers`. A phase-aware model
+        calls this before ``apply_phase_aware_intent()``.
+
+        An adjustment is suppressed when all of these hold:
+
+        - the signal is not carried forward;
+        - it adjusts an existing position: ``old_value > 0`` and
+          ``position_target > 0``, so new entries always pass;
+        - its weight is not below ``close_position_weight_epsilon``: trade
+          generation closes such a position whatever the sign of its
+          adjustment, so closes always pass;
+        - the adjustment is non-zero and not already ignored;
+        - the resolved rule applies to the adjustment's direction;
+        - ``abs(position_adjust_usd)`` is strictly below the band.
+
+        Suppression zeroes ``position_adjust_usd`` and
+        ``position_adjust_quantity`` and sets ``position_adjust_ignored``.
+        ``position_target`` is kept, so diagnostics still show the gap. The
+        band applies to the requested adjustment; later cash caps can still
+        shrink a surviving buy below it.
+
+        :param policy:
+            Rules at portfolio, category and vault level, built by the strategy.
+
+        :param portfolio_equity:
+            Whole-portfolio equity in USD. Needed only by rules using the
+            ``portfolio_equity`` basis.
+
+        :return:
+            The signals whose adjustment was suppressed by this call.
+        """
+        assert isinstance(policy, NoTradeBandPolicy), f"Expected NoTradeBandPolicy, got {policy!r}"
+        if portfolio_equity is not None:
+            assert np.isfinite(portfolio_equity) and portfolio_equity >= 0, f"Bad portfolio_equity {portfolio_equity}"
+
+        suppressed = []
+        for signal in self.iterate_signals():
+            assert signal.synthetic_pair is not None, \
+                f"Call calculate_target_positions() before apply_no_trade_band(); {signal} has no mapped pair"
+
+            if signal.carry_forward_position:
+                continue
+
+            if signal.position_adjust_ignored or signal.position_adjust_usd == 0:
+                continue
+
+            if not ((signal.old_value or 0) > 0 and (signal.position_target or 0) > 0):
+                continue
+
+            if signal.normalised_weight == 0 or signal.normalised_weight < self.close_position_weight_epsilon:
+                continue
+
+            assert signal.leverage is None and not signal.is_flipping(), \
+                f"apply_no_trade_band() supports only unleveraged, non-flipping signals: {signal}"
+
+            rule, level = policy.resolve(signal.pair)
+            if rule.is_disabled() or not rule.applies_to(signal.position_adjust_usd):
+                continue
+
+            band_usd = rule.calculate_band_usd(signal.position_target, portfolio_equity)
+            if abs(signal.position_adjust_usd) >= band_usd:
+                continue
+
+            signal.other_data["no_trade_band"] = {
+                "band_usd": float(band_usd),
+                "basis": rule.basis.value,
+                "pct": float(rule.pct),
+                "level": level.value,
+                "suppressed_adjust_usd": float(signal.position_adjust_usd),
+            }
+            signal.flags.add(TradingPairSignalFlags.inside_no_trade_band)
+            signal.position_adjust_usd = 0.0
+            signal.position_adjust_quantity = 0.0
+            signal.position_adjust_ignored = True
+            suppressed.append(signal)
+
+        logger.info("No-trade band suppressed %d adjustment(s)", len(suppressed))
+        return suppressed
 
     def map_pair_for_signal(
         self,

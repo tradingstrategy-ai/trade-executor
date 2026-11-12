@@ -41,6 +41,7 @@ from tradeexecutor.analysis.unallocatable_signals import calculate_unallocatable
 from tradeexecutor.strategy import size_risk_model
 from tradeexecutor.strategy.alpha_model import AlphaModel, TradingPairSignalFlags
 from tradeexecutor.strategy.fixed_size_risk import FixedSizeRiskModel
+from tradeexecutor.strategy.no_trade_band import NoTradeBandPolicy, NoTradeBandRule
 from tradeexecutor.strategy.pandas_trader.position_manager import NotEnoughCasForBuys, PositionManager
 from tradeexecutor.strategy.pandas_trader.rebalance import get_existing_portfolio_weights, rebalance_portfolio_old, \
     get_weight_diffs
@@ -3062,3 +3063,62 @@ def test_update_old_weights_reads_position_value_once(
     assert signal.old_weight == pytest.approx(1.0)
     assert signal.old_value == pytest.approx(original_get_value())
     assert calls["get_value"] == 1
+
+
+def test_alpha_model_no_trade_band_sell_does_not_fund_buy(
+    single_asset_portfolio: Portfolio,
+    strategy_universe: TradingStrategyUniverse,
+    pricing_model: BacktestPricing,
+    weth_usdc: TradingPairIdentifier,
+    aave_usdc: TradingPairIdentifier,
+    start_ts: datetime.datetime,
+):
+    """A band-suppressed sell emits no trade and does not fund same-cycle buys.
+
+    The no-trade band runs between target calculation and trade generation. A
+    suppressed sell must leave no trace in the later stages: no trade, and no
+    proceeds counted by the synchronous cash cap when it sizes buys.
+
+    1. Hold $500 cash and about $158 of WETH; target WETH $150 and AAVE $600.
+    2. Apply a 15% target-relative band: the $8.65 WETH trim is inside its $22.50 band.
+    3. Generate trades with the synchronous cash cap.
+    4. Only the AAVE buy is emitted, sized to the cash alone.
+    """
+    # 1. Hold $500 cash and about $158 of WETH; target WETH $150 and AAVE $600.
+    state = State(portfolio=single_asset_portfolio)
+    position_manager = PositionManager(
+        start_ts + datetime.timedelta(days=1),
+        strategy_universe.data_universe,
+        state,
+        pricing_model,
+    )
+    alpha_model = AlphaModel(start_ts + datetime.timedelta(days=1))
+    alpha_model.set_signal(weth_usdc, 0.2)
+    alpha_model.set_signal(aave_usdc, 0.8)
+    alpha_model.select_top_signals(9999)
+    alpha_model.assign_weights(method=weight_passthrouh)
+    alpha_model.normalise_weights()
+    alpha_model.update_old_weights(state.portfolio)
+    alpha_model.calculate_target_positions(position_manager, 750.0)
+    weth_signal = alpha_model.get_signal_by_pair(weth_usdc)
+    aave_signal = alpha_model.get_signal_by_pair(aave_usdc)
+    assert weth_signal.position_adjust_usd == pytest.approx(150.0 - weth_signal.old_value)
+    assert -22.5 < weth_signal.position_adjust_usd < 0
+
+    # 2. Apply a 15% target-relative band: the $8.65 WETH trim is inside its $22.50 band.
+    suppressed = alpha_model.apply_no_trade_band(NoTradeBandPolicy(default=NoTradeBandRule(pct=0.15)))
+    assert suppressed == [weth_signal]
+    assert TradingPairSignalFlags.inside_no_trade_band in weth_signal.flags
+
+    # 3. Generate trades with the synchronous cash cap.
+    trades = alpha_model.generate_rebalance_trades_and_triggers(
+        position_manager,
+        cap_buys_to_sync_cash=True,
+        sync_cash_headroom_usd=0.5,
+    )
+
+    # 4. Only the AAVE buy is emitted, sized to the cash alone.
+    assert [t.pair for t in trades] == [aave_usdc]
+    assert trades[0].is_buy()
+    assert TradingPairSignalFlags.capped_by_sync_cash in aave_signal.flags
+    assert trades[0].get_planned_value() == pytest.approx(499.5, rel=1e-3)
