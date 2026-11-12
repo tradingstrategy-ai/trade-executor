@@ -38,6 +38,7 @@ from tradeexecutor.strategy.dust import (
     get_hypercore_withdrawal_safety_margin,
 )
 from tradeexecutor.strategy.pricing_model import PricingModel
+from tradeexecutor.strategy.trade_pricing import TradePricing
 from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair, TradingStrategyUniverse
 from tradeexecutor.utils.leverage_calculations import LeverageEstimate
 
@@ -83,6 +84,44 @@ class HypercorePositionReductionPlan:
     effective_marked_value_delta: float
     redemption_cap_bound: bool
     treat_as_full_close: bool
+
+
+def price_hypercore_reduction(
+    price_structure: TradePricing,
+    dollar_delta: USDollarAmount,
+    quantity_delta: float | Decimal,
+) -> TradePricing:
+    """Price a HyperCore vault reduction at its implied share value without losing the fee haircut.
+
+    HyperCore partial sells are sized from the position's marked value, so the
+    planned price is the implied value per share, ``abs(dollar_delta / quantity_delta)``,
+    rather than a deposit/withdrawal shortcut price.
+
+    When the pricing model quotes the sale net of exit-time vault fees
+    (backtests with the shared externalised-fee model), the quote's
+    ``mid_price`` is the gross share price and ``price`` is net of fees. Backtest
+    execution recalculates those fees from the trade's ``planned_mid_price``, so
+    the planned mid must stay gross: setting it to the already fee-net implied
+    price would charge the fees twice. The implied price is therefore scaled by
+    the quote's own ``mid_price / price`` ratio. A quote without fees has
+    ``price == mid_price``, so the planned mid equals the implied price, as before.
+
+    :param price_structure:
+        The pricing model's sell quote for the reduction.
+    :param dollar_delta:
+        Negative marked-value change of the reduction.
+    :param quantity_delta:
+        Negative share quantity of the reduction.
+    :return:
+        The quote with ``price`` set to the implied share value and ``mid_price``
+        to the corresponding gross share price.
+    """
+    assert dollar_delta < 0, f"Hypercore reduction must be negative, got {dollar_delta}"
+    assert quantity_delta < 0, f"Hypercore sell quantity must be negative, got {quantity_delta}"
+    implied_price = float(abs(Decimal(str(dollar_delta)) / Decimal(str(quantity_delta))))
+    quoted_price, quoted_mid = price_structure.price, price_structure.mid_price
+    fee_ratio = quoted_mid / quoted_price if quoted_price and quoted_mid else 1.0
+    return replace(price_structure, price=implied_price, mid_price=implied_price * fee_ratio)
 
 
 class PositionManager:
@@ -1275,13 +1314,8 @@ class PositionManager:
         price = price_structure.price
 
         if pair.is_hyperliquid_vault() and dollar_delta < 0:
-            assert quantity_delta < 0, f"Hypercore sell quantity must be negative, got {quantity_delta}"
-            price = float(abs(Decimal(str(dollar_delta)) / quantity_delta))
-            price_structure = replace(
-                price_structure,
-                price=price,
-                mid_price=price,
-            )
+            price_structure = price_hypercore_reduction(price_structure, dollar_delta, quantity_delta)
+            price = price_structure.price
 
         # use trigger price as planned_price
         if trigger_price and pending:

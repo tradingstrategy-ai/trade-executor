@@ -540,6 +540,15 @@ represent the latest marked vault value. Full-close planning therefore uses
 the position's latest API-derived share price, while settlement derives the
 executed price from the USDC actually received.
 
+Partial sells (trims) are priced by `price_hypercore_reduction()` in
+`position_manager.py` at the implied share value of the marked reduction. It
+keeps the quote's own mid/price ratio, so a backtest quote that is net of vault
+fees leaves `planned_mid_price` gross: synchronous backtest execution
+recalculates the performance and exit fees from that mid, and a fee-net mid
+would charge them twice. Delayed redemptions settled through a pricing model
+recalculate from a fresh gross mid and were not affected. Live quotes have no
+fee haircut (price equals mid), so the ratio is 1.
+
 Optional residual withdrawals are disabled after the October rejection. Their
 broadcast/verification implementation is retained but unreachable from current
 planning. It does not resume or diagnose saved transactions.
