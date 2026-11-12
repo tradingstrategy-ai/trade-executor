@@ -3,7 +3,7 @@
 Compare strategies with their baselines quarter by quarter and year by year,
 alongside aggregate CAGR, Sharpe and continuous drawdown. A quarterly heatmap
 uses years on rows, Q1–Q4 and observed Year totals on columns. Each cell shows
-USD whole-wallet profit and percentage return on opening equity. Year totals
+percentage return on opening equity; dollar amounts are not displayed. Year totals
 cover observed support and are not annualised; percentage returns compound.
 
 ```python
@@ -13,7 +13,7 @@ table = calculate_calendar_profit(
     equity, initial_cash=100_000,
     start_at="2025-04-01", end_at="2026-10-21",
 )
-figure = visualise_quarterly_profit(table, title="Baseline: quarterly profit")
+figure = visualise_quarterly_profit(table, title="Baseline: quarterly returns")
 figure.write_image("quarterly-profit.png")
 table.to_csv("quarterly-profit.csv")
 ```
@@ -35,8 +35,11 @@ qualification by the caller. Empty curves produce an explicit no-data figure.
 
 Unobserved quarters are grey N/A cells. Asterisks mark calendar quarters and
 years clipped by the evaluation interval. A partial year is not a full-year
-result. Colours encode USD profit on a symmetric scale centred at zero; use a
-common `colour_limit` for compared wallets. Full-precision tables retain UTC
+result. Colours encode percentage return on a symmetric scale centred at zero;
+use a common `colour_limit` for compared wallets, expressed as a fractional
+return (0.10 means 10%). Cells, hover text and colour-bar ticks use percentages
+only. All chart text uses 16 px Arial. Long titles wrap above a separate UTC
+calendar subtitle; quarter labels and explanatory footnotes have their own space. Full-precision tables retain UTC
 support boundaries and observation counts. Inspect exported cell labels at
 comment width, and retain weak periods rather than selecting favourable ones.
 

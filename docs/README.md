@@ -2,7 +2,7 @@ Here are some internal development guides for trade-executor package.
 
 [See the full documentation on the website](https://tradingstrategy.ai/docs/index.html).
 
-For fixed-capital backtest heatmaps with USD profit, returns and observed
+For fixed-capital backtest heatmaps with percentage returns and observed
 year totals, see [quarterly and annual profit comparisons](quarterly-profit.md).
 
 For the shared mechanism for data, transactions, journaling and checkpoints,

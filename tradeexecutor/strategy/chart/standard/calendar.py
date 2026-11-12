@@ -10,10 +10,10 @@ from tradeexecutor.visual.equity_curve import calculate_equity_curve
 
 def quarterly_profit(
     input: ChartInput,
-    title: str = "Quarterly whole-wallet profit",
+    title: str = "Quarterly whole-wallet returns",
     valuation_interval: pd.Timedelta = pd.Timedelta(days=1),
 ) -> tuple[Figure, pd.DataFrame]:
-    """Return the quarterly profit heatmap and its full-precision evidence table.
+    """Return the percentage-only quarterly heatmap and its full-precision evidence table.
 
     Register as ``ChartKind.state_all_pairs``. Daily valuation grid by default;
     intraday backtests must pass their actual interval. Live fund flows require

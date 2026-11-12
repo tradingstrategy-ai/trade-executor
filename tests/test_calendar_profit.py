@@ -22,7 +22,10 @@ def test_first_day_cost_quarter_boundary_and_year_reconciliation():
     fig = visualise_quarterly_profit(table)
     assert list(fig.data[0].x) == ["Q1", "Q2", "Q3", "Q4", "Year"]
     assert "N/A" in fig.data[1].text
-    assert "$-132<br>-12.00%*" in fig.data[1].text
+    assert "-12.00%*" in fig.data[1].text
+    assert not any("$" in text for text in fig.data[1].text)
+    assert fig.data[0].z[1, 0] == pytest.approx(-0.12)
+    assert fig.data[0].colorbar.tickformat == "+.0%"
     assert fig.data[0].zmin == -fig.data[0].zmax
 
 
@@ -88,3 +91,33 @@ def test_registered_chart_uses_backtest_capital_and_rejects_live(monkeypatch):
     input.live = True
     with pytest.raises(ValueError, match="fixed-capital"):
         calendar.quarterly_profit(input)
+
+
+def test_percentage_scale_is_independent_of_wallet_capital():
+    equity = pd.Series([100.0, 110], index=pd.date_range("2026-01-01", periods=2))
+    first = calculate_calendar_profit(equity, 100, "2026-01-01", "2026-01-03")
+    second = calculate_calendar_profit(equity * 1000, 100_000, "2026-01-01", "2026-01-03")
+    a, b = visualise_quarterly_profit(first, colour_limit=0.2), visualise_quarterly_profit(second, colour_limit=0.2)
+    np.testing.assert_allclose(a.data[0].z, b.data[0].z, equal_nan=True)
+    assert list(a.data[1].text) == list(b.data[1].text)
+    assert a.data[0].zmax == 0.2
+    with pytest.raises(ValueError, match="plotted return"):
+        visualise_quarterly_profit(first, colour_limit=0.05)
+
+
+def test_text_uses_one_font_and_long_titles_keep_the_grid_space():
+    equity = pd.Series([100.0, 110], index=pd.date_range("2026-01-01", periods=2))
+    table = calculate_calendar_profit(equity, 100, "2026-01-01", "2026-01-03")
+    short = visualise_quarterly_profit(table)
+    long = visualise_quarterly_profit(table, title="A long strategy comparison title " * 8)
+    assert "<br>" in long.layout.title.text
+    assert long.layout.height - long.layout.margin.t - long.layout.margin.b == short.layout.height - short.layout.margin.t - short.layout.margin.b
+    fonts = [long.layout.font, long.layout.title.font, long.layout.xaxis.tickfont,
+             long.layout.yaxis.tickfont, long.layout.hoverlabel.font, long.data[1].textfont,
+             long.data[0].colorbar.tickfont, long.data[0].colorbar.title.font,
+             *[annotation.font for annotation in long.layout.annotations]]
+    assert all(font.size == 16 and font.family == "Arial" for font in fonts)
+    assert long.layout.xaxis.title.text is None
+    assert "2026-01-01 to 2026-01-03" in long.layout.annotations[0].text
+    assert long.layout.annotations[0].yshift > 0
+    assert all(annotation.yshift < 0 for annotation in long.layout.annotations[1:])

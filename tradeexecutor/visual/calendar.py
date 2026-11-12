@@ -5,6 +5,9 @@ costs. They are not closed-trade PnL, and must not be used on an equity curve
 containing external deposits or withdrawals without adjusting those flows first.
 """
 
+from html import escape
+from textwrap import wrap
+
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -83,63 +86,88 @@ def calculate_calendar_profit(
 
 def visualise_quarterly_profit(
     table: pd.DataFrame,
-    title: str = "Quarterly whole-wallet profit",
+    title: str = "Quarterly whole-wallet returns",
     colour_limit: float | None = None,
 ) -> go.Figure:
-    """Render quarterly USD profit, percentage returns and observed year totals.
+    """Render quarterly percentage returns and compounded observed year totals.
 
-    Colours encode USD profit on a symmetric zero-centred scale. Pass the same
-    ``colour_limit`` to comparable wallets for a shared colour scale. N/A cells
-    are grey; an asterisk identifies partial quarters/years. The full-precision
-    table from :func:`calculate_calendar_profit` is the accompanying evidence.
+    Cells, hover text and colours use returns only. ``colour_limit`` is a
+    fractional return (0.10 means 10%); share it across comparable wallets.
+    N/A cells are grey, and an asterisk identifies partial quarters/years.
+    USD accounting remains in the accompanying calculation table.
+
+    All chart text uses the same 16 px Arial font. Title, calendar subtitle,
+    quarter labels and footnotes occupy separate bands; long titles wrap and
+    increase the top margin without reducing the cell area.
     """
     periods = ["Q1", "Q2", "Q3", "Q4", "Year"]
+    font = dict(family="Arial", size=16, color="#222222")
+    title_lines = wrap(title, width=82) or [""]
+    title_text = "<br>".join(escape(line) for line in title_lines)
     years = sorted(table.index.get_level_values("year").unique())
+    top = 120 + 24 * (len(title_lines) - 1)
+    height = top + max(140, 64 * len(years)) + 100
+    fig = go.Figure()
+    fig.update_layout(
+        font=font, template="plotly_white", width=1100, height=height,
+        title=dict(text=f"<b>{title_text}</b>", font=font,
+                   x=80 / 1100, xanchor="left", y=1 - 20 / height, yanchor="top"),
+        margin=dict(t=top, b=100, l=80, r=150), plot_bgcolor="#e8e8e8",
+    )
     if not years:
-        fig = go.Figure()
-        fig.add_annotation(text="No observed valuations", showarrow=False)
-        fig.update_layout(title=title)
+        fig.add_annotation(text="No observed valuations", showarrow=False, font=font)
         return fig
     grid = pd.MultiIndex.from_product([years, periods], names=["year", "period"])
     ordered = table.reindex(grid)
-    z = ordered.profit_usd.to_numpy(dtype=float).reshape(len(years), 5)
+    z = ordered["return"].to_numpy(dtype=float).reshape(len(years), 5)
+    observed_max = float(np.nanmax(np.abs(z)))
+    limit = observed_max if colour_limit is None else float(colour_limit)
+    if not np.isfinite(limit) or limit < 0 or limit < observed_max:
+        raise ValueError("colour_limit must be finite and cover every plotted return")
+    limit = max(limit, 0.01)
     text = []
-    for year in years:
-        row = []
-        for period in periods:
-            entry = ordered.loc[(year, period)]
-            if pd.isna(entry.profit_usd):
-                row.append("N/A")
-            else:
-                marker = "*" if entry.partial else ""
-                row.append(f"${entry.profit_usd:+,.0f}<br>{entry['return']:+.2%}{marker}")
-        text.append(row)
-    limit = float(np.nanmax(np.abs(z))) if colour_limit is None else float(colour_limit)
-    if not np.isfinite(limit) or limit < 0 or limit < float(np.nanmax(np.abs(z))):
-        raise ValueError("colour_limit must be finite and cover every plotted profit")
-    limit = max(limit, 1.0)
-    # A separate text trace keeps N/A visible even where heatmap z is missing.
-    fig = go.Figure(go.Heatmap(
+    text_colours = []
+    for _, entry in ordered.iterrows():
+        value = entry["return"]
+        if pd.isna(value):
+            text.append("N/A")
+            text_colours.append(font["color"])
+        else:
+            marker = "*" if entry.partial else ""
+            text.append(f"{value:+.2%}{marker}")
+            text_colours.append("white" if abs(value) >= 0.65 * limit else font["color"])
+    fig.add_trace(go.Heatmap(
         z=z, x=periods, y=[str(y) for y in years], colorscale="RdYlGn",
         zmin=-limit, zmax=limit, zmid=0, xgap=3, ygap=3,
-        hovertemplate="%{y} %{x}: $%{z:,.2f}<extra></extra>",
-        colorbar=dict(title="Profit USD"), hoverongaps=False,
+        text=np.asarray(text).reshape(len(years), 5),
+        hovertemplate="%{y} %{x}: %{text}<extra></extra>",
+        colorbar=dict(title=dict(text="Return", font=font), tickfont=font,
+                      tickformat="+.0%", thickness=20, len=0.95),
+        hoverongaps=False,
     ))
+    # A separate text trace keeps N/A visible where the heatmap has no z value.
     fig.add_trace(go.Scatter(
         x=periods * len(years), y=[str(y) for y in years for _ in periods],
-        mode="text", text=[cell for row in text for cell in row],
-        textfont=dict(size=16, color="black"), hoverinfo="skip", showlegend=False,
+        mode="text", text=text,
+        textfont=dict(family=font["family"], size=font["size"], color=text_colours),
+        hoverinfo="skip", showlegend=False,
     ))
+    start, end = pd.Timestamp(table.start_at.min()), pd.Timestamp(table.end_at.max())
+    date_format = "%Y-%m-%d" if start == start.normalize() and end == end.normalize() else "%Y-%m-%d %H:%M:%S"
+    calendar = f"UTC {start.strftime(date_format)} to {end.strftime(date_format)} (end exclusive)"
     fig.update_layout(
-        title=dict(text=title, font=dict(size=21)), template="plotly_white",
-        plot_bgcolor="#e8e8e8", width=1100, height=max(350, 180 + 90 * len(years)),
-        margin=dict(t=90, b=90, l=80, r=130),
-        xaxis=dict(title="Calendar quarter (UTC); Year = observed total", side="top"),
-        yaxis=dict(title="Year", autorange="reversed", type="category"),
-        annotations=[dict(
-            text="USD profit includes unrealised PnL and recorded fees · % uses opening equity · * partial period · N/A unobserved",
-            x=0, y=-0.24, xref="paper", yref="paper", showarrow=False,
-            xanchor="left", font=dict(size=12),
-        )],
+        xaxis=dict(side="top", tickfont=font, fixedrange=True),
+        yaxis=dict(autorange="reversed", type="category", tickfont=font, fixedrange=True),
+        hoverlabel=dict(font=font),
+        annotations=[
+            dict(text=calendar, x=0, y=1, yshift=42, xref="paper", yref="paper",
+                 xanchor="left", yanchor="bottom", showarrow=False, font=font),
+            dict(text="* partial period · N/A unobserved · Year = compounded observed return",
+                 x=0, y=0, yshift=-24, xref="paper", yref="paper",
+                 xanchor="left", yanchor="top", showarrow=False, font=font),
+            dict(text="Includes unrealised gains and recorded fees; returns use period-opening equity.",
+                 x=0, y=0, yshift=-50, xref="paper", yref="paper",
+                 xanchor="left", yanchor="top", showarrow=False, font=font),
+        ],
     )
     return fig
