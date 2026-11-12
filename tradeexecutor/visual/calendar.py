@@ -99,6 +99,8 @@ def visualise_quarterly_profit(
     All chart text uses the same 16 px Arial font. Title, calendar subtitle,
     quarter labels and footnotes occupy separate bands; long titles wrap and
     increase the top margin without reducing the cell area.
+    Each figure contains one full-width heatmap. Display comparisons vertically,
+    one figure per row; never tile heatmaps into multiple display columns.
     """
     periods = ["Q1", "Q2", "Q3", "Q4", "Year"]
     font = dict(family="Arial", size=16, color="#222222")
@@ -110,6 +112,7 @@ def visualise_quarterly_profit(
     fig = go.Figure()
     fig.update_layout(
         font=font, template="plotly_white", width=1100, height=height,
+        grid=dict(rows=1, columns=1),
         title=dict(text=f"<b>{title_text}</b>", font=font,
                    x=80 / 1100, xanchor="left", y=1 - 20 / height, yanchor="top"),
         margin=dict(t=top, b=100, l=80, r=150), plot_bgcolor="#e8e8e8",

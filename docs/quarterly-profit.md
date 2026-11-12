@@ -43,6 +43,13 @@ calendar subtitle; quarter labels and explanatory footnotes have their own space
 support boundaries and observation counts. Inspect exported cell labels at
 comment width, and retain weak periods rather than selecting favourable ones.
 
+Always display **one heatmap per full-width row**. Stack strategy comparisons
+vertically, including notebook outputs, PR comments, reports and review contact
+sheets. Never place heatmaps side by side, inside multi-column image grids or
+in table cells. The renderer fixes its own figure grid to one row and one
+column; exporters must retain its native width. Q1–Q4 and Year remain the data
+columns within each individual heatmap.
+
 The stock `tradeexecutor.strategy.chart.standard.calendar.quarterly_profit`
 chart registers as `ChartKind.state_all_pairs` and returns `(figure, table)`.
 It uses the backtest state's initial cash and the chart input's evaluation
