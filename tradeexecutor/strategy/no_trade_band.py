@@ -72,8 +72,11 @@ def get_no_trade_band_pair_key(pair: TradingPairIdentifier) -> NoTradeBandPairKe
 class NoTradeBandRule:
     """How wide the no-trade band is, and which directions it applies to.
 
-    The band width in dollars is ``max(pct * basis, min_usd)``. An adjustment
-    whose absolute size is strictly below the band is suppressed.
+    The band width in dollars is ``max(pct * basis, min_usd)``, or zero when
+    ``pct`` is zero. An adjustment whose absolute size is strictly below the
+    band is suppressed, apart from the cases
+    :py:meth:`~tradeexecutor.strategy.alpha_model.AlphaModel.apply_no_trade_band`
+    always lets through.
     """
 
     #: Band width as a fraction of the basis, e.g. ``0.15`` for 15%.
@@ -100,17 +103,12 @@ class NoTradeBandRule:
         assert isinstance(self.basis, NoTradeBandBasis), f"basis must be NoTradeBandBasis, got {self.basis!r}"
         for name in ("pct", "min_usd"):
             value = getattr(self, name)
-            assert isinstance(value, (int, float)) and not isinstance(value, bool), f"{name} must be a number, got {value!r}"
             assert math.isfinite(value) and value >= 0, f"{name} must be finite and not negative, got {value!r}"
 
     @staticmethod
     def disabled() -> "NoTradeBandRule":
         """A rule that never suppresses anything (``pct=0``)."""
         return NoTradeBandRule(pct=0.0)
-
-    def is_disabled(self) -> bool:
-        """Does this rule never suppress anything."""
-        return self.pct == 0 or not (self.apply_to_increases or self.apply_to_reductions)
 
     def applies_to(self, adjust_usd: USDollarAmount) -> bool:
         """Does the rule apply to an adjustment in this direction."""
@@ -135,15 +133,13 @@ class NoTradeBandRule:
             ``portfolio_equity`` basis only.
         """
         if self.pct == 0:
+            # A zero percentage disables the rule, floor included.
             return 0.0
-        match self.basis:
-            case NoTradeBandBasis.portfolio_equity:
-                assert portfolio_equity is not None, "A portfolio_equity basis rule needs portfolio_equity"
-                basis_usd = portfolio_equity
-            case NoTradeBandBasis.position_target:
-                basis_usd = position_target
-            case _:
-                raise NotImplementedError(f"Unsupported basis {self.basis}")
+        if self.basis == NoTradeBandBasis.portfolio_equity:
+            assert portfolio_equity is not None, "A portfolio_equity basis rule needs portfolio_equity"
+            basis_usd = portfolio_equity
+        else:
+            basis_usd = position_target
         return max(self.pct * basis_usd, self.min_usd)
 
 

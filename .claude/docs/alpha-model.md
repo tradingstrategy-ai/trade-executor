@@ -196,7 +196,9 @@ alpha_model.apply_no_trade_band(policy)
 What it never suppresses: new entries (`old_value == 0`), carried-forward
 signals, zero or already-ignored adjustments, and positions whose weight is
 below `close_position_weight_epsilon`, which trade generation closes whatever
-the sign of the adjustment. Leveraged and flipping signals are rejected.
+the sign of the adjustment. A leveraged or flipping signal that would otherwise
+be evaluated fails an assertion; the band supports long-only spot and vault
+positions.
 
 A suppressed signal has its adjustment zeroed and ignored, keeps its
 `position_target`, and gets the `inside_no_trade_band` flag plus an
@@ -206,11 +208,16 @@ executed size: a later cash cap can still shrink a surviving buy below it, and a
 suppressed sell funds nothing.
 
 Behaviour to expect from a target-relative band:
-- a trade moves the holding to its target, so the band does not oscillate;
-- it follows target noise, so targets that move with TVL or with the number of
-  members trade more often than under a fixed dollar band;
-- a rule that applies to top-ups but not reductions keeps holdings between
-  `(1 − pct)` and 1.0 of target.
+- a trade that passes the band moves the holding to its target, unless a later
+  cash cap or threshold shrinks it, so the band itself does not make a position
+  trade back and forth;
+- the trigger moves with the target: if the target jumps by more than the band
+  (for example when a TVL cap or the number of members changes), the position
+  trades even though its holding did not change. A smaller band means more such
+  trades, so measure turnover when choosing a width;
+- a rule with `apply_to_reductions=False` trims any excess at once but waits for
+  shortfalls to reach the band, so holdings sit between about `(1 − pct)` and
+  1.0 of target rather than around it.
 
 ## Trade generation
 

@@ -2330,9 +2330,10 @@ class AlphaModel:
                 f"apply_no_trade_band() supports only unleveraged, non-flipping signals: {signal}"
 
             rule, level = policy.resolve(signal.pair)
-            if rule.is_disabled() or not rule.applies_to(signal.position_adjust_usd):
+            if not rule.applies_to(signal.position_adjust_usd):
                 continue
 
+            # A disabled rule has a zero band, which nothing is strictly below.
             band_usd = rule.calculate_band_usd(signal.position_target, portfolio_equity)
             if abs(signal.position_adjust_usd) >= band_usd:
                 continue

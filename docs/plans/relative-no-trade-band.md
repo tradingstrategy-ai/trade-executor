@@ -224,8 +224,9 @@ it waits until drift widens it.
 
 ### How a target-relative band behaves
 
-- **It does not oscillate.** A trade moves the holding to its target, after
-  which the gap is zero.
+- **It does not oscillate.** A trade that passes the band moves the holding to
+  its target, unless a later cash cap or threshold shrinks it, after which the
+  gap is zero or small.
 - **It follows target noise.** The band is a share of the target, so a target
   that moves also moves the trade trigger. Two sources matter here. Targets
   capped by pool size move with daily TVL. A ceiling of the form
@@ -235,9 +236,10 @@ it waits until drift widens it.
   research variant.
 - **One-sided rules bias the holding.** If reductions bypass the band and
   top-ups do not, yield drift above target is trimmed almost at once while
-  shortfalls wait for the full band. Holdings then sit between
-  `(1 − pct)` and 1.0 of target, about 0.92 on average at 15%. That is a
-  smaller version of today's shortfall (81% of target).
+  shortfalls wait for the full band. Holdings then sit between about
+  `(1 − pct)` and 1.0 of target. If shortfalls build up evenly, that averages
+  roughly 0.92 at 15%, a rough estimate rather than a measurement; today's
+  shortfall is 81% of target.
 
 ### Interaction with the phase-aware model
 
@@ -297,8 +299,9 @@ NoTradeBandPolicy(
 
 "Equivalent" here means the same trades and the same economic result for the
 same inputs. It does not mean identical diagnostics. Known differences:
-- **Full closes.** The strategy guard could suppress a full-close intent with a
-  small positive target; the engine method never does. This is a deliberate
+- **Closes.** The strategy guard could suppress the adjustment of a position
+  whose weight is below `close_position_weight_epsilon`, in either direction,
+  which blocked its close; the engine method never does. This is a deliberate
   correction.
 - **Zero adjustments.** The strategy guard marks them ignored and tags them
   with `stability_no_trade_band_usd`; the engine method leaves them alone.

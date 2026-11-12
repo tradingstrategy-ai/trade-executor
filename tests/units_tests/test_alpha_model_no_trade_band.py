@@ -116,12 +116,12 @@ def test_no_trade_band_policy_rules():
     assert equity_rule.calculate_band_usd(6_000, 120_000) == pytest.approx(1_800)
     with pytest.raises(AssertionError):
         equity_rule.calculate_band_usd(6_000, None)
-    floor_only = NoTradeBandRule(pct=0.0, min_usd=500.0)
-    assert floor_only.is_disabled() and floor_only.calculate_band_usd(6_000, None) == 0
-    assert NoTradeBandRule(pct=0.1, apply_to_increases=False, apply_to_reductions=False).is_disabled()
+    assert NoTradeBandRule(pct=0.0, min_usd=500.0).calculate_band_usd(6_000, None) == 0
+    one_sided = NoTradeBandRule(pct=0.1, apply_to_reductions=False)
+    assert one_sided.applies_to(100.0) and not one_sided.applies_to(-100.0) and not one_sided.applies_to(0.0)
 
     # 4. Invalid rules and policies are rejected.
-    for bad in (dict(pct=-0.1), dict(pct=float("nan")), dict(pct=float("inf")), dict(pct=0.1, min_usd=-1.0), dict(pct=True)):
+    for bad in (dict(pct=-0.1), dict(pct=float("nan")), dict(pct=float("inf")), dict(pct=0.1, min_usd=-1.0)):
         with pytest.raises(AssertionError):
             NoTradeBandRule(**bad)
     with pytest.raises(AssertionError):
