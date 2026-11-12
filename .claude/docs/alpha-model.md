@@ -172,7 +172,8 @@ The rules live in
 [tradeexecutor/strategy/no_trade_band.py](../../tradeexecutor/strategy/no_trade_band.py).
 A `NoTradeBandRule` sets the band as `max(pct × basis, min_usd)`, where the
 basis is either the signal's own `position_target` (the default) or
-whole-portfolio equity. It can apply to top-ups, reductions or both. A
+whole-portfolio equity. A `pct` of zero disables the rule, floor included: a
+fixed-dollar band with no percentage is not available here. It can apply to top-ups, reductions or both. A
 `NoTradeBandPolicy` holds rules at three levels, and the most specific wins:
 
 1. **vault:** `pairs`, keyed by `(chain_id, pool address)`, any address case;
@@ -217,7 +218,11 @@ Behaviour to expect from a target-relative band:
   trades, so measure turnover when choosing a width;
 - a rule with `apply_to_reductions=False` trims any excess at once but waits for
   shortfalls to reach the band, so holdings sit between about `(1 − pct)` and
-  1.0 of target rather than around it.
+  1.0 of target rather than around it;
+- a rule that does hold back reductions can keep a holding above a target that
+  a concentration, pool-size or strategy ceiling has just lowered, by up to
+  the band. If those ceilings must be enforced promptly, set
+  `apply_to_reductions=False` for the positions they govern.
 
 ## Trade generation
 

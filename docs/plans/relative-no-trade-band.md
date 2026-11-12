@@ -563,3 +563,15 @@ change. Two findings bear on how the band is used:
 - no Hyperliquid reduction fell inside a lock-up, assuming every top-up
   restarts it, but a 10% band produced 190 reductions within an hour after
   one ended, against 18 for the legacy band.
+
+### Code review
+
+Codex `gpt-6.1-sol` reviewed the implemented branch read-only on 12 November
+2026. Verdict: ready with listed changes; no correctness regression found, and
+the three-level API judged justified. Changes made:
+- the serialisation test now does a real JSON encode and decode, not a
+  dictionary round trip;
+- the alpha-model guide states that a zero percentage disables a rule, floor
+  included;
+- the guide warns that a rule holding back reductions can keep a holding above
+  a just-lowered ceiling, and names `apply_to_reductions=False` as the remedy.

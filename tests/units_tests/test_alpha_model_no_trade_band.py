@@ -198,10 +198,12 @@ def test_apply_no_trade_band_suppression():
         "level": "default",
         "suppressed_adjust_usd": pytest.approx(800),
     }
-    restored = AlphaModel.from_dict(alpha.to_dict())
-    record = restored.signals[1].other_data["no_trade_band"]
-    assert record["basis"] == "position_target" and record["level"] == "default"
-    assert TradingPairSignalFlags.inside_no_trade_band in restored.signals[1].flags
+    # Signals are stored in state as JSON, so check a real encode/decode round trip.
+    restored = AlphaModel.from_json(alpha.to_json()).signals[1]
+    assert restored.other_data["no_trade_band"] == signals[1].other_data["no_trade_band"]
+    assert TradingPairSignalFlags.inside_no_trade_band in restored.flags
+    assert restored.position_adjust_usd == 0 and restored.position_adjust_ignored
+    assert restored.position_target == 6_000
 
     # 5. Calling the method again changes nothing.
     assert alpha.apply_no_trade_band(policy) == []
