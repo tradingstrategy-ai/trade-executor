@@ -667,7 +667,8 @@ def test_no_trade_band_releases_park_and_can_cancel_cycle():
     3. The phase-aware step closes both parks and parks nothing.
     4. With the top-ups gone, the $5 adjustment is below the $50 gate and the cycle is cancelled.
     """
-    # 1. Two parked vaults with small top-ups, and one tiny adjustment elsewhere.
+    # 1. Vault 101 (window closed) and vault 102 (window open) each hold a position and an open park;
+    #    both get a $400 top-up towards a $5,000 target. Vault 303 has a $5 adjustment.
     other_data = OtherData()
     append_queue_event(other_data, QueueVaultEvent(EVENT_PARK, 101, 400.0, 1))
     append_queue_event(other_data, QueueVaultEvent(EVENT_PARK, 102, 400.0, 1))

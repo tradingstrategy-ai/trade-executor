@@ -6,9 +6,10 @@ Branch `relative-no-trade-band`, worktree
 `gpt-6.1-sol` and by a fresh Claude Opus 5.5 agent on 12 November 2026; see
 [Independent reviews](#independent-reviews).
 
-**Status, 12 November 2026:** steps 1–3 are implemented and their tests pass.
-For step 4 the two strategy test copies exist but have not been run; see
-[Implementation status](#implementation-status).
+**Status, 12 November 2026:** steps 1–4 are done. The engine code, tests and
+documentation are implemented, and the shadow comparison and migrated run on a
+real backtest passed; see [Implementation status](#implementation-status). The
+engine pull request is not opened yet.
 
 ## Goal
 
@@ -426,8 +427,10 @@ running before the band, and the strategy passes the same
 4. **Basis choice.** Only two bases are proposed. A basis of the current
    holding, or the larger of holding and target, is deferred until a research
    result asks for it.
-5. **The relative band alone is a partial fix.** It addresses about a quarter
-   of the extra idle cash in NB07; the 12-slot limit accounts for more.
+5. **The relative band alone is a partial fix.** The band was expected to
+   account for a minority of NB07's idle cash. The backtest measured it at
+   about 2 of 22.5 points of equity; see
+   [Implementation status](#implementation-status).
 
 ## Steps
 
@@ -533,5 +536,30 @@ guard functions on the same 20 × 400 random signals with a stub pricing model:
 - the engine copy differed from the parent in 93 cases, all below the close
   threshold, and the shadow record listed exactly those 93 as mismatches.
 
-Not done: the shadow and migrated backtests (validation steps 3 and 4), which
-need vault-notebooks pointed at this worktree and the deadline runner.
+### Backtest validation (validation steps 3 and 4)
+
+Run on 12 November 2026 as vault-notebooks NB08
+(`notebooks/vault-of-vaults-hft/08-backtest-relative-no-trade-band.ipynb`,
+branch `vault-of-vaults-hft`), UTC [2025-04-01, 2026-10-21), on this branch at
+`190dc4b27` put first on `PYTHONPATH`, with the shared checkout's
+trading-strategy `c56f379bc` and eth-defi `9b7aa11ef`:
+- the unmodified NB07 module on this engine reproduced the saved NB07 run
+  exactly (maximum difference $0.00 over 568 daily equity values);
+- **shadow comparison:** 568 cycles compared, 5,352 adjustments suppressed by
+  the strategy's band and the same 5,352 by the engine band, no disagreements;
+- **migrated run:** the engine band with the legacy policy equalled the
+  unmodified module on every day.
+
+The close-threshold difference did not occur in this backtest. The eth-defi
+revision question did not arise, because the run used the shared checkout's
+eth-defi, not this worktree's pinned submodule.
+
+The same notebook ran five target-relative arms. They are research results,
+recorded in vault-notebooks pull request 17, not acceptance evidence for this
+change. Two findings bear on how the band is used:
+- a rule that also holds back reductions lets holdings drift above a
+  strategy's own ceilings by up to the band (HFT holdings reached 11.6% above
+  their budget), so whether reductions bypass the band is a risk-limit choice;
+- no Hyperliquid reduction fell inside a lock-up, assuming every top-up
+  restarts it, but a 10% band produced 190 reductions within an hour after
+  one ended, against 18 for the legacy band.

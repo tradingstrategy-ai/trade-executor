@@ -142,17 +142,17 @@ def test_apply_no_trade_band_suppression():
     """
     pairs = {i: _make_pair(i) for i in range(1, 12)}
     signals = {
-        # 1. inside the band: top-up of 800 < 900 and reduction of 899 < 900
+        # Inside the band: top-up of 800 < 900 and reduction of 899 < 900
         1: _make_signal(pairs[1], old_value=5_200, target=6_000),
         2: _make_signal(pairs[2], old_value=6_899, target=6_000),
-        # 2. at the band (900 is not < 900), above it, new entry, carried forward, closes in both directions
+        # At the band (900 is not < 900), above it, new entry, carried forward, closes in both directions
         3: _make_signal(pairs[3], old_value=5_100, target=6_000),
         4: _make_signal(pairs[4], old_value=4_000, target=6_000),
         5: _make_signal(pairs[5], old_value=0, target=100),
         6: _make_signal(pairs[6], old_value=6_000, target=6_000, carry_forward=True),
         7: _make_signal(pairs[7], old_value=110, target=100, weight=0.001),
         8: _make_signal(pairs[8], old_value=90, target=100, weight=0.001),
-        # 3. zero adjustment, already ignored, reduction under a rule for increases only
+        # Zero adjustment, already ignored, reduction under a rule for increases only
         9: _make_signal(pairs[9], old_value=6_000, target=6_000),
         10: _make_signal(pairs[10], old_value=5_500, target=6_000),
         11: _make_signal(pairs[11], old_value=6_500, target=6_000),
