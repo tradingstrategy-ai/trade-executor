@@ -63,6 +63,8 @@ VAULT_TEST_RESULTS = {
     "redemption_zero_payout",
     "redemption_not_yet_matured",
     "redemption_capacity_limited",
+    "deposit_capacity_limited",
+    "deposit_unavailable",
     "redemption_window_closed",
     "redemption_paused",
     "below_minimum",

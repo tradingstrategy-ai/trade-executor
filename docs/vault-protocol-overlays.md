@@ -140,3 +140,14 @@ purchase dates through backtest pricing, precedence over optimistic provider and
 window assumptions, direct live/simulation pricing, exact venue/address scope,
 retained history and independently permitted redemptions. No new historical
 backtest result is implied by this correction.
+
+### IPOR simulation freshness
+
+The reviewed Ethereum HYPE Basis vault `0x87088ffff874a4bcc6d13bbc8184e3639947ecde`
+had no share lock at Ethereum block 26402309, tested on 14 November 2026,
+but its external-state observations expire
+after two hours. Its IPOR overlay populates the existing
+`simulation_max_holding_seconds` field with 1,800 seconds, so the artificial
+wait does not alone cause staleness. The adapter still checks actual freshness.
+Other IPOR identities retain their defaults; the second HYPE Basis deployment
+was already stale before a test deposit and needs its authorised updater.
