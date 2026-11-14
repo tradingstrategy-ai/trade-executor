@@ -15,6 +15,7 @@ from eth_defi.erc_4626.vault import ERC4626Vault
 from eth_defi.vault.deposit_redeem import VaultFlowUnavailable
 from pytest import MonkeyPatch
 from tradingstrategy.chain import ChainId
+from tradingstrategy.vault import VaultMetadata
 from typer.main import get_command
 
 from tradeexecutor.cli.main import app
@@ -26,8 +27,9 @@ from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifie
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.sync_model import SyncModel
 from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
-from tradeexecutor.strategy.vault_protocol import get_vault_test_trade_time_skip_seconds
+from tradeexecutor.strategy.vault_protocol import enrich_vault_pair, get_vault_test_trade_time_skip_seconds
 from tradeexecutor.testing.erc4626_manual import STRATEGY_FILE, load_universe
+from tradeexecutor.testing.vault_protocol_universe import create_vault_protocol_universe
 
 
 def test_vault_simulation_waits_for_custody_unlock(monkeypatch: MonkeyPatch) -> None:
@@ -42,9 +44,8 @@ def test_vault_simulation_waits_for_custody_unlock(monkeypatch: MonkeyPatch) -> 
     unlock = datetime.datetime(2026, 11, 20)
     web3 = MagicMock()
     web3.eth.get_block.return_value = {"timestamp": start}
-    pair = MagicMock(spec=TradingPairIdentifier)
-    pair.is_vault.return_value = True
-    pair.get_vault_features.return_value = {ERC4626Feature.atoma_like}
+    pair = next(p for p in create_vault_protocol_universe().iterate_pairs() if p.get_vault_metadata().vault_name == "Atoma")
+    assert pair.get_vault_metadata().vault_protocol_rules.redemption_delay_is_deposit_lock
     pricing = MagicMock(spec=VaultPricing)
     pricing.get_owner_address.return_value = "0x" + "11" * 20
     manager = pricing.get_vault.return_value.get_deposit_manager.return_value
@@ -59,20 +60,31 @@ def test_vault_simulation_waits_for_custody_unlock(monkeypatch: MonkeyPatch) -> 
     mine.assert_called_once_with(web3, timestamp=calendar.timegm(unlock.utctimetuple()) + 1)
     manager.get_redemption_delay_over.assert_called_once_with(pricing.get_owner_address.return_value)
     mine.reset_mock()
+    manager.get_redemption_delay_over.reset_mock()
     testtrade._advance_test_trade_time(web3, pricing, pair, 0)
     mine.assert_called_once_with(web3, timestamp=start)
+    manager.get_redemption_delay_over.assert_not_called()
     generic = MagicMock(spec=GenericPricing)
     generic.route.return_value = pricing
     mine.reset_mock()
     testtrade._advance_test_trade_time(web3, generic, pair, 86400)
     mine.assert_called_once_with(web3, timestamp=calendar.timegm(unlock.utctimetuple()) + 1)
     generic.route.assert_called_once_with(pair)
-    for feature in (ERC4626Feature.upshift_like, ERC4626Feature.autopool_like):
-        pair.get_vault_features.return_value = {feature}
-        mine.reset_mock()
-        testtrade._advance_test_trade_time(web3, pricing, pair, 1800)
-        mine.assert_called_once_with(web3, timestamp=start + 1800)
-    pair.get_vault_features.return_value = {ERC4626Feature.atoma_like}
+    # A loaded capability controls the query, even when the protocol stays Atoma.
+    metadata = pair.get_vault_metadata()
+    pair.other_data["token_metadata"] = dataclasses.replace(metadata, vault_protocol_rules=dataclasses.replace(
+        metadata.vault_protocol_rules, redemption_delay_is_deposit_lock=False))
+    manager.get_redemption_delay_over.reset_mock()
+    mine.reset_mock()
+    testtrade._advance_test_trade_time(web3, pricing, pair, 1800)
+    mine.assert_called_once_with(web3, timestamp=start + 1800)
+    manager.get_redemption_delay_over.assert_not_called()
+    # A restored pair uses the populated snapshot, with no protocol identification.
+    pair.other_data.pop("token_metadata")
+    pair.other_data.pop("vault_features", None)
+    mine.reset_mock()
+    testtrade._advance_test_trade_time(web3, pricing, pair, 1800)
+    mine.assert_called_once_with(web3, timestamp=calendar.timegm(unlock.utctimetuple()) + 1)
     manager.get_redemption_delay_over.return_value = None
     mine.reset_mock()
     testtrade._advance_test_trade_time(web3, pricing, pair, 1800)
@@ -97,9 +109,16 @@ def test_vault_test_trade_protocol_time_skip(feature: ERC4626Feature | None, exp
     # 1. Construct a vault pair with the selected protocol feature.
     base = AssetIdentifier(1, "0x" + "11" * 20, "SHARE", 18)
     quote = AssetIdentifier(1, "0x" + "22" * 20, "USDC", 6)
+    metadata = VaultMetadata(vault_name="Test", protocol_name="test", protocol_slug="test",
+        features=[feature] if feature else [])
     pair = TradingPairIdentifier(base, quote, base.address, base.address, fee=0,
-        kind=TradingPairKind.vault, other_data={"vault_features": {feature} if feature else set()})
+        kind=TradingPairKind.vault, other_data={"token_metadata": metadata})
+    enrich_vault_pair(pair)
+    assert pair.get_vault_metadata().vault_protocol_rules.simulation_max_holding_seconds == (1800 if feature == ERC4626Feature.autopool_like else None)
     # 2. Resolve the default test wait through the protocol dispatcher.
+    assert get_vault_test_trade_time_skip_seconds(pair, 86400) == expected
+    # Prove the snapshot retains the limit without metadata or protocol flags.
+    pair.other_data.pop("token_metadata")
     assert get_vault_test_trade_time_skip_seconds(pair, 86400) == expected
     # 3. Preserve shorter explicit waits, including immediate-redemption tests.
     assert get_vault_test_trade_time_skip_seconds(pair, 600) == 600

@@ -60,7 +60,15 @@ Follow the existing route:
 
 `vault factory → protocol manager → generic routing → persisted trade/ticket → settlement resolver`
 
-Atoma fork test trades reuse `get_redemption_delay_over(owner)` to wait
+Keep protocol-specific conditions out of shared framework code. Generalise vault
+exceptions as capabilities or metadata fields, populate them through protocol
+overlays during pair enrichment, and let shared consumers read those fields.
+Keep contract-specific reads and transactions in the existing eth-defi managers.
+Do not add protocol-name, feature-flag or address branches to generic CLI,
+pricing, routing or accounting code; see [protocol overlays](../../docs/vault-protocol-overlays.md).
+
+Atoma's overlay populates `redemption_delay_is_deposit_lock`. Fork test trades
+use that field to query `get_redemption_delay_over(owner)` and wait
 out a known custody-specific deposit lock before creating the withdrawal. This
 is separate from settling a submitted async ticket. Accountable's Anvil driver
 fulfils an exact request by impersonating the configured strategy, using only

@@ -21,6 +21,21 @@ working on that area:
 | [Backtest universe preservation](docs/backtest-universe-preservation.md) | **Read before changing or reviewing backtest selection, admission, timing or notebook conversion**: prevent live-readiness requirements from silently narrowing historical coverage |
 | `docs/strategy-parameters.md` | **Read before writing or editing a strategy module**: the one module-level variable, which `Parameters` the engine reads, and what must not go in `Parameters` (deployment output, protocol constants, test knobs, environment variables) |
 
+## Vault protocol special cases
+
+Avoid protocol-specific checks in shared framework code. Generalise vault-specific
+behaviour into capabilities or data fields that pricing, routing, accounting,
+simulation and CLI consumers can use without checking protocol names, feature
+flags or vault addresses.
+
+Put manual data corrections and protocol defaults in
+`tradeexecutor/strategy/vault_protocol/<protocol>.py`. Populate the existing
+`VaultMetadata.vault_protocol_rules` fields during pair enrichment and preserve
+them through the existing pair snapshot. Keep protocol selection in the overlay
+dispatcher and contract-specific reads and calls in the eth-defi adapter.
+Dynamic owner-specific values still come from that adapter; do not hardcode
+them into static metadata. See [Vault protocol overlays](docs/vault-protocol-overlays.md).
+
 ## State persistence
 
 Use the existing executor state mechanism as the main mechanism for all data,

@@ -8,7 +8,6 @@ from typing import Callable
 from web3 import Web3
 
 from eth_defi.compat import native_datetime_utc_now
-from eth_defi.erc_4626.core import ERC4626Feature
 from eth_defi.erc_4626.vault_protocol.gains.testing import force_ostium_v15_settlement
 from eth_defi.erc_4626.vault_protocol.gains.vault import OstiumVault, OstiumVersion
 from eth_defi.provider.anvil import fund_erc20_on_anvil, is_anvil, mine
@@ -40,7 +39,7 @@ from tradeexecutor.statistics.core import update_statistics
 from tradeexecutor.statistics.statistics_table import serialise_long_short_stats_as_json_table
 from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.strategy.sync_model import SyncModel
-from tradeexecutor.strategy.vault_protocol import get_vault_test_trade_time_skip_seconds
+from tradeexecutor.strategy.vault_protocol import get_vault_test_trade_time_skip_seconds, resolve_vault_protocol_rules
 from tradeexecutor.utils.accuracy import sum_decimal
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.execution_model import ExecutionModel
@@ -54,12 +53,12 @@ logger = logging.getLogger(__name__)
 
 
 def _advance_test_trade_time(web3: Web3, pricing_model: PricingModel, pair: TradingPairIdentifier, seconds: int) -> None:
-    """Wait out Atoma's known deposit lock on its disposable fork.
+    """Advance a disposable fork using loaded holding and deposit-lock rules.
 
-    Reuse Atoma's custody-specific unlock time instead of treating a locked
-    redemption as missing liquidity. Other managers may return a settlement
-    schedule, so their existing holding intervals remain unchanged. Live
-    execution never advances time. Explicit zero waits are preserved.
+    Only a loaded deposit-lock capability permits querying the custody-specific
+    unlock time: other managers may return a settlement schedule. Protocol
+    overlays populate that capability during pair translation. Live execution
+    never advances time. Explicit zero waits are preserved.
 
     :param web3: Anvil connection on the asset's custody chain.
     :param pricing_model: Existing pricing route, including its custody resolver.
@@ -68,7 +67,8 @@ def _advance_test_trade_time(web3: Web3, pricing_model: PricingModel, pair: Trad
     """
     assert is_anvil(web3), "Test-trade time advancement requires Anvil"
     target = web3.eth.get_block("latest")["timestamp"] + seconds
-    if seconds > 0 and pair.is_vault() and ERC4626Feature.atoma_like in (pair.get_vault_features() or set()):
+    rules = (pair.get_vault_protocol_rules() or resolve_vault_protocol_rules(pair)) if pair.is_vault() else None
+    if seconds > 0 and rules is not None and rules.redemption_delay_is_deposit_lock:
         pricing = pricing_model.route(pair) if isinstance(pricing_model, GenericPricing) else pricing_model
         if isinstance(pricing, VaultPricing):
             owner = pricing.get_owner_address(pair)

@@ -28,7 +28,7 @@ OSTIUM_BACKTEST_SETTLEMENT_HOUR = 18
 
 
 def get_vault_test_trade_time_skip_seconds(pair: TradingPairIdentifier, requested_seconds: int) -> int:
-    """Cap Autopool's Anvil holding interval before its price feeds expire.
+    """Apply the loaded vault holding-interval limit to a disposable-fork test.
 
     This controls the artificial wait between test entry and exit, not the
     strategy cycle or settlement rules. Preserve explicit shorter waits,
@@ -39,8 +39,10 @@ def get_vault_test_trade_time_skip_seconds(pair: TradingPairIdentifier, requeste
     :param requested_seconds: Existing Anvil time advance requested by the caller.
     :return: Protocol-capped time advance, in seconds.
     """
-    if pair.is_vault() and ERC4626Feature.autopool_like in (pair.get_vault_features() or set()):
-        return min(requested_seconds, autopool.SIMULATION_CYCLE_SECONDS)
+    if pair.is_vault():
+        rules = pair.get_vault_protocol_rules() or resolve_vault_protocol_rules(pair)
+        if rules.simulation_max_holding_seconds is not None:
+            return min(requested_seconds, rules.simulation_max_holding_seconds)
     return requested_seconds
 
 
@@ -107,6 +109,12 @@ def resolve_vault_protocol_rules(pair: TradingPairIdentifier) -> VaultProtocolRu
         deposit_windowed=ERC4626Feature.d2_like in features,
         redemption_windowed=ERC4626Feature.d2_like in features,
         provenance=pair.get_vault_protocol() or "generic_erc4626",
+        redemption_delay_is_deposit_lock=(
+            atoma.REDEMPTION_DELAY_IS_DEPOSIT_LOCK if ERC4626Feature.atoma_like in features else False
+        ),
+        simulation_max_holding_seconds=(
+            autopool.SIMULATION_CYCLE_SECONDS if ERC4626Feature.autopool_like in features else None
+        ),
     )
 
 

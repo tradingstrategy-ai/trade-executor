@@ -15,6 +15,11 @@ STANDARD_FEE_VAULTS = {
 #: so a redemption request does not immediately release cash for reinvestment.
 REDEMPTION_DELAY_SECONDS = 7 * 86400
 
+#: The manager reports when the custody owner's deposited shares unlock,
+#: separately from the operator settlement of a submitted withdrawal request.
+#: Fork tests read that live timestamp; do not substitute the backtest estimate.
+REDEMPTION_DELAY_IS_DEPOSIT_LOCK = True
+
 
 def fee_profile(chain_id: int, address: str, deposit_fee: float | None, redemption_fee: float | None) -> str | None:
     """Require both a reviewed identity and matching rates before admitting this profile.
