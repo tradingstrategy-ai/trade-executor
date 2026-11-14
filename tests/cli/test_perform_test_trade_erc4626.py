@@ -8,6 +8,7 @@ from unittest.mock import MagicMock
 
 import pytest
 from eth_defi.erc_4626.deposit_redeem import ERC4626DepositManager
+from eth_defi.erc_4626.core import ERC4626Feature
 from eth_defi.erc_4626.vault import ERC4626Vault
 from eth_defi.vault.deposit_redeem import VaultFlowUnavailable
 from pytest import MonkeyPatch
@@ -18,10 +19,31 @@ from tradeexecutor.cli.main import app
 from tradeexecutor.cli.testtrade import make_test_trade, resolve_test_pair
 from tradeexecutor.cli.vault_test_trade import check_vault_test_capacity
 from tradeexecutor.ethereum.vault.vault_live_pricing import VaultPricing
-from tradeexecutor.state.identifier import TradingPairKind
+from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.sync_model import SyncModel
+from tradeexecutor.strategy.vault_protocol import get_vault_test_trade_time_skip_seconds
 from tradeexecutor.testing.erc4626_manual import STRATEGY_FILE, load_universe
+
+
+@pytest.mark.parametrize("feature,expected", [(ERC4626Feature.autopool_like, 1800), (ERC4626Feature.ipor_like, 86400), (None, 86400)])
+def test_vault_test_trade_protocol_time_skip(feature: ERC4626Feature | None, expected: int) -> None:
+    """Keep Autopool below short oracle expiry without changing other waits.
+
+    1. Construct a vault pair with the selected protocol feature.
+    2. Resolve the default test wait through the protocol dispatcher.
+    3. Preserve shorter explicit waits, including immediate-redemption tests.
+    """
+    # 1. Construct a vault pair with the selected protocol feature.
+    base = AssetIdentifier(1, "0x" + "11" * 20, "SHARE", 18)
+    quote = AssetIdentifier(1, "0x" + "22" * 20, "USDC", 6)
+    pair = TradingPairIdentifier(base, quote, base.address, base.address, fee=0,
+        kind=TradingPairKind.vault, other_data={"vault_features": {feature} if feature else set()})
+    # 2. Resolve the default test wait through the protocol dispatcher.
+    assert get_vault_test_trade_time_skip_seconds(pair, 86400) == expected
+    # 3. Preserve shorter explicit waits, including immediate-redemption tests.
+    assert get_vault_test_trade_time_skip_seconds(pair, 600) == 600
+    assert get_vault_test_trade_time_skip_seconds(pair, 0) == 0
 
 
 def test_erc4626_pair_selection_and_cli_refusals(monkeypatch: MonkeyPatch) -> None:

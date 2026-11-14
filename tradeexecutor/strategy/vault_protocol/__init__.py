@@ -12,7 +12,7 @@ from eth_defi.erc_4626.core import ERC4626Feature
 
 from tradingstrategy.vault import VaultProtocolRules
 from tradeexecutor.state.identifier import TradingPairIdentifier
-from tradeexecutor.strategy.vault_protocol import atoma, d2
+from tradeexecutor.strategy.vault_protocol import atoma, autopool, d2
 
 
 #: Preserve historical waits for protocols lacking a positive metadata estimate.
@@ -25,6 +25,23 @@ VAULT_SETTLEMENT_DELAY_FALLBACKS: dict[ERC4626Feature, datetime.timedelta] = {
 #: Keep historical Ostium runs on the existing next-day 18:00 UTC approximation
 #: when no delay is supplied; changing live intervals must not rewrite that assumption.
 OSTIUM_BACKTEST_SETTLEMENT_HOUR = 18
+
+
+def get_vault_test_trade_time_skip_seconds(pair: TradingPairIdentifier, requested_seconds: int) -> int:
+    """Cap Autopool's Anvil holding interval before its price feeds expire.
+
+    This controls the artificial wait between test entry and exit, not the
+    strategy cycle or settlement rules. Preserve explicit shorter waits,
+    including zero, and other protocols' existing intervals. A shorter wait
+    does not replace the protocol's own oracle freshness checks.
+
+    :param pair: Resolved pair selected by a public test-trade command.
+    :param requested_seconds: Existing Anvil time advance requested by the caller.
+    :return: Protocol-capped time advance, in seconds.
+    """
+    if pair.is_vault() and ERC4626Feature.autopool_like in (pair.get_vault_features() or set()):
+        return min(requested_seconds, autopool.SIMULATION_CYCLE_SECONDS)
+    return requested_seconds
 
 
 def classify_vault_fee_profile(

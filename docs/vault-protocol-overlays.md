@@ -32,6 +32,12 @@ no acquisition or account permission checks.
   zero-entry/0.005-exit profile is distinct from mechanical support for a fee.
   Deposits are immediate; the existing fallback redemption delay is seven days.
   Actual live fee-recipient exemptions and ticket claimability remain adapter-owned.
+- `autopool.py` caps the Anvil test-trade holding interval at 30 minutes because
+  Chainlink prices can expire after one hour while feed updates remain frozen.
+  Both public vault test commands use this rule for home-chain and satellite
+  exits. Explicit shorter intervals, including zero, are preserved. This is a
+  fork-test interval, not a live strategy cycle, redemption lock or historical
+  backtest settlement delay. Oracle freshness checks remain enforced.
 - `d2.py` provides D2 window capability and a bounded early HYPE++ assumption:
   fourteen-day cadence, two open days, anchor 30 March 2025. It applies only
   from first price coverage on 20 November 2024 until 12 February 2026. It is

@@ -37,6 +37,7 @@ from tradeexecutor.statistics.core import update_statistics
 from tradeexecutor.statistics.statistics_table import serialise_long_short_stats_as_json_table
 from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.strategy.sync_model import SyncModel
+from tradeexecutor.strategy.vault_protocol import get_vault_test_trade_time_skip_seconds
 from tradeexecutor.utils.accuracy import sum_decimal
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.execution_model import ExecutionModel
@@ -1302,6 +1303,10 @@ def make_test_trade(
     :param close_only:
         Only close an existing position. Raises if no open position exists.
 
+    :param anvil_time_skip_seconds:
+        Artificial holding interval on Anvil. Protocol rules can cap this wait
+        to keep static oracle feeds fresh; explicit shorter waits are retained.
+
     :param revalue_positions:
         Refresh position valuations before the treasury sync. Posting NAV
         refuses a stale position, and a close-only run can come days after
@@ -1377,6 +1382,9 @@ def make_test_trade(
         # Convert description to TradingPairIdentifier used in PositionManager
         assert type(lending_reserve_description) in (tuple, list), f"lending_reserve_description must be a tuple, got {type(lending_reserve_description)}"
         credit_pair = pair = lending_reserve = universe.get_lending_reserve_by_human_description(lending_reserve_description)
+
+    if pair is not None:
+        anvil_time_skip_seconds = get_vault_test_trade_time_skip_seconds(pair, anvil_time_skip_seconds)
 
     if test_trade_checks:
         test_trade_checks = pair is not None and pair.is_vault() and not is_cross_chain and is_synchronous_deposit_vault_test(pricing_model, pair)
