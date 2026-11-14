@@ -5,7 +5,7 @@ How executor internally knows how to connect trading pairs in data and in execut
 import datetime
 import enum
 from dataclasses import dataclass, field
-from decimal import Decimal
+from decimal import Decimal, localcontext
 from typing import Optional, Literal, TypeAlias
 
 import numpy as np
@@ -335,14 +335,21 @@ class AssetIdentifier:
         """Return any amount in token native units.
 
         Convert decimal to fixed point integer.
+        Preserve the input coefficient before truncating fractional raw units,
+        without changing the caller's Decimal context.
         """
         assert isinstance(amount, Decimal), "Input only exact numbers for the conversion, not fuzzy ones like floats"
         assert self.decimals is not None, f"Cannot perform human to raw token amount conversion, because no decimals given: {self}"
-        return int(amount * Decimal(10**self.decimals))
+        with localcontext() as context:
+            context.prec = max(context.prec, len(amount.as_tuple().digits))
+            return int(amount * Decimal(10**self.decimals))
 
     def convert_to_decimal(self, raw_amount: int) -> Decimal:
+        """Convert native units without losing digits in large token balances."""
         assert self.decimals is not None, f"Cannot perform human to raw token amount conversion, because no decimals given: {self}"
-        return Decimal(raw_amount) / Decimal(10**self.decimals)
+        with localcontext() as context:
+            context.prec = max(context.prec, len(str(abs(raw_amount))))
+            return Decimal(raw_amount) / Decimal(10**self.decimals)
 
     def is_stablecoin(self) -> bool:
         """Do we think this asset reprents a stablecoin"""
