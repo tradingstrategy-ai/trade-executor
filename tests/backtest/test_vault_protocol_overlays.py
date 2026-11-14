@@ -53,6 +53,8 @@ def test_loaded_protocol_rules_and_real_settlement() -> None:
     assert universe.get_pair_by_id(atoma.internal_id) is atoma
     assert atoma.get_vault_protocol_rules().fee_profile == 'atoma_standard_exit'
     assert atoma.get_vault_metadata().vault_protocol_rules is atoma.get_vault_protocol_rules()
+    assert atoma.get_vault_protocol_rules().redemption_delay_is_deposit_lock
+    assert not pairs['Generic'].get_vault_protocol_rules().redemption_delay_is_deposit_lock
     assert atoma.get_sell_tax() == pytest.approx(0.005)
     assert atoma.base.get_sell_tax() is None
     assert pairs['HYPE++'].get_vault_protocol_rules().deposit_windowed

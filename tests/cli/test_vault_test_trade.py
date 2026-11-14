@@ -2962,7 +2962,8 @@ def test_adapter_without_deposit_closure_api_continues_to_execution() -> None:
     assert result is None
 
 
-def test_vault_flow_analysis_conversion_preserves_trade_signs() -> None:
+@pytest.mark.parametrize("asset_decimals,share_decimals", [(6, 6), (6, 18), (8, 18), (18, 6), (18, 18)])
+def test_vault_flow_analysis_conversion_preserves_trade_signs(asset_decimals: int, share_decimals: int) -> None:
     """Shared receipt conversion uses the same signs for sync and async settlement.
 
     1. Model a successful manager analysis with reserve and share quantities.
@@ -2971,8 +2972,8 @@ def test_vault_flow_analysis_conversion_preserves_trade_signs() -> None:
     """
     # 1. Model a successful manager analysis with reserve and share quantities.
     analysis = MagicMock(
-        denomination_amount=Decimal("10"),
-        share_count=Decimal("8"),
+        denomination_amount=Decimal(1_001_123_457).scaleb(-asset_decimals),
+        share_count=Decimal(943_495_257).scaleb(-share_decimals),
     )
 
     # 2. Convert it once as a deposit and once as a redemption.
@@ -2980,8 +2981,13 @@ def test_vault_flow_analysis_conversion_preserves_trade_signs() -> None:
     redemption = convert_vault_flow_analysis(analysis, direction="redeem")
 
     # 3. Verify reserve, share sign and price follow the executor trade contract.
-    assert deposit == (Decimal("10"), Decimal("8"), Decimal("1.25"))
-    assert redemption == (Decimal("10"), Decimal("-8"), Decimal("1.25"))
+    for reserve, shares, price in (deposit, redemption):
+        assert reserve == analysis.denomination_amount
+        assert abs(shares) == analysis.share_count
+        assert price * abs(shares) == pytest.approx(reserve, rel=0, abs=Decimal(1).scaleb(-asset_decimals))
+        assert price > 0
+    assert deposit[1] > 0
+    assert redemption[1] < 0
 
 
 def test_vault_redemption_amount_reconciles_only_small_share_shortfalls() -> None:

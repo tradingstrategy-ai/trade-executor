@@ -255,8 +255,12 @@ def test_atoma_test_trade_resume(atoma_environment: dict[str, str], atoma_runtim
     pair = f"(arbitrum, {vault.address})"
     # 1. Deposit through buy-only and refuse an immediate locked exit without a trade.
     cli.main(args=["perform-test-trade", "--pair", pair, "--amount", "100", "--buy-only", "--no-test-short"], standalone_mode=False)
-    with pytest.raises(VaultFlowUnavailable, match="insufficient_unlocked_shares"):
-        cli.main(args=["perform-test-trade", "--pair", pair, "--close-only", "--no-test-short"], standalone_mode=False)
+    # Explicit zero preserves the immediate-exit refusal; ordinary fork test
+    # trades advance through Atoma's deposit lock automatically.
+    with monkeypatch.context() as immediate:
+        immediate.setattr(perform_test_trade_command, "make_test_trade", partial(make_test_trade, anvil_time_skip_seconds=0))
+        with pytest.raises(VaultFlowUnavailable, match="insufficient_unlocked_shares"):
+            cli.main(args=["perform-test-trade", "--pair", pair, "--close-only", "--no-test-short"], standalone_mode=False)
     state = State.read_json_file(state_path)
     assert len(list(state.portfolio.get_all_trades())) == 1
     assert not state.portfolio.frozen_positions

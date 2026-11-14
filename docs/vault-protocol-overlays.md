@@ -28,10 +28,26 @@ Pure overlays in
 simulation assumptions and explicit manual vault-data corrections. They perform
 no acquisition or account permission checks.
 
+Shared framework code must consume generalised capabilities and populated
+metadata fields, rather than branch on protocol names, feature flags or vault
+addresses. Put manual exceptions and defaults in the protocol overlay and
+select them in the enrichment dispatcher. Keep ABI details and dynamic
+owner-specific reads in the eth-defi adapter. Extend the existing rule object
+when a new capability is needed; do not add a parallel metadata registry or
+protocol-specific execution path.
+
 - `atoma.py` describes the two reviewed standard-fee public deployments. Their
   zero-entry/0.005-exit profile is distinct from mechanical support for a fee.
   Deposits are immediate; the existing fallback redemption delay is seven days.
+  It also marks `redemption_delay_is_deposit_lock`, so fork tests can query the
+  manager's actual custody-specific unlock time before requesting withdrawal.
   Actual live fee-recipient exemptions and ticket claimability remain adapter-owned.
+- `autopool.py` populates `simulation_max_holding_seconds` with 30 minutes because
+  Chainlink prices can expire after one hour while feed updates remain frozen.
+  Both public vault test commands use this rule for home-chain and satellite
+  exits. Explicit shorter intervals, including zero, are preserved. This is a
+  fork-test interval, not a live strategy cycle, redemption lock or historical
+  backtest settlement delay. Oracle freshness checks remain enforced.
 - `d2.py` provides D2 window capability and a bounded early HYPE++ assumption:
   fourteen-day cadence, two open days, anchor 30 March 2025. It applies only
   from first price coverage on 20 November 2024 until 12 February 2026. It is
@@ -59,6 +75,23 @@ no acquisition or account permission checks.
 D2 parquet availability is placed at the next decision bucket (`ceil`, exact
 boundaries unchanged). It uses the existing single timestamp column and the
 last sample in each bucket. There are no additional observation clocks.
+
+For a positive fork-test holding interval, the CLI honours the manager's
+`get_redemption_delay_over(custody_owner)` result when the loaded rules set
+`redemption_delay_is_deposit_lock`. It waits until the later of
+the test interval or one second past that onchain unlock time. This lets Atoma
+Index's deposit shares unlock before a request is submitted; its separate
+operator epoch settlement still follows the saved ticket. The query uses the
+pricing route's actual custody resolver on the vault's own chain. Live trading
+never advances the clock, and historical backtest settlement rules are unchanged.
+An explicit zero interval retains its no-wait behaviour. The capability defaults
+to false: the manager method can mean a settlement schedule rather than a deposit
+lock. The optional `simulation_max_holding_seconds` defaults to no cap. Both
+fields travel through enriched metadata and the existing saved pair snapshot;
+the shared consumers contain no protocol predicates.
+Snapshots written before these fields existed use their defaults. Public
+test-trade commands select pairs from a freshly enriched universe, so they
+receive the current overlay values rather than old snapshot defaults.
 
 ## Strategy-facing APIs
 

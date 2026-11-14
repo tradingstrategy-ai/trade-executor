@@ -35,6 +35,7 @@ from eth_defi.vault.deposit_redeem import (
     VaultForcedSettlementResult,
 )
 from hexbytes import HexBytes
+from tradingstrategy.vault import VaultProtocolRules
 
 from tradeexecutor.cli import testtrade
 from tradeexecutor.cli.testtrade import (
@@ -469,6 +470,9 @@ def test_make_test_trade_close_pending_on_mainnet_does_not_crash(monkeypatch) ->
 
     pair = MagicMock(spec=TradingPairIdentifier)
     pair.base.token_symbol = "oLP"
+    pair.is_vault.return_value = True
+    # Use real timing defaults: an unconstrained mock invents a numeric holding limit.
+    pair.get_vault_protocol_rules.return_value = VaultProtocolRules(redemption_queued=True)
     # An on-chain vault pair, not an exchange account with its own custody test trade.
     pair.is_exchange_account.return_value = False
 

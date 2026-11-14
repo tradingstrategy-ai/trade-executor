@@ -21,6 +21,21 @@ working on that area:
 | [Backtest universe preservation](docs/backtest-universe-preservation.md) | **Read before changing or reviewing backtest selection, admission, timing or notebook conversion**: prevent live-readiness requirements from silently narrowing historical coverage |
 | `docs/strategy-parameters.md` | **Read before writing or editing a strategy module**: the one module-level variable, which `Parameters` the engine reads, and what must not go in `Parameters` (deployment output, protocol constants, test knobs, environment variables) |
 
+## Vault protocol special cases
+
+Avoid protocol-specific checks in shared framework code. Generalise vault-specific
+behaviour into capabilities or data fields that pricing, routing, accounting,
+simulation and CLI consumers can use without checking protocol names, feature
+flags or vault addresses.
+
+Put manual data corrections and protocol defaults in
+`tradeexecutor/strategy/vault_protocol/<protocol>.py`. Populate the existing
+`VaultMetadata.vault_protocol_rules` fields during pair enrichment and preserve
+them through the existing pair snapshot. Keep protocol selection in the overlay
+dispatcher and contract-specific reads and calls in the eth-defi adapter.
+Dynamic owner-specific values still come from that adapter; do not hardcode
+them into static metadata. See [Vault protocol overlays](docs/vault-protocol-overlays.md).
+
 ## State persistence
 
 Use the existing executor state mechanism as the main mechanism for all data,
@@ -198,6 +213,14 @@ source .local-test.env && PYTHONPATH="$(pwd):$PYTHONPATH" poetry run pytest test
 - Parse command-line options and environment variables only at Typer command entry points such as `start.py`; use `bootstrap.py` patterns as the reference.
 - Pass parsed settings to lower layers explicitly, either as individual parameters or a small typed dataclass. Do not write parsed values back to `os.environ`, read environment variables from loops, routers, execution models, or use module-level mutable configuration.
 
+### Docstrings and comments
+
+- Write for a maintainer who knows Python but may not know the protocol. Give the context needed to understand the decision.
+- Explain why the code exists and how it addresses the problem. Describe assumptions, units, ownership, timing, side effects and failure behaviour where they affect correct use. Do not merely narrate the statements below a comment.
+- Use plain language. Replace jargon and unexplained abbreviations with concrete descriptions; retain exact API names and explain unfamiliar protocol terms on first use.
+- Keep explanations proportionate: a concise summary and relevant rationale are more useful than padding. Keep comments accurate when behaviour changes, and link to authoritative sources for non-obvious protocol constraints.
+- Use Sphinx reStructuredText for Python docstrings and `#:` for documented fields. Document parameters and return values when their meaning is not clear from the signature.
+
 ### Enum
 
 - For string enums, both members and values must in snake_case
@@ -212,9 +235,8 @@ source .local-test.env && PYTHONPATH="$(pwd):$PYTHONPATH" poetry run pytest test
 - Don't use logger.info() or logger.debug() inside test and fixture function bodies unless specifically asked
 - Do not do excessive number of tests. Prefer one test for happy path and one test for bad path. Do several asserts within a single test case to have test coverage, but keeping the number of tests low.
 - Add a pytest timeout marker only to tests known to be long-running or prone to hanging. Always use an appropriate command/chat timeout when running tests; use 5 minutes unless you are running the full test suite.
-- Akk tests must have docstring
-- Docstring must stell what is being tested and why
-- Docstring must have 1, 2, 3, N style ordered list of steps the test is taking, up to the hig level actions in the test. These steps must then repeat as line comments within the test body.
+- All tests must have a docstring explaining the behaviour being tested and why a regression would matter.
+- Include a numbered list of the test's main steps in the docstring and repeat those steps as line comments in the test body. Describe the scenario and expected behaviour rather than each assignment or assertion.
 - If we mock something, we must describe why
 - Have Python type hints for used pytest fixtures
 - We cannot import from tests sub-tree: helper functions must go to live in `testing` submodules in the actual source tree
@@ -243,6 +265,13 @@ source .local-test.env && PYTHONPATH="$(pwd):$PYTHONPATH" poetry run pytest test
 - Use `eth_defi.hotwallet.HotWallet` for deployer accounts and signing transactions when possible
 
 ## Web3
+
+- Always use ABI-backed contract proxies when a stored ABI provides the required
+  function. Prefer `contract.functions.method(...).call()` and shared transaction
+  helpers over handcrafted selectors, argument padding and return decoding for
+  readability and maintainability. Use `EncodedCall.from_contract_call()` for
+  ABI-backed multicalls; document why an ABI-less probe is needed when no ABI
+  provides the interface. See the [ABI guide](deps/web3-ethereum-defi/eth_defi/abi/README.md).
 
 - Use create_multi_provider_web3() to create an RPC connection from JSON_xxx env vars
 - Always use `create_multi_provider_web3()` for Web3 objects. Do not construct raw `Web3(HTTPProvider(...))` instances in code or tests unless explicitly requested by the user for a narrow debugging experiment. The eth-defi helper installs required middleware, including cached `eth_chainId` reads, retry/fallback behaviour, Anvil metadata handling, and chain-specific middleware.

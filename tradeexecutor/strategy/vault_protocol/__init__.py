@@ -12,7 +12,7 @@ from eth_defi.erc_4626.core import ERC4626Feature
 
 from tradingstrategy.vault import VaultProtocolRules
 from tradeexecutor.state.identifier import TradingPairIdentifier
-from tradeexecutor.strategy.vault_protocol import atoma, d2
+from tradeexecutor.strategy.vault_protocol import atoma, autopool, d2
 
 
 #: Preserve historical waits for protocols lacking a positive metadata estimate.
@@ -25,6 +25,25 @@ VAULT_SETTLEMENT_DELAY_FALLBACKS: dict[ERC4626Feature, datetime.timedelta] = {
 #: Keep historical Ostium runs on the existing next-day 18:00 UTC approximation
 #: when no delay is supplied; changing live intervals must not rewrite that assumption.
 OSTIUM_BACKTEST_SETTLEMENT_HOUR = 18
+
+
+def get_vault_test_trade_time_skip_seconds(pair: TradingPairIdentifier, requested_seconds: int) -> int:
+    """Limit a simulated holding period before unchanged oracle prices expire.
+
+    Anvil runs a local copy of the chain without receiving new oracle prices.
+    Apply the limit carried by the vault metadata, preserving shorter requested
+    waits, including zero. This setting affects only the test's wait between
+    entry and exit; the contract still checks price age when a trade executes.
+
+    :param pair: Resolved pair selected by a public test-trade command.
+    :param requested_seconds: Simulated wait requested by the caller, in seconds.
+    :return: Requested wait reduced to the metadata limit, if one exists.
+    """
+    if pair.is_vault():
+        rules = pair.get_vault_protocol_rules() or resolve_vault_protocol_rules(pair)
+        if rules.simulation_max_holding_seconds is not None:
+            return min(requested_seconds, rules.simulation_max_holding_seconds)
+    return requested_seconds
 
 
 def classify_vault_fee_profile(
@@ -90,6 +109,12 @@ def resolve_vault_protocol_rules(pair: TradingPairIdentifier) -> VaultProtocolRu
         deposit_windowed=ERC4626Feature.d2_like in features,
         redemption_windowed=ERC4626Feature.d2_like in features,
         provenance=pair.get_vault_protocol() or "generic_erc4626",
+        redemption_delay_is_deposit_lock=(
+            atoma.REDEMPTION_DELAY_IS_DEPOSIT_LOCK if ERC4626Feature.atoma_like in features else False
+        ),
+        simulation_max_holding_seconds=(
+            autopool.SIMULATION_CYCLE_SECONDS if ERC4626Feature.autopool_like in features else None
+        ),
     )
 
 

@@ -60,6 +60,27 @@ Follow the existing route:
 
 `vault factory → protocol manager → generic routing → persisted trade/ticket → settlement resolver`
 
+Keep protocol-specific conditions out of shared framework code. Generalise vault
+exceptions as capabilities or metadata fields, populate them through protocol
+overlays during pair enrichment, and let shared consumers read those fields.
+Keep contract-specific reads and transactions in the existing eth-defi managers.
+Use their ABI-backed contract proxies whenever the stored ABI provides the
+function; do not handcraft equivalent selectors, arguments or return decoding.
+This keeps adapter calls readable and maintainable; see the
+[ABI guide](../../deps/web3-ethereum-defi/eth_defi/abi/README.md).
+Do not add protocol-name, feature-flag or address branches to generic CLI,
+pricing, routing or accounting code; see [protocol overlays](../../docs/vault-protocol-overlays.md).
+
+Atoma's overlay populates `redemption_delay_is_deposit_lock`. Fork test trades
+use that field to query `get_redemption_delay_over(owner)` and wait
+out a known custody-specific deposit lock before creating the withdrawal. This
+is separate from settling a submitted async ticket. Accountable's Anvil driver
+fulfils an exact request by impersonating the configured strategy, using only
+existing vault liquidity; it does not model the strategy's external unwind,
+approval policy or FIFO queue liquidity, or grant settlement permission to the
+asset manager. Atoma retains its existing
+operator epoch driver after the deposit lock has expired.
+
 Guard deployment is configured through eth-defi's existing `setup_guard()`.
 Lagoon is the reference for using shared queued execution; a different ABI or
 separate share token belongs in the adapter and guard configuration. It does

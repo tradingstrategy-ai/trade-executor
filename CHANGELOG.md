@@ -1,6 +1,12 @@
     **Note**: A full changelog is not available as long as `trade-executor` package is in active beta developmnt.
 
 ## 0.2
+- Clarify vault simulation timing and token precision docstrings, and require comments to explain rationale and mechanism in plain language (2026-11-14).
+- Populate fork-test deposit-lock and holding-interval rules through protocol overlays and vault metadata, removing protocol checks from shared test-trade consumers (2026-11-14).
+- Simulate Accountable request fulfilment through the shared manager and honour Atoma custody-specific deposit locks before fork-test redemptions, including Index (2026-11-14).
+- Cap Autopool fork test-trade intervals at 30 minutes to avoid expiring Chainlink feeds during the artificial wait (2026-11-14).
+- Preserve exact asset units beyond the caller's Decimal precision and test shared vault receipt conversions with explicit token-unit tolerances (2026-11-14).
+- Update shared vault adapters for scoped simulation coverage, corrected MAAT/Ember admission metadata, Accountable receipt recovery and Lagoon sync deposits/settlement (2026-11-14).
 - Add an optional alpha model no-trade band that can be relative to each position's target, with rules at portfolio, vault category and single vault level set from `decide_trades()` (2026-11-12).
 - Add an optional capped priority tier to proportional portfolio sizing, then allocate remaining capital with ordinary weights (2026-11-10).
 - Add a Hyperliquid manual vault-data overlay marking Growi HF-2 permanently closed for deposits, including before the historical collection cutoff (2026-11-10).
