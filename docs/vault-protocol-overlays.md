@@ -66,6 +66,17 @@ D2 parquet availability is placed at the next decision bucket (`ceil`, exact
 boundaries unchanged). It uses the existing single timestamp column and the
 last sample in each bucket. There are no additional observation clocks.
 
+For a positive Atoma fork-test holding interval, the CLI also honours its
+manager's `get_redemption_delay_over(custody_owner)` result. It waits until the later of
+the test interval or one second past that onchain unlock time. This lets Atoma
+Index's deposit shares unlock before a request is submitted; its separate
+operator epoch settlement still follows the saved ticket. The query uses the
+pricing route's actual custody resolver on the vault's own chain. Live trading
+never advances the clock, and historical backtest settlement rules are unchanged.
+An explicit zero interval retains its no-wait behaviour. Other protocols retain
+their existing interval: this method can mean a settlement schedule rather than
+a deposit lock for their managers.
+
 ## Strategy-facing APIs
 
 `pricing_model.get_vault_settlement_expectation(timestamp, pair,

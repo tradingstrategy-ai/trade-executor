@@ -60,6 +60,15 @@ Follow the existing route:
 
 `vault factory → protocol manager → generic routing → persisted trade/ticket → settlement resolver`
 
+Atoma fork test trades reuse `get_redemption_delay_over(owner)` to wait
+out a known custody-specific deposit lock before creating the withdrawal. This
+is separate from settling a submitted async ticket. Accountable's Anvil driver
+fulfils an exact request by impersonating the configured strategy, using only
+existing vault liquidity; it does not model the strategy's external unwind,
+approval policy or FIFO queue liquidity, or grant settlement permission to the
+asset manager. Atoma retains its existing
+operator epoch driver after the deposit lock has expired.
+
 Guard deployment is configured through eth-defi's existing `setup_guard()`.
 Lagoon is the reference for using shared queued execution; a different ABI or
 separate share token belongs in the adapter and guard configuration. It does

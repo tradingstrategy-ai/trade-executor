@@ -1,6 +1,7 @@
     **Note**: A full changelog is not available as long as `trade-executor` package is in active beta developmnt.
 
 ## 0.2
+- Simulate Accountable request fulfilment through the shared manager and honour Atoma custody-specific deposit locks before fork-test redemptions, including Index (2026-11-14).
 - Cap Autopool fork test-trade intervals at 30 minutes to avoid expiring Chainlink feeds during the artificial wait (2026-11-14).
 - Preserve exact asset units beyond the caller's Decimal precision and test shared vault receipt conversions with explicit token-unit tolerances (2026-11-14).
 - Update shared vault adapters for scoped simulation coverage, corrected MAAT/Ember admission metadata, Accountable receipt recovery and Lagoon sync deposits/settlement (2026-11-14).

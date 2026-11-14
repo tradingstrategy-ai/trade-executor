@@ -1,5 +1,6 @@
 """Perform a test trade on a universe."""
 import datetime
+import calendar
 import logging
 from decimal import Decimal
 from typing import Callable
@@ -7,6 +8,7 @@ from typing import Callable
 from web3 import Web3
 
 from eth_defi.compat import native_datetime_utc_now
+from eth_defi.erc_4626.core import ERC4626Feature
 from eth_defi.erc_4626.vault_protocol.gains.testing import force_ostium_v15_settlement
 from eth_defi.erc_4626.vault_protocol.gains.vault import OstiumVault, OstiumVersion
 from eth_defi.provider.anvil import fund_erc20_on_anvil, is_anvil, mine
@@ -29,6 +31,7 @@ from tradeexecutor.cli.vault_test_trade import check_vault_test_capacity, check_
 from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
 from tradeexecutor.ethereum.vault.settlement_retry import check_and_resolve_vault_settlements
 from tradeexecutor.ethereum.vault.vault_routing import get_vault_for_pair
+from tradeexecutor.ethereum.vault.vault_live_pricing import VaultPricing
 from tradeexecutor.ethereum.web3config import TEST_CHAIN_IDS
 from tradeexecutor.exchange_account.lighter import LIGHTER_MASTER_ACCOUNT_ID, find_lighter_account_pair, get_lighter_account_id, is_lighter_exchange_account_pair
 from tradeexecutor.state.trade import TradeExecution, TradeFlag, TradeStatus
@@ -48,6 +51,33 @@ from tradeexecutor.strategy.routing import RoutingModel, RoutingState
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
 
 logger = logging.getLogger(__name__)
+
+
+def _advance_test_trade_time(web3: Web3, pricing_model: PricingModel, pair: TradingPairIdentifier, seconds: int) -> None:
+    """Wait out Atoma's known deposit lock on its disposable fork.
+
+    Reuse Atoma's custody-specific unlock time instead of treating a locked
+    redemption as missing liquidity. Other managers may return a settlement
+    schedule, so their existing holding intervals remain unchanged. Live
+    execution never advances time. Explicit zero waits are preserved.
+
+    :param web3: Anvil connection on the asset's custody chain.
+    :param pricing_model: Existing pricing route, including its custody resolver.
+    :param pair: Selected vault or other traded asset.
+    :param seconds: Existing artificial holding interval.
+    """
+    assert is_anvil(web3), "Test-trade time advancement requires Anvil"
+    target = web3.eth.get_block("latest")["timestamp"] + seconds
+    if seconds > 0 and pair.is_vault() and ERC4626Feature.atoma_like in (pair.get_vault_features() or set()):
+        pricing = pricing_model.route(pair) if isinstance(pricing_model, GenericPricing) else pricing_model
+        if isinstance(pricing, VaultPricing):
+            owner = pricing.get_owner_address(pair)
+            if owner is not None:
+                unlock = pricing.get_vault(pair).get_deposit_manager().get_redemption_delay_over(owner)
+                if unlock is not None:
+                    target = max(target, calendar.timegm(unlock.utctimetuple()) + 1)
+    logger.info("Advancing test-trade fork to %s, including any known vault deposit lock", target)
+    mine(web3, timestamp=target)
 
 
 def resolve_test_pair(
@@ -529,7 +559,7 @@ def _make_cross_chain_test_trade(
                 # the home-chain connection passed to make_test_trade().
                 logger.info("Skipping satellite time forward by %d seconds", anvil_time_skip_seconds)
                 dest_web3 = web3config.get_connection(ChainId(dest_chain_id))
-                mine(dest_web3, increase_timestamp=anvil_time_skip_seconds)
+                _advance_test_trade_time(dest_web3, pricing_model, pair, anvil_time_skip_seconds)
             _record_satellite_redemption_balance(
                 web3config=web3config,
                 routing_model=routing_model,
@@ -719,7 +749,7 @@ def _make_cross_chain_test_trade(
             if on_anvil:
                 logger.info("Skipping time forward by %d seconds", anvil_time_skip_seconds)
                 dest_web3 = web3config.get_connection(ChainId(dest_chain_id))
-                mine(dest_web3, increase_timestamp=anvil_time_skip_seconds)
+                _advance_test_trade_time(dest_web3, pricing_model, pair, anvil_time_skip_seconds)
 
             # Step 3: Close satellite position
             logger.info("Cross-chain step 3: close %s on %s", pair.get_ticker(), chain_name)
@@ -1651,7 +1681,7 @@ def make_test_trade(
             # Skip time forward to bypass any potential
             # minimum holding period requirements like with IPOR vaults
             logger.info("Skipping time forward by %d seconds to bypass any minimum holding period requirements", anvil_time_skip_seconds)
-            mine(web3, increase_timestamp=anvil_time_skip_seconds)
+            _advance_test_trade_time(web3, pricing_model, pair, anvil_time_skip_seconds)
 
         # Recreate the position manager for the new timestamp,
         # as time has passed

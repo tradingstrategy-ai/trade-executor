@@ -1,6 +1,8 @@
 """Focused selection and admission checks for public vault diagnostics."""
 
 import dataclasses
+import calendar
+import datetime
 import subprocess
 from decimal import Decimal
 from pathlib import Path
@@ -16,14 +18,72 @@ from tradingstrategy.chain import ChainId
 from typer.main import get_command
 
 from tradeexecutor.cli.main import app
+from tradeexecutor.cli import testtrade
 from tradeexecutor.cli.testtrade import make_test_trade, resolve_test_pair
 from tradeexecutor.cli.vault_test_trade import check_vault_test_capacity
 from tradeexecutor.ethereum.vault.vault_live_pricing import VaultPricing
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.sync_model import SyncModel
+from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
 from tradeexecutor.strategy.vault_protocol import get_vault_test_trade_time_skip_seconds
 from tradeexecutor.testing.erc4626_manual import STRATEGY_FILE, load_universe
+
+
+def test_vault_simulation_waits_for_custody_unlock(monkeypatch: MonkeyPatch) -> None:
+    """Respect onchain share locks without treating them as missing liquidity.
+
+    1. Model a vault's custody resolver and a lock beyond the default wait.
+    2. Advance to the unlock boundary, retaining ordinary shorter waits otherwise.
+    3. Refuse time changes on a real provider before any chain mutation.
+    """
+    # 1. Model a vault's custody resolver and a lock beyond the default wait.
+    start = calendar.timegm(datetime.datetime(2026, 11, 14).utctimetuple())
+    unlock = datetime.datetime(2026, 11, 20)
+    web3 = MagicMock()
+    web3.eth.get_block.return_value = {"timestamp": start}
+    pair = MagicMock(spec=TradingPairIdentifier)
+    pair.is_vault.return_value = True
+    pair.get_vault_features.return_value = {ERC4626Feature.atoma_like}
+    pricing = MagicMock(spec=VaultPricing)
+    pricing.get_owner_address.return_value = "0x" + "11" * 20
+    manager = pricing.get_vault.return_value.get_deposit_manager.return_value
+    manager.get_redemption_delay_over.return_value = unlock
+    # Mock the provider boundary to inspect clock targets without a running fork.
+    mine = MagicMock()
+    monkeypatch.setattr(testtrade, "mine", mine)
+    monkeypatch.setattr(testtrade, "is_anvil", lambda _: True)
+
+    # 2. Advance to the unlock boundary, retaining ordinary shorter waits otherwise.
+    testtrade._advance_test_trade_time(web3, pricing, pair, 86400)
+    mine.assert_called_once_with(web3, timestamp=calendar.timegm(unlock.utctimetuple()) + 1)
+    manager.get_redemption_delay_over.assert_called_once_with(pricing.get_owner_address.return_value)
+    mine.reset_mock()
+    testtrade._advance_test_trade_time(web3, pricing, pair, 0)
+    mine.assert_called_once_with(web3, timestamp=start)
+    generic = MagicMock(spec=GenericPricing)
+    generic.route.return_value = pricing
+    mine.reset_mock()
+    testtrade._advance_test_trade_time(web3, generic, pair, 86400)
+    mine.assert_called_once_with(web3, timestamp=calendar.timegm(unlock.utctimetuple()) + 1)
+    generic.route.assert_called_once_with(pair)
+    for feature in (ERC4626Feature.upshift_like, ERC4626Feature.autopool_like):
+        pair.get_vault_features.return_value = {feature}
+        mine.reset_mock()
+        testtrade._advance_test_trade_time(web3, pricing, pair, 1800)
+        mine.assert_called_once_with(web3, timestamp=start + 1800)
+    pair.get_vault_features.return_value = {ERC4626Feature.atoma_like}
+    manager.get_redemption_delay_over.return_value = None
+    mine.reset_mock()
+    testtrade._advance_test_trade_time(web3, pricing, pair, 1800)
+    mine.assert_called_once_with(web3, timestamp=start + 1800)
+
+    # 3. Refuse time changes on a real provider before any chain mutation.
+    monkeypatch.setattr(testtrade, "is_anvil", lambda _: False)
+    mine.reset_mock()
+    with pytest.raises(AssertionError, match="requires Anvil"):
+        testtrade._advance_test_trade_time(web3, pricing, pair, 86400)
+    mine.assert_not_called()
 
 
 @pytest.mark.parametrize("feature,expected", [(ERC4626Feature.autopool_like, 1800), (ERC4626Feature.ipor_like, 86400), (None, 86400)])
