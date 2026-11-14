@@ -28,16 +28,16 @@ OSTIUM_BACKTEST_SETTLEMENT_HOUR = 18
 
 
 def get_vault_test_trade_time_skip_seconds(pair: TradingPairIdentifier, requested_seconds: int) -> int:
-    """Apply the loaded vault holding-interval limit to a disposable-fork test.
+    """Limit a simulated holding period before unchanged oracle prices expire.
 
-    This controls the artificial wait between test entry and exit, not the
-    strategy cycle or settlement rules. Preserve explicit shorter waits,
-    including zero, and other protocols' existing intervals. A shorter wait
-    does not replace the protocol's own oracle freshness checks.
+    Anvil runs a local copy of the chain without receiving new oracle prices.
+    Apply the limit carried by the vault metadata, preserving shorter requested
+    waits, including zero. This setting affects only the test's wait between
+    entry and exit; the contract still checks price age when a trade executes.
 
     :param pair: Resolved pair selected by a public test-trade command.
-    :param requested_seconds: Existing Anvil time advance requested by the caller.
-    :return: Protocol-capped time advance, in seconds.
+    :param requested_seconds: Simulated wait requested by the caller, in seconds.
+    :return: Requested wait reduced to the metadata limit, if one exists.
     """
     if pair.is_vault():
         rules = pair.get_vault_protocol_rules() or resolve_vault_protocol_rules(pair)

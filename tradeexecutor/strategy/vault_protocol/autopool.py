@@ -1,4 +1,6 @@
-"""Autopool timing for disposable-fork vault test trades."""
+"""Keep Autopool simulation waits within the oracle price validity period."""
 
-# Chainlink feeds can expire after 1h on a static fork; use a 30-minute simulation cycle.
+#: Chainlink prices can expire after one hour. Anvil's local chain copy receives
+#: no new prices, so limit the test's deposit-to-withdrawal wait to 30 minutes.
+#: The contract still checks price age; this does not set the live strategy cycle.
 SIMULATION_CYCLE_SECONDS = 30 * 60

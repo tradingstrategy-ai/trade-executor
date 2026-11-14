@@ -53,17 +53,21 @@ logger = logging.getLogger(__name__)
 
 
 def _advance_test_trade_time(web3: Web3, pricing_model: PricingModel, pair: TradingPairIdentifier, seconds: int) -> None:
-    """Advance a disposable fork using loaded holding and deposit-lock rules.
+    """Respect deposit locks when advancing an Anvil test chain's clock.
 
-    Only a loaded deposit-lock capability permits querying the custody-specific
-    unlock time: other managers may return a settlement schedule. Protocol
-    overlays populate that capability during pair translation. Live execution
-    never advances time. Explicit zero waits are preserved.
+    Vault metadata identifies deposit manager adapters that report a deposit lock
+    for the account holding the shares. Query that account's unlock time and
+    extend a positive wait if needed. Other adapters report when withdrawals settle; those
+    times cannot tell us when a new withdrawal may be requested. Protocol overlays
+    set this distinction when vault data is converted to trading pairs.
 
-    :param web3: Anvil connection on the asset's custody chain.
-    :param pricing_model: Existing pricing route, including its custody resolver.
+    A zero wait skips the lock adjustment so immediate-withdrawal tests still
+    exercise the refusal. A connection to a live chain is rejected.
+
+    :param web3: Anvil connection to the chain holding the asset.
+    :param pricing_model: Pricing route used to find the vault and share owner.
     :param pair: Selected vault or other traded asset.
-    :param seconds: Existing artificial holding interval.
+    :param seconds: Requested simulated wait, in seconds, before any lock adjustment.
     """
     assert is_anvil(web3), "Test-trade time advancement requires Anvil"
     target = web3.eth.get_block("latest")["timestamp"] + seconds
@@ -1334,8 +1338,10 @@ def make_test_trade(
         Only close an existing position. Raises if no open position exists.
 
     :param anvil_time_skip_seconds:
-        Artificial holding interval on Anvil. Protocol rules can cap this wait
-        to keep static oracle feeds fresh; explicit shorter waits are retained.
+        Simulated wait between entry and exit on Anvil, in seconds. Protocol
+        rules may shorten it because oracle prices are not updated on the local
+        chain. A deposit lock may extend a positive wait until shares unlock;
+        zero skips that adjustment for immediate-withdrawal tests.
 
     :param revalue_positions:
         Refresh position valuations before the treasury sync. Posting NAV

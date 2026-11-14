@@ -35,11 +35,11 @@ from tradeexecutor.testing.vault_protocol_universe import create_vault_protocol_
 def test_vault_simulation_waits_for_custody_unlock(monkeypatch: MonkeyPatch) -> None:
     """Respect onchain share locks without treating them as missing liquidity.
 
-    1. Model a vault's custody resolver and a lock beyond the default wait.
+    1. Model the account holding vault shares and a lock beyond the default wait.
     2. Advance to the unlock boundary, retaining ordinary shorter waits otherwise.
     3. Refuse time changes on a real provider before any chain mutation.
     """
-    # 1. Model a vault's custody resolver and a lock beyond the default wait.
+    # 1. Model the account holding vault shares and a lock beyond the default wait.
     start = calendar.timegm(datetime.datetime(2026, 11, 14).utctimetuple())
     unlock = datetime.datetime(2026, 11, 20)
     web3 = MagicMock()
@@ -70,7 +70,7 @@ def test_vault_simulation_waits_for_custody_unlock(monkeypatch: MonkeyPatch) -> 
     testtrade._advance_test_trade_time(web3, generic, pair, 86400)
     mine.assert_called_once_with(web3, timestamp=calendar.timegm(unlock.utctimetuple()) + 1)
     generic.route.assert_called_once_with(pair)
-    # A loaded capability controls the query, even when the protocol stays Atoma.
+    # Metadata must control the unlock query; the Atoma label alone is insufficient.
     metadata = pair.get_vault_metadata()
     pair.other_data["token_metadata"] = dataclasses.replace(metadata, vault_protocol_rules=dataclasses.replace(
         metadata.vault_protocol_rules, redemption_delay_is_deposit_lock=False))
@@ -79,7 +79,7 @@ def test_vault_simulation_waits_for_custody_unlock(monkeypatch: MonkeyPatch) -> 
     testtrade._advance_test_trade_time(web3, pricing, pair, 1800)
     mine.assert_called_once_with(web3, timestamp=start + 1800)
     manager.get_redemption_delay_over.assert_not_called()
-    # A restored pair uses the populated snapshot, with no protocol identification.
+    # Saved rules must survive state restoration without re-identifying the protocol.
     pair.other_data.pop("token_metadata")
     pair.other_data.pop("vault_features", None)
     mine.reset_mock()

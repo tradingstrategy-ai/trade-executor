@@ -1,6 +1,7 @@
     **Note**: A full changelog is not available as long as `trade-executor` package is in active beta developmnt.
 
 ## 0.2
+- Clarify vault simulation timing and token precision docstrings, and require comments to explain rationale and mechanism in plain language (2026-11-14).
 - Populate fork-test deposit-lock and holding-interval rules through protocol overlays and vault metadata, removing protocol checks from shared test-trade consumers (2026-11-14).
 - Simulate Accountable request fulfilment through the shared manager and honour Atoma custody-specific deposit locks before fork-test redemptions, including Index (2026-11-14).
 - Cap Autopool fork test-trade intervals at 30 minutes to avoid expiring Chainlink feeds during the artificial wait (2026-11-14).

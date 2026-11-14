@@ -15,9 +15,9 @@ STANDARD_FEE_VAULTS = {
 #: so a redemption request does not immediately release cash for reinvestment.
 REDEMPTION_DELAY_SECONDS = 7 * 86400
 
-#: The manager reports when the custody owner's deposited shares unlock,
-#: separately from the operator settlement of a submitted withdrawal request.
-#: Fork tests read that live timestamp; do not substitute the backtest estimate.
+#: Atoma's deposit manager adapter reports when the share owner may request withdrawal.
+#: Simulations read this account's unlock time from the local chain copy. The
+#: seven-day backtest estimate describes settlement and cannot replace that time.
 REDEMPTION_DELAY_IS_DEPOSIT_LOCK = True
 
 
