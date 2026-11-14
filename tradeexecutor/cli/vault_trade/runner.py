@@ -748,10 +748,10 @@ def validate_simulated_closed_deposit(
     return detail, outcome_data
 
 
-# The result strings eth-defi may carry verbatim in
-# ``VaultFlowError.preflight_result`` (the repo-to-repo contract). A value
-# outside this set is ignored so a new/unknown eth-defi result cannot silently
-# become an unrecognised status; the decoded-error fallback then applies.
+#: Result codes that the reporter can copy from eth-defi's
+#: ``VaultFlowError.preflight_result``. Unknown codes fall back to error-name
+#: and quantity checks in :func:`normalise_vault_flow_failure`, so a new adapter
+#: result cannot silently become a status that the report cannot display.
 ALLOWED_PREFLIGHT_RESULTS: frozenset[str] = frozenset(
     {
         "whitelisting-needed",
@@ -781,7 +781,17 @@ assert ALLOWED_PREFLIGHT_RESULTS <= VAULT_TEST_RESULTS, (
 def normalise_vault_flow_failure(
     error: BaseException,
 ) -> tuple[str, str, dict] | None:
-    """Convert eth-defi typed flow failures into stable vault-test outcomes."""
+    """Keep expected vault refusals distinct from unexpected execution failures.
+
+    Search the exception chain for errors reported by eth-defi. Prefer explicit
+    :data:`ALLOWED_PREFLIGHT_RESULTS`, then use known error names and quantities
+    for older adapters. In particular, a request above a positive deposit limit
+    does not mean deposits are closed to everyone.
+
+    :param error: Failure raised while preparing or executing a vault operation.
+    :return: Result code, redacted explanation and supporting fields for the
+        report, or ``None`` when no recognised vault failure is present.
+    """
 
     current: BaseException | None = error
     seen: set[int] = set()
@@ -885,6 +895,9 @@ def normalise_vault_flow_failure(
                     outcome_data,
                 )
             if current.direction == "deposit":
+                # Older adapters may omit the specific result code. A positive
+                # remaining amount means this request is too large, not that
+                # deposits are closed to everyone.
                 if current.requested_raw_amount is not None and current.available_raw_amount is not None and 0 < current.available_raw_amount < current.requested_raw_amount:
                     return ("deposit_capacity_limited", reason_text, outcome_data)
                 return (
