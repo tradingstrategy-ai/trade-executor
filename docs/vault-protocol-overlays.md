@@ -144,7 +144,8 @@ backtest result is implied by this correction.
 ### IPOR simulation freshness
 
 The reviewed Ethereum HYPE Basis vault `0x87088ffff874a4bcc6d13bbc8184e3639947ecde`
-has no share lock at the tested fork, but its external-state observations expire
+had no share lock at Ethereum block 26402309, tested on 14 November 2026,
+but its external-state observations expire
 after two hours. Its IPOR overlay populates the existing
 `simulation_max_holding_seconds` field with 1,800 seconds, so the artificial
 wait does not alone cause staleness. The adapter still checks actual freshness.

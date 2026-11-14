@@ -227,7 +227,7 @@ def test_shared_capacity_and_empty_quote_are_refused() -> None:
     ("0xb7e559c5215cd093e284e6788bd7d145e11264ff", 86400),
 ])
 def test_ipor_reviewed_freshness_interval_travels_as_metadata(address: str, expected: int) -> None:
-    """Only the reviewed route gets a shorter wait; already stale peers stay refused.
+    """Only the reviewed route gets a shorter wait; other identities keep the default.
 
     1. Describe the two distinct IPOR vault identities.
     2. Populate the existing metadata timing field through the protocol overlay.
