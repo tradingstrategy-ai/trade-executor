@@ -64,6 +64,10 @@ Keep protocol-specific conditions out of shared framework code. Generalise vault
 exceptions as capabilities or metadata fields, populate them through protocol
 overlays during pair enrichment, and let shared consumers read those fields.
 Keep contract-specific reads and transactions in the existing eth-defi managers.
+Use their ABI-backed contract proxies whenever the stored ABI provides the
+function; do not handcraft equivalent selectors, arguments or return decoding.
+This keeps adapter calls readable and maintainable; see the
+[ABI guide](../../deps/web3-ethereum-defi/eth_defi/abi/README.md).
 Do not add protocol-name, feature-flag or address branches to generic CLI,
 pricing, routing or accounting code; see [protocol overlays](../../docs/vault-protocol-overlays.md).
 
