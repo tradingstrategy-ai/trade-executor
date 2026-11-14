@@ -1,6 +1,7 @@
     **Note**: A full changelog is not available as long as `trade-executor` package is in active beta developmnt.
 
 ## 0.2
+- Update shared vault adapters for scoped simulation coverage, corrected MAAT/Ember admission metadata, Accountable receipt recovery and Lagoon sync deposits/settlement (2026-11-14).
 - Add an optional alpha model no-trade band that can be relative to each position's target, with rules at portfolio, vault category and single vault level set from `decide_trades()` (2026-11-12).
 - Add an optional capped priority tier to proportional portfolio sizing, then allocate remaining capital with ordinary weights (2026-11-10).
 - Add a Hyperliquid manual vault-data overlay marking Growi HF-2 permanently closed for deposits, including before the historical collection cutoff (2026-11-10).
