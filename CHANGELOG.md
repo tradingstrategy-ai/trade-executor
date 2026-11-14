@@ -1,6 +1,7 @@
     **Note**: A full changelog is not available as long as `trade-executor` package is in active beta developmnt.
 
 ## 0.2
+- Distinguish deposit size and stale-state refusals from global closure, preserve pricing-veto reasons, and populate a 30-minute simulation wait for the reviewed IPOR external-state route (2026-11-14).
 - Clarify vault simulation timing and token precision docstrings, and require comments to explain rationale and mechanism in plain language (2026-11-14).
 - Populate fork-test deposit-lock and holding-interval rules through protocol overlays and vault metadata, removing protocol checks from shared test-trade consumers (2026-11-14).
 - Simulate Accountable request fulfilment through the shared manager and honour Atoma custody-specific deposit locks before fork-test redemptions, including Index (2026-11-14).

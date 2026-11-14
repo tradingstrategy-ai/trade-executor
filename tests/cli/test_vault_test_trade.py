@@ -3406,3 +3406,26 @@ def test_vault_main_table_retains_historical_vault_missing_from_download() -> No
     assert len(app.choices) == 1
     assert app.choices[0].name == "Historical vault"
     assert app.choices[0].protocol == "lagoon"
+
+
+def test_deposit_size_and_freshness_refusals_are_not_global_closure() -> None:
+    """An oversized request and a stale observation must retain their own meanings.
+
+    1. Describe a nonzero capacity, zero capacity and a stale external observation.
+    2. Normalise current and older adapter errors through the existing reporter.
+    3. Retain the original quantities and decoded reason in each result.
+    """
+    # 1. No provider is needed: the adapter has already established the refusal.
+    cases = [
+        (VaultFlowUnavailable("request exceeds limit", direction="deposit", requested_raw_amount=1001, available_raw_amount=42), "deposit_capacity_limited"),
+        (VaultFlowUnavailable("cap reached", direction="deposit", requested_raw_amount=1001, available_raw_amount=0), "deposit_closed"),
+        (VaultFlowUnavailable("external state stale", direction="deposit", preflight_result="deposit_unavailable", decoded_error="ExternalStatePreHookStale"), "deposit_unavailable"),
+    ]
+    # 2. Existing normalisation accepts typed results and older quantity evidence.
+    for error, expected in cases:
+        result, detail, data = normalise_vault_flow_failure(error)
+        assert result == expected
+        assert detail == error.reason
+        # 3. The report preserves evidence rather than converting every refusal to closed.
+        assert data["available_raw_amount"] == (str(error.available_raw_amount) if error.available_raw_amount is not None else None)
+        assert data["decoded_error"] == error.decoded_error

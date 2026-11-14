@@ -220,3 +220,30 @@ def test_shared_capacity_and_empty_quote_are_refused() -> None:
     vault.vault_contract.functions.previewDeposit.return_value.call.return_value = 0
     with pytest.raises(VaultFlowUnavailable, match="no shares"):
         pricing.get_buy_price(None, pair, Decimal(1))
+
+
+@pytest.mark.parametrize("address,expected", [
+    ("0x87088ffff874a4bcc6d13bbc8184e3639947ecde", 1800),
+    ("0xb7e559c5215cd093e284e6788bd7d145e11264ff", 86400),
+])
+def test_ipor_reviewed_freshness_interval_travels_as_metadata(address: str, expected: int) -> None:
+    """Only the reviewed route gets a shorter wait; already stale peers stay refused.
+
+    1. Describe the two distinct IPOR vault identities.
+    2. Populate the existing metadata timing field through the protocol overlay.
+    3. Retain that limit in saved rules and preserve an explicit zero wait.
+    """
+    # 1. Local metadata isolates identity selection from live provider availability.
+    base = AssetIdentifier(1, address, "SHARE", 18)
+    quote = AssetIdentifier(1, "0x" + "22" * 20, "USDC", 6)
+    metadata = VaultMetadata(vault_name="HYPE Basis", protocol_name="IPOR Fusion", protocol_slug="ipor",
+        features=[ERC4626Feature.ipor_like])
+    pair = TradingPairIdentifier(base, quote, address, address, fee=0,
+        kind=TradingPairKind.vault, other_data={"token_metadata": metadata})
+    # 2. Shared consumers use the populated field, not another protocol check.
+    enrich_vault_pair(pair)
+    assert get_vault_test_trade_time_skip_seconds(pair, 86400) == expected
+    # 3. State restoration and immediate-refusal tests retain their semantics.
+    pair.other_data.pop("token_metadata")
+    assert get_vault_test_trade_time_skip_seconds(pair, 86400) == expected
+    assert get_vault_test_trade_time_skip_seconds(pair, 0) == 0

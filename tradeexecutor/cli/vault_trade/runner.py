@@ -757,6 +757,8 @@ ALLOWED_PREFLIGHT_RESULTS: frozenset[str] = frozenset(
         "whitelisting-needed",
         "below_minimum",
         "redemption_capacity_limited",
+        "deposit_capacity_limited",
+        "deposit_unavailable",
         "redemption_window_closed",
         "redemption_paused",
         "redemption_unavailable",
@@ -883,6 +885,8 @@ def normalise_vault_flow_failure(
                     outcome_data,
                 )
             if current.direction == "deposit":
+                if current.requested_raw_amount is not None and current.available_raw_amount is not None and 0 < current.available_raw_amount < current.requested_raw_amount:
+                    return ("deposit_capacity_limited", reason_text, outcome_data)
                 return (
                     "deposit_closed",
                     reason_text,
@@ -1464,6 +1468,7 @@ class VaultTestBatchRunner:
                 attempt,
                 alarm,
                 result="deposit_closed",
+                detail=get_deposit_closed_detail(attempt) or "Pricing model refuses deposits; no global closure reason was reported",
             )
             return False
         if (

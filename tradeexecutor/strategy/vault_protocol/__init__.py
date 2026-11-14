@@ -12,7 +12,7 @@ from eth_defi.erc_4626.core import ERC4626Feature
 
 from tradingstrategy.vault import VaultProtocolRules
 from tradeexecutor.state.identifier import TradingPairIdentifier
-from tradeexecutor.strategy.vault_protocol import atoma, autopool, d2
+from tradeexecutor.strategy.vault_protocol import atoma, autopool, d2, ipor
 
 
 #: Preserve historical waits for protocols lacking a positive metadata estimate.
@@ -113,7 +113,9 @@ def resolve_vault_protocol_rules(pair: TradingPairIdentifier) -> VaultProtocolRu
             atoma.REDEMPTION_DELAY_IS_DEPOSIT_LOCK if ERC4626Feature.atoma_like in features else False
         ),
         simulation_max_holding_seconds=(
-            autopool.SIMULATION_CYCLE_SECONDS if ERC4626Feature.autopool_like in features else None
+            autopool.SIMULATION_CYCLE_SECONDS if ERC4626Feature.autopool_like in features
+            else ipor.SIMULATION_MAX_HOLDING_SECONDS.get((pair.base.chain_id, pair.pool_address.lower())) if ERC4626Feature.ipor_like in features
+            else None
         ),
     )
 
