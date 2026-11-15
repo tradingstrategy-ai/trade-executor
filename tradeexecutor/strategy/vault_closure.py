@@ -25,6 +25,8 @@ Evidence and earlier fixes:
 """
 
 import datetime
+
+from eth_defi.erc_4626.scan import DEPOSIT_PERMISSION_READ_EXCEPTIONS
 from collections.abc import Mapping
 from dataclasses import dataclass
 from decimal import Decimal
@@ -430,6 +432,7 @@ def check_live_deposit(
     vault,
     owner: str | None,
     stage: DepositCheckStage,
+    require_permissionless: bool = False,
 ) -> DepositCheckResult:
     """Check live vault admission through its ``DepositManager`` adapter.
 
@@ -446,6 +449,28 @@ def check_live_deposit(
         pair_ticker=pair.get_ticker(),
         vault_address=pair.pool_address,
     )
+    if require_permissionless:
+        if owner is None:
+            result.can_deposit = False
+            result.reason_code = DepositBlockReason.unknown
+            result.message = "Cannot inspect route permission without custody owner"
+            return result
+        try:
+            allowed = vault.is_permissionless(owner)
+        except DEPOSIT_PERMISSION_READ_EXCEPTIONS as error:
+            result.can_deposit = False
+            result.reason_code = DepositBlockReason.unknown
+            result.message = f"Complete-route permission unknown: {error}"
+            return result
+        if not allowed:
+            result.can_deposit = False
+            result.reason_code = DepositBlockReason.deposit_request_unavailable
+            result.evidence_status = VaultClosureOutcome.account_restricted
+            result.evidence_source = "adapter_permission_policy"
+            result.evidence_reason = "Required deposit or exit route is permissioned"
+            result.message = result.evidence_reason
+            return result
+
     deposit_manager = vault.get_deposit_manager()
 
     if owner is None:

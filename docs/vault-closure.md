@@ -79,3 +79,23 @@ from the API. It neither removes the vault's data nor blocks supported redemptio
 `DepositCheckResult` retains the shared enum outcome and source when created by the historical rule, including through JSON serialisation. Older adapters without these optional fields are classified from their recorded reason and API evidence. A missing owner or unknown limit is not positive evidence that deposits are open. Zero live owner capacity and withdrawal lockups are `account_restricted`, not global vault closures; `include_strategy_policy=False` never bypasses them. Positive amount limits still require separate amount-aware sizing.
 
 A captured `deposit_check` accepts policy controls only, not a replacement timestamp, position or historical interpretation. Directly passing a `VaultClosure` to either boolean helper accepts no query kwargs. Historical `apply_hypercore_cutoff=False` exists for legacy field-classification wrappers; normal strategy decisions retain the cutoff.
+
+## Opt-in complete-route permission inspection
+
+`PricingModel.check_permissionless_deposit()` checks policy before ordinary live
+availability. `GenericPricingModel` dispatches it and `VaultPricing` delegates to
+`VaultBase.is_permissionless(owner)`. Unsupported models/adapters return unknown;
+ordinary `check_deposit()` behaviour is unchanged. No strategy enables the new
+policy automatically.
+
+Morpho V2 inspects outer entry/exit gates and the recognised inner-vault route at
+one block. A refused gate blocks the candidate; admitting one account does not
+prove a gate is permissionless, so unresolved gate semantics remain unknown.
+The adapter does not traverse arbitrary nested graphs. Public outer deposit
+metadata is preserved even when an inner route or exit is restricted.
+
+The result uses the existing `DepositCheckResult`: a known restriction is
+`deposit_request_unavailable` with `account_restricted` evidence, while an
+unsupported inspection is `unknown`. Capacity and window restrictions retain
+their existing meanings. Strategy membership and held-position handling belong
+to the strategy's separately reviewed policy consumer.

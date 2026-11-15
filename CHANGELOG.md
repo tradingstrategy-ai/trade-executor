@@ -1,5 +1,7 @@
     **Note**: A full changelog is not available as long as `trade-executor` package is in active beta developmnt.
 
+- Add opt-in complete-route vault permission checks without changing ordinary deposit admission (2026-11-15).
+
 ## 0.2
 - Use a separate adapter for the unattributed VaultMorpho implementation, retaining measured lending behaviour without unsupported canonical Morpho metadata defaults (2026-11-14).
 - Distinguish deposit size and stale-state refusals from global closure, preserve pricing-veto reasons, and populate a 30-minute simulation wait for the reviewed IPOR external-state route (2026-11-14).

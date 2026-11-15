@@ -183,3 +183,64 @@ def test_live_redemption_restrictions(reason: RedemptionBlockReason | None, outc
     assert assessment.status is outcome
     assert assessment.blocked is (outcome is not Outcome.unknown)
     assert is_vault_closed(assessment) is (outcome is Outcome.closed)
+
+
+@pytest.mark.parametrize('policy,expected,reason', [(False, False, DepositBlockReason.deposit_request_unavailable), (None, False, DepositBlockReason.unknown)])
+def test_opt_in_permissionless_policy(policy, expected, reason):
+    """Known restrictions and unreadable policy stop before deposit construction."""
+    from unittest.mock import Mock
+    adapter = Mock()
+    if policy is None:
+        adapter.is_permissionless.side_effect = NotImplementedError('Unreviewed implementation')
+    else:
+        adapter.is_permissionless.return_value = policy
+    pair = Mock()
+    result = check_live_deposit(timestamp=None, pair=pair, vault=adapter, owner='0x01', stage=DepositCheckStage.unknown, require_permissionless=True)
+    assert result.can_deposit is expected
+    assert result.reason_code == reason
+    adapter.get_deposit_manager.assert_not_called()
+    if policy is False:
+        assert result.evidence_status == Outcome.account_restricted
+
+
+def test_permission_policy_read_error_is_unknown():
+    from eth_defi.provider.fallback import ExtraValueError
+    adapter=Mock()
+    adapter.is_permissionless.side_effect=ExtraValueError('RPC refusal')
+    result=check_live_deposit(timestamp=None,pair=Mock(),vault=adapter,owner='0x01',stage=DepositCheckStage.unknown,require_permissionless=True)
+    assert result.can_deposit is False and result.reason_code==DepositBlockReason.unknown
+
+
+def test_permissionless_opt_in_dispatches_without_changing_default_check():
+    from tradeexecutor.ethereum.vault.vault_live_pricing import VaultPricing
+    from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
+    from tradeexecutor.strategy.pricing_model import PricingModel
+    from unittest.mock import patch
+    pair=Mock();adapter=Mock();adapter.is_permissionless.return_value=False
+    pricing=object.__new__(VaultPricing)
+    pricing.get_vault=Mock(return_value=adapter);pricing.get_owner_address=Mock(return_value='0x01')
+    generic=object.__new__(GenericPricing);generic.route=Mock(return_value=pricing)
+    check=generic.check_permissionless_deposit(None,pair)
+    assert check.evidence_status==Outcome.account_restricted
+    assert PricingModel.check_permissionless_deposit(pricing,None,pair).reason_code==DepositBlockReason.unknown
+    adapter.is_permissionless.reset_mock()
+    with patch('tradeexecutor.ethereum.vault.vault_live_pricing.check_live_deposit',return_value=DepositCheckResult()) as ordinary:
+        pricing.check_deposit(None,pair)
+        assert 'require_permissionless' not in ordinary.call_args.kwargs
+    adapter.is_permissionless.assert_not_called()
+
+
+def test_permissionless_policy_still_checks_deposit_capacity():
+    from decimal import Decimal
+    adapter=Mock()
+    adapter.is_permissionless.return_value=True
+    manager=adapter.get_deposit_manager.return_value
+    manager.can_create_deposit_request.return_value=True
+    manager.fetch_global_deposit_closure_reason.return_value=None
+    manager.has_synchronous_deposit.return_value=True
+    manager.fetch_depositable_raw_assets.return_value=0
+    adapter.denomination_token.convert_to_decimals.return_value=Decimal(0)
+    result=check_live_deposit(timestamp=None,pair=vault(),vault=adapter,owner='0x01',stage=DepositCheckStage.unknown,require_permissionless=True)
+    assert result.can_deposit is False
+    assert result.reason_code==DepositBlockReason.vault_max_deposit_zero
+    manager.can_create_deposit_request.assert_called_once_with('0x01')
