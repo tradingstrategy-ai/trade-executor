@@ -1,5 +1,6 @@
 """Test ERC-4626 vault price reading and estimation."""
 from decimal import Decimal
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -58,7 +59,7 @@ def test_vault_routing_autodetects_empty_feature_metadata(
     vault_pricing: VaultPricing,
     ipor_usdc: TradingPairIdentifier,
     monkeypatch: pytest.MonkeyPatch,
-):
+) -> None:
     """Empty vault feature metadata is treated as unknown, not verified generic ERC-4626.
 
     1. Create a vault pair with ambient empty feature metadata and no protocol marker.
@@ -70,7 +71,9 @@ def test_vault_routing_autodetects_empty_feature_metadata(
     ipor_usdc.other_data = dict(ipor_usdc.other_data or {})
     ipor_usdc.other_data["vault_features"] = []
     ipor_usdc.other_data.pop("vault_protocol", None)
-    autodetected_vault = object()
+    # Only factory selection is mocked; retain the mutable policy field that
+    # every real VaultBase provides so routing can refresh current authorisation.
+    autodetected_vault = SimpleNamespace(redemption_recovery_max_fee_bps=None)
 
     def create_vault_instance(*args, **kwargs):
         raise AssertionError("Empty feature metadata must not be trusted as a generic sync vault")
@@ -83,6 +86,7 @@ def test_vault_routing_autodetects_empty_feature_metadata(
 
     # 3. Check the slower autodetection path is used.
     assert vault is autodetected_vault
+    assert vault.redemption_recovery_max_fee_bps is None
     vault_routing._vault_cache.clear()
 
 
@@ -90,7 +94,7 @@ def test_vault_routing_accepts_explicit_generic_erc4626_protocol_slug(
     vault_pricing: VaultPricing,
     ipor_usdc: TradingPairIdentifier,
     monkeypatch: pytest.MonkeyPatch,
-):
+) -> None:
     """An explicit generic ERC-4626 protocol slug opts in to a generic synchronous vault.
 
     1. Create a vault pair with empty features and a generic ERC-4626 protocol marker.
@@ -102,7 +106,8 @@ def test_vault_routing_accepts_explicit_generic_erc4626_protocol_slug(
     ipor_usdc.other_data = dict(ipor_usdc.other_data or {})
     ipor_usdc.other_data["vault_features"] = []
     ipor_usdc.other_data["vault_protocol"] = GENERIC_ERC4626_PROTOCOL_SLUG
-    generic_vault = object()
+    # A generic vault retains the default-disabled recovery capability.
+    generic_vault = SimpleNamespace(redemption_recovery_max_fee_bps=None)
     captured_features = []
 
     def create_vault_instance(*args, **kwargs):
@@ -120,6 +125,7 @@ def test_vault_routing_accepts_explicit_generic_erc4626_protocol_slug(
 
     # 3. Check the generic factory path receives an empty feature set.
     assert vault is generic_vault
+    assert vault.redemption_recovery_max_fee_bps is None
     assert captured_features == [set()]
     vault_routing._vault_cache.clear()
 
