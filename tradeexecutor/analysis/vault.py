@@ -82,6 +82,8 @@ def mark_whitelisted_vaults_ignored(
     """
     flagged = []
     for pair in strategy_universe.iterate_pairs():
+        if not pair.is_vault():
+            continue
         unsupported = getattr(pair.get_vault_metadata(), "deposit_permission", None) == VaultDepositPermission.unsupported_protocol
         if not unsupported and historical_native_closure_keys and (pair.is_hyperliquid_vault() or pair.is_lighter_pool()):
             key = (int(pair.chain_id), pair.pool_address.lower())

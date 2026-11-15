@@ -266,8 +266,11 @@ def test_unsupported_protocol_pair_is_diagnostic_only() -> None:
     pair.get_vault_metadata.return_value=SimpleNamespace(deposit_permission=VaultDepositPermission.unsupported_protocol)
     pair.get_ignore_reason.return_value=None
     pair.other_data={}
-    universe=Mock();universe.iterate_pairs.return_value=[pair]
+    non_vault=Mock(); non_vault.is_vault.return_value=False
+    non_vault.get_vault_metadata.side_effect=AssertionError("Spot pairs have no vault metadata")
+    universe=Mock();universe.iterate_pairs.return_value=[non_vault,pair]
     assert mark_whitelisted_vaults_ignored(universe)==[pair]
+    non_vault.get_vault_metadata.assert_not_called()
     pair.set_ignore_reason.assert_called_once_with(IGNORE_REASON_UNSUPPORTED_PROTOCOL)
     assert pair.other_data['unsupported_protocol'] is True
     assert 'requires_deposit_whitelist' not in pair.other_data
