@@ -877,6 +877,11 @@ The paid ticket is checkpointed before the finish attempt. Do not
 change a protocol's historical queue classification to express this execution
 exception. `get_preflight_data()` and `restore_preflight_data()` retain the
 adapter's original authorisation for receipt-only reconstruction.
+Call these request hooks directly: Atoma retains its submission-time
+`implementation` under the existing field name, while Morpho retains its cap
+and exact deallocation. Shared routing does not inspect either request class.
+Legacy Atoma records without the field keep the implementation read during
+reconstruction; a saved implementation is never replaced by that read.
 
 Morpho's reviewed public recovery burns fee shares before the final redeem.
 The ticket retains the original disposal and fee burn; finish redeems only the

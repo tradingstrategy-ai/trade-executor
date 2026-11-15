@@ -13,14 +13,17 @@ loss or a shortage of total market liquidity.
 
 The reviewed public remedy is ``VaultV2.forceDeallocate`` from another funded
 market in the same adapter, followed by redemption of the remaining shares.
+These are separate, non-atomic transactions: freed assets can be consumed
+before the finish, leaving the paid ticket pending. See ``docs/vault-protocol-overlays.md``.
 The vault charges a penalty by burning the owner's shares and retaining the
 corresponding assets. Both deployments charged 1 bp at the studied block.
 Freeing 1,001 USDC charged 0.100100 USDC; the control then redeemed all remaining
 shares for 1,001.150301 and 1,001.325571 USDC respectively. Those are diagnostic
 control figures, using a fixed 1,001 USDC deallocation. The implemented manager
 conservatively frees the gross current claim, slightly more than principal.
-Its first public Safe/Guard rerun paid 0.100126 / 0.100143 USDC and returned
-1,001.150259 / 1,001.325497 USDC (15 November 2026). These outcomes depend on
+The recorded public Safe/Guard rerun, started at 18:41:53.919123 UTC on
+15 November 2026, paid 0.100126 / 0.100143 USDC and returned
+1,001.150259 / 1,001.325492 USDC. These outcomes depend on
 mining times and the particular fork; the cap is a rate, not those fixed amounts.
 Redistribution of retained penalty assets and intervening interest affect the final proceeds.
 

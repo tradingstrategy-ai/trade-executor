@@ -4,8 +4,6 @@ Keep these policies here rather than teaching routing and retry code about
 protocol ticket schemas. This module has no RPC reads or independent state.
 """
 
-from eth_defi.erc_4626.vault_protocol.atoma.deposit_redeem import AtomaRedemptionRequest
-from eth_defi.vault.deposit_redeem import RedemptionRequest
 from tradingstrategy.chain import ChainId
 
 
@@ -46,34 +44,3 @@ def validate_single_redemption_ticket(data: dict) -> None:
             "Expected one request per trade; halt and inspect custody/state. "
             f"Vault {data.get('vault_address')}, owner {data.get('vault_owner')}"
         )
-
-
-def capture_redemption_preflight(request: RedemptionRequest, data: dict) -> None:
-    """Retain adapter evidence across receipt-only request reconstruction.
-
-    The request can mine after a proxy upgrade. Its parser needs the original
-    implementation to distinguish that change from an ordinary mined request.
-    Staged recovery retains its authorised cap and exact submitted deallocation.
-
-    :param request: Manager request before signing.
-    :param data: Existing redemption preflight dictionary to update.
-    :return: None; update the existing dictionary in place.
-    """
-    data.update(request.get_preflight_data())
-    if isinstance(request, AtomaRedemptionRequest):
-        data["implementation"] = request.implementation
-
-
-def restore_redemption_preflight(request: RedemptionRequest, data: dict) -> None:
-    """Restore adapter evidence captured before the original request broadcast.
-
-    Keep the existing field name so saved Atoma requests retain upgrade checks.
-    Legacy records without this evidence keep the manager's existing default.
-
-    :param request: Rebuilt manager request used only for receipt parsing.
-    :param data: Previously saved redemption preflight metadata.
-    :return: None; restore evidence on the rebuilt request where needed.
-    """
-    request.restore_preflight_data(data)
-    if isinstance(request, AtomaRedemptionRequest) and data.get("implementation") is not None:
-        request.implementation = data["implementation"]

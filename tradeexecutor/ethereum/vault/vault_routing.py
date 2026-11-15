@@ -35,7 +35,7 @@ from eth_defi.vault.deposit_redeem import (
 from tradeexecutor.ethereum.swap import get_swap_transactions, report_failure
 from tradeexecutor.ethereum.token_cache import get_default_token_cache
 from tradeexecutor.ethereum.vault.settlement_estimate import refresh_vault_settlement_estimate
-from tradeexecutor.ethereum.vault.settlement_policy import capture_redemption_preflight, restore_redemption_preflight, validate_single_redemption_ticket
+from tradeexecutor.ethereum.vault.settlement_policy import validate_single_redemption_ticket
 from tradeexecutor.ethereum.vault.vault_utils import is_explicit_generic_erc4626_pair
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.portfolio import Portfolio
@@ -576,7 +576,7 @@ class VaultRouting(RoutingModel):
                 txs.append(approve_tx)
 
         if direction == "redeem":
-            capture_redemption_preflight(request, trade.other_data["vault_redemption_preflight"])
+            trade.other_data["vault_redemption_preflight"].update(request.get_preflight_data())
 
         for ordinal, function in enumerate(request.funcs):
             request_tx = tx_builder.sign_transaction(
@@ -705,7 +705,7 @@ class VaultRouting(RoutingModel):
                     trade,
                     request_function_count=len(redemption_request.funcs),
                 )
-                restore_redemption_preflight(redemption_request, trade.other_data.get("vault_redemption_preflight", {}))
+                redemption_request.restore_preflight_data(trade.other_data.get("vault_redemption_preflight", {}))
                 parse_request = redemption_request.parse_redeem_transaction
 
             request_receipts: list[dict] = []
@@ -923,37 +923,31 @@ def get_vault_for_pair(
     features = target_pair.get_vault_features()
 
     cache_key = (vault_address, id(web3))
-    cached = _vault_cache.get(cache_key)
+    vault = _vault_cache.get(cache_key)
+    if vault is None:
+        if token_cache is None:
+            token_cache = get_default_token_cache()
+        if features or is_explicit_generic_erc4626_pair(target_pair):
+            vault = create_vault_instance(
+                web3,
+                vault_address,
+                features or set(),
+                token_cache=token_cache,
+            )
+        else:
+            # Autodetect features, much slower.
+            vault = create_vault_instance_autodetect(
+                web3,
+                vault_address,
+                token_cache=token_cache,
+            )
+        _vault_cache[cache_key] = vault
 
-    if token_cache is None:
-        token_cache = get_default_token_cache()
-
-    # Execution authorisation follows today's reviewed rule, including for an
-    # existing position whose saved pair predates the capability. Historical
-    # fee/queue snapshots remain unchanged. Revocation also clears cached caps.
-    recovery_limit = redemption_recovery_fee_limit(target_pair.chain_id, target_pair.pool_address)
-    if cached:
-        cached.redemption_recovery_max_fee_bps = recovery_limit
-        return cached
-
-    if features or is_explicit_generic_erc4626_pair(target_pair):
-        cached = create_vault_instance(
-            web3,
-            vault_address,
-            features or set(),
-            token_cache=token_cache,
-        )
-    else:
-        # Autodetect features, much slower
-        cached = create_vault_instance_autodetect(
-            web3,
-            vault_address,
-            token_cache=token_cache,
-        )
-
-    cached.redemption_recovery_max_fee_bps = recovery_limit
-    _vault_cache[cache_key] = cached
-    return cached
+    # Refresh execution authorisation for both new and cached instances. This
+    # covers old position snapshots and revocation without changing historical
+    # fee/queue terms or retaining a cached cap after its rule is removed.
+    vault.redemption_recovery_max_fee_bps = redemption_recovery_fee_limit(target_pair.chain_id, vault_address)
+    return vault
 
 
 #: In-process cache of constructed vault objects

@@ -169,6 +169,10 @@ adapters and formerly authorised snapshots. This does not rewrite historical
 fee/queue terms. Deployment descriptors carry the same current cap to Guard.
 Live reads, market choice and contract calls stay in eth-defi. Ordinary successful redemption
 always takes precedence and pays no recovery penalty.
+The adapter constructs each direct request once, then preflights that exact
+request. Recovery inspects the failed request without repeating construction or
+balance/admission checks. Finishing a paid ticket uses the same direct preflight
+and cannot select another recovery.
 
 A qualifying failed redemption can create a staged request: public
 `forceDeallocate` releases existing assets and burns penalty shares; the existing
