@@ -1297,6 +1297,12 @@ class TradeExecution:
         get_vault_settlement_request_quantity(). Public recovery can burn only
         fee shares initially, retaining the rest in the wallet for its finish.
         Old tickets have no retained amount and preserve ordinary escrow checks.
+
+        :py:meth:`~tradeexecutor.state.position.TradingPosition.get_held_assets`
+        applies this correction to custody checks without releasing reserved sales.
+
+        :return: Non-positive decimal share adjustment to expected wallet holdings;
+            paid recovery normally removes only the first penalty burn.
         """
         retained = int(self.other_data.get("vault_wallet_retained_raw_shares", 0))
         requested = self.get_vault_settlement_request_quantity()

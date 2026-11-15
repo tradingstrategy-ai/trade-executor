@@ -117,6 +117,13 @@ def test_morpho_live_execution_finishes_before_account_check(web3: Web3, tmp_pat
     _, sell, _ = state.create_trade(ts, pair, -original, None, 1.0, TradeType.rebalance, quote, 1.0, slippage_tolerance=0.005)
     observed_pending = []
     def checkpoint() -> None:
+        """Retain the paid pending stage before immediate settlement hides it.
+
+        The execution callback persists real State here so the test can reconcile
+        custody and valuation between the first fee burn and final redemption.
+
+        :return: None; synchronise the state store and record pending-stage observations.
+        """
         store.sync(state)
         if sell.get_status() is TradeStatus.vault_settlement_pending and len(sell.blockchain_transactions) == 1:
             persisted = State.from_json(state.to_json())

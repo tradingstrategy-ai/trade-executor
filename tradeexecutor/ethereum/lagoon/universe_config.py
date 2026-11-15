@@ -264,10 +264,36 @@ def translate_trading_universe_to_lagoon_config(
 
     :param universe:
         Strategy trading universe containing pairs, exchanges, and reserve assets.
-
     :param chain_web3:
         Web3 connections keyed by chain slug (e.g. ``{"arbitrum": web3_arb, "base": web3_base}``).
+    :param safe_owners:
+        Addresses that own the Safe multisig.
+    :param safe_threshold:
+        Number of Safe owner signatures required.
+    :param safe_salt_nonce:
+        CREATE2 salt for deterministic Safe address across chains.
 
+        Not needed when ``guard_only`` is enabled and the deployment reuses an
+        existing Safe across all chains.
+    :param fund_name:
+        Vault token name.
+    :param fund_symbol:
+        Vault token symbol.
+    :param any_asset:
+        When ``True``, the vault guard allows any ERC-20 token.
+        When ``False`` (default), only tokens from the trading universe
+        are whitelisted.
+    :param whitelist_known_hyperliquid_vaults:
+        When ``True``, whitelist each Hyperliquid native vault in the strategy
+        universe. This keeps both ``any_asset`` and ``any_hypercore_vault``
+        disabled, so future vaults remain unavailable until the guard is
+        redeployed with an updated universe.
+    :param max_settlement_amount:
+        Maximum cumulative gross underlying-token amount permitted within one
+        fixed source-chain Lagoon settlement window.
+    :param settlement_window:
+        Fixed duration in seconds for the cumulative gross automated
+        source-chain Lagoon settlement budget. Defaults to one day.
     :param asset_managers:
         Ordered list of addresses that may manage the vault and execute
         trades.
@@ -275,62 +301,22 @@ def translate_trading_universe_to_lagoon_config(
         The first address becomes the primary asset manager and Lagoon
         valuation manager. Any later addresses are secondary asset
         managers and only receive guard sender permissions.
-
     :param asset_manager:
         Backwards-compatible single-asset-manager input.
 
         Used only when ``asset_managers`` is not provided.
-
-    :param safe_owners:
-        Addresses that own the Safe multisig.
-
-    :param safe_threshold:
-        Number of Safe owner signatures required.
-
-    :param safe_salt_nonce:
-        CREATE2 salt for deterministic Safe address across chains.
-
-        Not needed when ``guard_only`` is enabled and the deployment reuses an
-        existing Safe across all chains.
-
-    :param fund_name:
-        Vault token name.
-
-    :param fund_symbol:
-        Vault token symbol.
-
-    :param any_asset:
-        When ``True``, the vault guard allows any ERC-20 token.
-        When ``False`` (default), only tokens from the trading universe
-        are whitelisted.
-
-    :param whitelist_known_hyperliquid_vaults:
-        When ``True``, whitelist each Hyperliquid native vault in the strategy
-        universe. This keeps both ``any_asset`` and ``any_hypercore_vault``
-        disabled, so future vaults remain unavailable until the guard is
-        redeployed with an updated universe.
-
-    :param max_settlement_amount:
-        Maximum cumulative gross underlying-token amount permitted within one
-        fixed source-chain Lagoon settlement window.
-
-    :param settlement_window:
-        Fixed duration in seconds for the cumulative gross automated
-        source-chain Lagoon settlement budget. Defaults to one day.
-
     :param guard_only:
         When ``True``, build configs for redeploying only the guard/module
         against an existing Safe. The source chain also reuses the existing
         Lagoon vault.
-
     :param existing_vault_address:
         Existing Lagoon vault address on the source chain. Required when
         ``guard_only`` is ``True``.
-
     :param existing_safe_address:
         Existing deterministic Safe address shared across all chains.
         Required when ``guard_only`` is ``True``.
-
+    :param performance_fee: Optional Lagoon performance rate in basis points, forwarded to its deployment parameters.
+    :param management_fee: Optional Lagoon management rate in basis points, forwarded to its deployment parameters.
     :return:
         Per-chain configs keyed by chain slug, ready for
         :func:`deploy_multichain_lagoon_vault`.

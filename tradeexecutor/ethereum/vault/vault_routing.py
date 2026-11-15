@@ -664,10 +664,24 @@ class VaultRouting(RoutingModel):
         web3: Web3,
         state: State,
         trade: TradeExecution,
-        receipts: dict[str, dict],
-        stop_on_execution_failure=False,
-    ):
+        receipts: dict[HexBytes, dict],
+        stop_on_execution_failure: bool = False,
+    ) -> None:
 
+        """Record mined vault evidence before making the resulting assets available.
+
+        :py:meth:`~tradeexecutor.ethereum.execution.EthereumExecution.resolve_trades`
+        delegates each confirmed trade here. Direct operations account from their
+        receipts; queued or staged requests instead persist a ticket for the normal
+        settlement resolver. A paid recovery must be recorded before its finish.
+
+        :param web3: Connection for the chain on which these transactions were mined.
+        :param state: Portfolio state to update with the receipt or pending ticket.
+        :param trade: Deposit or redemption whose signed transaction records identify the calls.
+        :param receipts: Mined receipts keyed by binary transaction hash.
+        :param stop_on_execution_failure: Raise on a failed transaction instead of only recording it.
+        :return: None; mutate the trade and portfolio through their existing state lifecycle.
+        """
         vault = get_vault_for_pair(
             web3,
             trade.pair,
@@ -912,9 +926,15 @@ def get_vault_for_pair(
 
     - Instance has a web3 connection object
 
+    :py:meth:`VaultRouting.deposit_or_redeem` obtains current execution
+    authorisation here even when an older position reuses a cached adapter.
+
+    :param web3: Connection for the vault's execution chain.
+    :param target_pair: Vault pair supplying its address and supported features.
     :param token_cache:
         Token cache for caching ERC-20 token metadata.
         If not provided, uses default cache.
+    :return: Cached or newly constructed adapter with the current reviewed cap refreshed.
     """
 
     assert target_pair.is_vault()

@@ -51,6 +51,15 @@ def redemption_recovery_fee_limit(chain_id: int, address: str) -> int | None:
 
     Keep identity selection here, alongside pair enrichment. Generic deployment
     and routing consumers pass the resulting capability to the adapter and Guard.
+
+    :py:func:`~tradeexecutor.ethereum.vault.vault_routing.get_vault_for_pair`
+    refreshes cached adapters from this rule, including revocation.
+    :py:func:`~tradeexecutor.ethereum.lagoon.universe_config.translate_trading_universe_to_lagoon_config`
+    carries the same reviewed limit into Guard deployment descriptors.
+
+    :param chain_id: EVM chain containing the vault, not the strategy's custody chain.
+    :param address: Vault address; matching is case-insensitive.
+    :return: Maximum penalty rate in basis points, or None when recovery is not authorised.
     """
     return morpho.REDEMPTION_RECOVERY_MAX_FEE_BPS.get((chain_id, address.lower()))
 
@@ -82,6 +91,10 @@ def resolve_vault_protocol_rules(pair: TradingPairIdentifier) -> VaultProtocolRu
     Unsupported or missing rates are retained for the universe validator to
     reject. Translation itself must also work for data-only vaults and existing
     strategies that have not opted into strict fee validation.
+
+    :param pair: Vault pair carrying loaded metadata and detected protocol features.
+    :return: Rule snapshot retaining unknown fees and directional settlement terms;
+        resolving it neither admits a vault nor submits a transaction.
     """
     metadata = pair.get_vault_metadata()
     features = pair.get_vault_features() or set()
