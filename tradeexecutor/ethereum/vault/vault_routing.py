@@ -35,7 +35,7 @@ from eth_defi.vault.deposit_redeem import (
 from tradeexecutor.ethereum.swap import get_swap_transactions, report_failure
 from tradeexecutor.ethereum.token_cache import get_default_token_cache
 from tradeexecutor.ethereum.vault.settlement_estimate import refresh_vault_settlement_estimate
-from tradeexecutor.ethereum.vault.settlement_policy import capture_redemption_preflight, restore_redemption_preflight, validate_single_redemption_ticket
+from tradeexecutor.ethereum.vault.settlement_policy import validate_single_redemption_ticket
 from tradeexecutor.ethereum.vault.vault_utils import is_explicit_generic_erc4626_pair
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.portfolio import Portfolio
@@ -48,6 +48,7 @@ from tradeexecutor.utils.blockchain import get_block_timestamp
 from web3 import Web3
 
 from tradeexecutor.ethereum.tx import TransactionBuilder
+from tradeexecutor.strategy.vault_protocol import redemption_recovery_fee_limit
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradingstrategy.pair import PandasPairUniverse
 
@@ -540,7 +541,11 @@ class VaultRouting(RoutingModel):
                 redemption_preflight["manager_request_raw_shares"] = str(
                     request.raw_shares
                 )
-            is_async = not deposit_manager.has_synchronous_redemption()
+            is_async = request.requires_settlement or not deposit_manager.has_synchronous_redemption()
+            if request.requires_settlement:
+                # Request-level staging is already publicly finishable. The EVM
+                # execution model sweeps it after parsing, before account checks.
+                trade.other_data["vault_settlement_immediate"] = True
             direction = "redeem"
 
         txs: list[BlockchainTransaction] = []
@@ -571,7 +576,7 @@ class VaultRouting(RoutingModel):
                 txs.append(approve_tx)
 
         if direction == "redeem":
-            capture_redemption_preflight(request, trade.other_data["vault_redemption_preflight"])
+            trade.other_data["vault_redemption_preflight"].update(request.get_preflight_data())
 
         for ordinal, function in enumerate(request.funcs):
             request_tx = tx_builder.sign_transaction(
@@ -659,10 +664,24 @@ class VaultRouting(RoutingModel):
         web3: Web3,
         state: State,
         trade: TradeExecution,
-        receipts: dict[str, dict],
-        stop_on_execution_failure=False,
-    ):
+        receipts: dict[HexBytes, dict],
+        stop_on_execution_failure: bool = False,
+    ) -> None:
 
+        """Record mined vault evidence before making the resulting assets available.
+
+        :py:meth:`~tradeexecutor.ethereum.execution.EthereumExecution.resolve_trades`
+        delegates each confirmed trade here. Direct operations account from their
+        receipts; queued or staged requests instead persist a ticket for the normal
+        settlement resolver. A paid recovery must be recorded before its finish.
+
+        :param web3: Connection for the chain on which these transactions were mined.
+        :param state: Portfolio state to update with the receipt or pending ticket.
+        :param trade: Deposit or redemption whose signed transaction records identify the calls.
+        :param receipts: Mined receipts keyed by binary transaction hash.
+        :param stop_on_execution_failure: Raise on a failed transaction instead of only recording it.
+        :return: None; mutate the trade and portfolio through their existing state lifecycle.
+        """
         vault = get_vault_for_pair(
             web3,
             trade.pair,
@@ -700,7 +719,7 @@ class VaultRouting(RoutingModel):
                     trade,
                     request_function_count=len(redemption_request.funcs),
                 )
-                restore_redemption_preflight(redemption_request, trade.other_data.get("vault_redemption_preflight", {}))
+                redemption_request.restore_preflight_data(trade.other_data.get("vault_redemption_preflight", {}))
                 parse_request = redemption_request.parse_redeem_transaction
 
             request_receipts: list[dict] = []
@@ -907,9 +926,15 @@ def get_vault_for_pair(
 
     - Instance has a web3 connection object
 
+    :py:meth:`VaultRouting.deposit_or_redeem` obtains current execution
+    authorisation here even when an older position reuses a cached adapter.
+
+    :param web3: Connection for the vault's execution chain.
+    :param target_pair: Vault pair supplying its address and supported features.
     :param token_cache:
         Token cache for caching ERC-20 token metadata.
         If not provided, uses default cache.
+    :return: Cached or newly constructed adapter with the current reviewed cap refreshed.
     """
 
     assert target_pair.is_vault()
@@ -918,31 +943,31 @@ def get_vault_for_pair(
     features = target_pair.get_vault_features()
 
     cache_key = (vault_address, id(web3))
-    cached = _vault_cache.get(cache_key)
+    vault = _vault_cache.get(cache_key)
+    if vault is None:
+        if token_cache is None:
+            token_cache = get_default_token_cache()
+        if features or is_explicit_generic_erc4626_pair(target_pair):
+            vault = create_vault_instance(
+                web3,
+                vault_address,
+                features or set(),
+                token_cache=token_cache,
+            )
+        else:
+            # Autodetect features, much slower.
+            vault = create_vault_instance_autodetect(
+                web3,
+                vault_address,
+                token_cache=token_cache,
+            )
+        _vault_cache[cache_key] = vault
 
-    if token_cache is None:
-        token_cache = get_default_token_cache()
-
-    if cached:
-        return cached
-
-    if features or is_explicit_generic_erc4626_pair(target_pair):
-        cached = create_vault_instance(
-            web3,
-            vault_address,
-            features or set(),
-            token_cache=token_cache,
-        )
-    else:
-        # Autodetect features, much slower
-        cached = create_vault_instance_autodetect(
-            web3,
-            vault_address,
-            token_cache=token_cache,
-        )
-
-    _vault_cache[cache_key] = cached
-    return cached
+    # Refresh execution authorisation for both new and cached instances. This
+    # covers old position snapshots and revocation without changing historical
+    # fee/queue terms or retaining a cached cap after its rule is removed.
+    vault.redemption_recovery_max_fee_bps = redemption_recovery_fee_limit(target_pair.chain_id, vault_address)
+    return vault
 
 
 #: In-process cache of constructed vault objects

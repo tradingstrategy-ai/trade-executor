@@ -203,6 +203,17 @@ source .local-test.env && PYTHONPATH="$(pwd):$PYTHONPATH" poetry run pytest test
 
 ### Python
 
+- Write docstrings and comments in clear, grammatical English and follow sound software
+  engineering practice. Explain why the code is needed and how the approach works; avoid
+  merely restating what each statement does. Document parameters and return values,
+  including units, ownership, side effects and failure conditions where relevant.
+
+- When a function’s purpose is not obvious from its local context, cross-reference
+  relevant callers in the rationale with Sphinx roles such as
+  :py:func:`package.function` or :py:meth:`package.Class.method`. Include a one-line
+  explanation of why each caller uses the function. Use real or explicitly documented
+  intended call sites; avoid speculative links and obvious boilerplate.
+
 - Always use global, level imports, unless facing circular import exception. NEVER USE FUNCTION LOCAL IMPORTS UNLESS TOLD SO OR ABSOLUTE NECESSARAY TO AVOID CIRCULAR IMPORTS.
 - Using `assert` is ok, we never run with `python -O` 
 - Never write `del argument` or similar statements to mark an argument as unused. They only silence linters and read as if the value mattered. If a function takes an argument it does not use because an interface requires it, say so in the docstring and leave the body alone.

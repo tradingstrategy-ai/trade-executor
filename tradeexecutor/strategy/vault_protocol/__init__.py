@@ -12,7 +12,7 @@ from eth_defi.erc_4626.core import ERC4626Feature
 
 from tradingstrategy.vault import VaultProtocolRules
 from tradeexecutor.state.identifier import TradingPairIdentifier
-from tradeexecutor.strategy.vault_protocol import atoma, autopool, d2, ipor
+from tradeexecutor.strategy.vault_protocol import atoma, autopool, d2, ipor, morpho
 
 
 #: Preserve historical waits for protocols lacking a positive metadata estimate.
@@ -46,6 +46,24 @@ def get_vault_test_trade_time_skip_seconds(pair: TradingPairIdentifier, requeste
     return requested_seconds
 
 
+def redemption_recovery_fee_limit(chain_id: int, address: str) -> int | None:
+    """Resolve reviewed execution exceptions for deployment descriptors and pairs.
+
+    Keep identity selection here, alongside pair enrichment. Generic deployment
+    and routing consumers pass the resulting capability to the adapter and Guard.
+
+    :py:func:`~tradeexecutor.ethereum.vault.vault_routing.get_vault_for_pair`
+    refreshes cached adapters from this rule, including revocation.
+    :py:func:`~tradeexecutor.ethereum.lagoon.universe_config.translate_trading_universe_to_lagoon_config`
+    carries the same reviewed limit into Guard deployment descriptors.
+
+    :param chain_id: EVM chain containing the vault, not the strategy's custody chain.
+    :param address: Vault address; matching is case-insensitive.
+    :return: Maximum penalty rate in basis points, or None when recovery is not authorised.
+    """
+    return morpho.REDEMPTION_RECOVERY_MAX_FEE_BPS.get((chain_id, address.lower()))
+
+
 def classify_vault_fee_profile(
     chain_id: int, address: str, deposit_fee: float | None, redemption_fee: float | None,
 ) -> str | None:
@@ -73,6 +91,10 @@ def resolve_vault_protocol_rules(pair: TradingPairIdentifier) -> VaultProtocolRu
     Unsupported or missing rates are retained for the universe validator to
     reject. Translation itself must also work for data-only vaults and existing
     strategies that have not opted into strict fee validation.
+
+    :param pair: Vault pair carrying loaded metadata and detected protocol features.
+    :return: Rule snapshot retaining unknown fees and directional settlement terms;
+        resolving it neither admits a vault nor submits a transaction.
     """
     metadata = pair.get_vault_metadata()
     features = pair.get_vault_features() or set()
@@ -109,6 +131,7 @@ def resolve_vault_protocol_rules(pair: TradingPairIdentifier) -> VaultProtocolRu
         deposit_windowed=ERC4626Feature.d2_like in features,
         redemption_windowed=ERC4626Feature.d2_like in features,
         provenance=pair.get_vault_protocol() or "generic_erc4626",
+        redemption_recovery_max_fee_bps=redemption_recovery_fee_limit(pair.chain_id, pair.pool_address),
         redemption_delay_is_deposit_lock=(
             atoma.REDEMPTION_DELAY_IS_DEPOSIT_LOCK if ERC4626Feature.atoma_like in features else False
         ),

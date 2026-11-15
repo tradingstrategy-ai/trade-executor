@@ -794,10 +794,11 @@ class TradingPosition(GenericPosition):
 
         live = self.get_quantity()  # What was the position quantity before executing any of planned trades
 
-        # Async vault sell trades with an in-flight request (confirmed and queued,
-        # or broadcast but not yet parsed) may have already submitted a
-        # requestWithdraw() on-chain but aren't counted by get_quantity()
-        # (only is_success counts). Subtract their quantity so strategies
+        # Vault sell trades with an in-flight request (confirmed and queued,
+        # staged for immediate completion, or broadcast but not yet parsed)
+        # reserve their whole disposal, even if shares remain in custody for a
+        # finishing call. They are not counted by get_quantity() (only success
+        # counts). Subtract their quantity so strategies
         # don't submit duplicate withdrawal requests.
         vault_pending_sells = sum_decimal([
             t.get_vault_settlement_request_quantity()
@@ -2752,7 +2753,8 @@ class TradingPosition(GenericPosition):
     def get_held_assets(self) -> Iterable[Tuple[AssetIdentifier, Decimal]]:
         """Get the assumption of the portfolio asset amount for the account correction / accounting double check.
 
-        Pending vault sells are economic holdings but no longer wallet shares.
+        Pending vault sells reserve their whole requested quantity. Ordinary
+        queues escrow it; staged recovery can retain shares in wallet custody.
         See .claude/docs/vault-deposit-redeem.md for escrow and claim valuation.
 
         :return:
@@ -2777,12 +2779,13 @@ class TradingPosition(GenericPosition):
             held_quantity = self.get_quantity()
             if self.is_vault():
                 # A redemption still owns a claim, but its negative requested
-                # quantity removes the escrowed shares from wallet custody.
+                # quantity removes only shares already absent from custody.
+                # Retained recovery shares remain unavailable for another sale.
                 # Do not turn their absence into an accounting loss. Commands
                 # additionally mark shared pending assets unchecked until the
                 # existing settlement sweep establishes the final entitlement.
                 held_quantity += sum_decimal([
-                    t.get_vault_settlement_request_quantity()
+                    t.get_vault_settlement_wallet_quantity()
                     for t in self.trades.values()
                     if t.is_vault_settlement_in_flight() and t.is_sell()
                 ])

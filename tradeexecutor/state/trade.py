@@ -1290,6 +1290,26 @@ class TradeExecution:
             return self.get_position_quantity()
         return Decimal(str(value))
 
+    def get_vault_settlement_wallet_quantity(self) -> Decimal:
+        """Quantity already absent from custody while an exit remains pending.
+
+        Availability still reserves the full request through
+        get_vault_settlement_request_quantity(). Public recovery can burn only
+        fee shares initially, retaining the rest in the wallet for its finish.
+        Old tickets have no retained amount and preserve ordinary escrow checks.
+
+        :py:meth:`~tradeexecutor.state.position.TradingPosition.get_held_assets`
+        applies this correction to custody checks without releasing reserved sales.
+
+        :return: Non-positive decimal share adjustment to expected wallet holdings;
+            paid recovery normally removes only the first penalty burn.
+        """
+        retained = int(self.other_data.get("vault_wallet_retained_raw_shares", 0))
+        requested = self.get_vault_settlement_request_quantity()
+        retained_quantity = self.pair.base.convert_to_decimal(retained)
+        assert 0 <= retained_quantity <= -requested, "Retained wallet shares exceed the pending redemption"
+        return requested + retained_quantity
+
     def is_short(self) -> bool:
         """This is margined short trade."""
         return self.pair.kind.is_shorting()

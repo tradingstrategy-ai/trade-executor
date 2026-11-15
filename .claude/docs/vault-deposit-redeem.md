@@ -47,7 +47,8 @@ We support:
 The protocol differences are hidden behind one interface: every vault exposes a
 `VaultDepositManager` (eth_defi), and routing simply asks
 `has_synchronous_deposit()` / `has_synchronous_redemption()` to choose between
-the instant path and the queued path.
+the instant path and the queued path. A request may additionally require an
+immediate staged finish; see [staged recovery](#staged-recovery-for-a-synchronous-vault).
 
 ## Agent workflow for a vault integration
 
@@ -865,3 +866,30 @@ validation, and `tests/backtest/test_externalised_vault_fees.py` for regressions
 construction-time pair fields, D2 early-history fallback, shared operation timing,
 fixed-fee calculation and optional entry-policy callbacks. Protocol enrichment
 extends the existing managers and settlement lifecycle described above.
+
+## Staged recovery for a synchronous vault
+
+`RedemptionRequest.requires_settlement` can require a finish transaction even
+when the manager's ordinary redemptions are synchronous. Routing persists that
+specific request through the existing pending trade/ticket lifecycle and the
+live EVM receipt handler immediately invokes the existing settlement resolver.
+The paid ticket is checkpointed before the finish attempt. Do not
+change a protocol's historical queue classification to express this execution
+exception. `get_preflight_data()` and `restore_preflight_data()` retain the
+adapter's original authorisation for receipt-only reconstruction.
+Call these request hooks directly: Atoma retains its submission-time
+`implementation` under the existing field name, while Morpho retains its cap
+and exact deallocation. Shared routing does not inspect either request class.
+Legacy Atoma records without the field keep the implementation read during
+reconstruction; a saved implementation is never replaced by that read.
+
+Morpho's reviewed public recovery burns fee shares before the final redeem.
+The ticket retains the original disposal and fee burn; finish redeems only the
+remainder. Pending valuation and terminal accounting must include that first
+burn exactly once. Retained wallet shares are distinct from the whole request
+reserved against duplicate selling; use the ticket's custody quantity for account
+checks without releasing any requested shares for another trade.
+Normal CLI settlement is attempted before any Anvil-only
+operator simulation, so a public, immediately claimable finish also works live.
+See [the Morpho rule and deployment requirements](../../docs/vault-protocol-overlays.md#morpho-public-liquidity-recovery)
+and `tradeexecutor/strategy/vault_protocol/morpho.py` for the detailed case study.

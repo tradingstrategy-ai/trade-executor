@@ -1000,22 +1000,23 @@ class EthereumExecution(ExecutionModel):
         state: State,
         tx_map: Dict[HexStr, Tuple[TradeExecution, BlockchainTransaction]],
         receipts: Dict[HexBytes, dict],
-        stop_on_execution_failure=True
-    ):
-        """Resolve trade outcome.
+        stop_on_execution_failure: bool = True
+    ) -> None:
+        """Apply confirmed trade outcomes before the runner reconciles its accounts.
 
-        Read on-chain Uniswap swap data from the transaction receipt and record how it went.
+        :py:meth:`broadcast_and_resolve_multiple_nodes` and the other broadcast
+        paths share this boundary so routing-specific receipt analysis cannot be
+        skipped. A staged vault recovery checkpoints its paid ticket here, then
+        uses the existing pending-settlement sweep to attempt the finishing call.
 
-        Mutates the trade objects in-place.
-
-        :param tx_map:
-            tx hash -> (trade, transaction) mapping
-
-        :param receipts:
-            tx hash -> receipt object mapping
-
-        :param stop_on_execution_failure:
-            Raise an exception if any of the trades failed"""
+        :param ts: Naive UTC time recorded for these execution outcomes.
+        :param routing_model: Route-specific receipt interpreter, including vault routing.
+        :param state: Portfolio state mutated by receipt analysis and settlement.
+        :param tx_map: Transaction hash to original trade and signed transaction record.
+        :param receipts: Mined receipts indexed by binary transaction hash.
+        :param stop_on_execution_failure: Raise when receipt analysis reports a failed trade.
+        :return: None; update existing trades and pending tickets in place.
+        """
 
         assert isinstance(state, State)
         assert isinstance(routing_model, RoutingModel)
@@ -1035,6 +1036,13 @@ class EthereumExecution(ExecutionModel):
                 receipts,
                 stop_on_execution_failure=stop_on_execution_failure,
             )
+
+        if any(trade.other_data.get("vault_settlement_immediate") and trade.vault_settlement_pending_at is not None for trade in trades):
+            # Use the ordinary persisted resolver now, rather than leave freed
+            # public-vault assets idle until the next strategy cycle. A failed
+            # finish stays pending with its exact signed transaction and ticket.
+            self.sync_state_before_broadcast()
+            self.resolve_pending_vault_settlements(state=state, ts=ts)
 
     def create_default_routing_model(
         self,

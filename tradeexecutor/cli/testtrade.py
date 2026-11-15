@@ -31,7 +31,7 @@ from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
 from tradeexecutor.ethereum.vault.settlement_retry import check_and_resolve_vault_settlements
 from tradeexecutor.ethereum.vault.vault_routing import get_vault_for_pair
 from tradeexecutor.ethereum.vault.vault_live_pricing import VaultPricing
-from tradeexecutor.ethereum.web3config import TEST_CHAIN_IDS
+from tradeexecutor.ethereum.web3config import TEST_CHAIN_IDS, Web3Config
 from tradeexecutor.exchange_account.lighter import LIGHTER_MASTER_ACCOUNT_ID, find_lighter_account_pair, get_lighter_account_id, is_lighter_exchange_account_pair
 from tradeexecutor.state.trade import TradeExecution, TradeFlag, TradeStatus
 from tradeexecutor.state.types import Percent
@@ -857,31 +857,44 @@ def _make_cross_chain_test_trade(
     logger.info("  Reserves: %s %s (was %s)", reserve_currency_at_end, reserve_currency, reserve_currency_at_start)
 
 
-def _force_vault_settlement_and_resolve(web3, state, trade, execution_model, web3config=None):
+def _force_vault_settlement_and_resolve(web3: Web3, state: State, trade: TradeExecution, execution_model: ExecutionModel, web3config: Web3Config | None = None) -> None:
     """Force settlement on Anvil for an async vault test trade and resolve it.
 
     Uses the selected eth-defi manager's ticket-aware settlement driver. Ostium
     V1.5 retains its earlier permissionless compatibility path until its manager
     exposes the same capability.
 
+    :py:func:`_resolve_home_chain_async_settlement` uses this only after public
+    settlement cannot finish on a disposable fork. The satellite counterpart
+    supplies the destination connection so impersonation cannot target the hub.
+
     :param web3:
         Web3 connection for the chain the vault lives on. For cross-chain
         satellite vaults this must be the destination (satellite) chain
         connection, not the home chain — otherwise the operator-impersonation
         force-settle is sent to the wrong chain.
-
+    :param state: Existing portfolio state holding the pending request ticket.
+    :param trade: Pending deposit or redemption to settle on the disposable fork.
+    :param execution_model: Existing signing, broadcast and settlement implementation.
     :param web3config:
         Multichain web3 config. When given it is forwarded to the settlement
         resolver so the claim transaction is signed and broadcast on the
         vault's own chain (chain-aware claiming for satellite vaults). Without
         it the resolver falls back to the execution model's default connection,
         which is only correct for home-chain vaults.
+    :return: None; update the same trade through normal receipt analysis after the intervention.
     """
     # This function impersonates the vault operator and only makes sense against
     # an Anvil fork — on a real chain nobody can force a settlement. Enforce the
     # test-only invariant here rather than relying on every caller's is_anvil()
     # guard, so the dev-account gas payer below can never reach a real chain.
     assert is_anvil(web3), "_force_vault_settlement_and_resolve() is Anvil-only (forces operator settlement)"
+
+    # close-position also enters here directly. Publicly claimable staged
+    # requests must finish before any Anvil-only operator intervention.
+    execution_model.resolve_pending_vault_settlements(state=state, ts=native_datetime_utc_now())
+    if trade.get_status() != TradeStatus.vault_settlement_pending:
+        return
 
     vault = get_vault_for_pair(web3, trade.pair)
     deposit_manager = vault.get_deposit_manager()
@@ -974,13 +987,13 @@ def _force_vault_settlement_and_resolve(web3, state, trade, execution_model, web
 
 def _resolve_satellite_async_settlement(
     *,
-    trade,
+    trade: TradeExecution,
     on_anvil: bool,
-    web3config,
+    web3config: Web3Config,
     dest_chain_id: int,
     chain_name: str,
     state: State,
-    execution_model,
+    execution_model: ExecutionModel,
     force_on_anvil: bool = True,
 ) -> bool:
     """Resolve an async satellite vault trade left in ``vault_settlement_pending``.
@@ -1007,28 +1020,32 @@ def _resolve_satellite_async_settlement(
 
     :param trade:
         The satellite vault trade just executed (deposit or redeem).
-
     :param on_anvil:
         Whether the home chain connection is an Anvil fork (test context).
-
+    :param web3config: Chain connections used to sign and claim on the satellite.
     :param dest_chain_id:
         Chain id of the satellite vault — the chain the settlement happens on.
-
+    :param chain_name: Human-readable chain name included in pending-settlement diagnostics.
+    :param state: Portfolio state holding the original request and any paid ticket.
+    :param execution_model: Runtime that first tries ordinary settlement before any fork intervention.
+    :param force_on_anvil: Permit an explicitly disclosed operator simulation if normal settlement stays pending.
     :return:
-        ``True`` if the caller should stop because settlement is still pending
-        off-chain (real chain). ``False`` to continue: either the trade is
-        synchronous (already ``success``/failed) or it was force-settled and
-        resolved on Anvil.
+        True when the caller must stop because the request remains pending,
+        including when fork intervention is disabled. False when normal
+        success/failure checks should continue: the request is no longer pending
+        or an ordinary public claim or permitted fork intervention finished it.
+        False alone does not establish trade success.
     """
     if trade.get_status() != TradeStatus.vault_settlement_pending:
         return False
 
+    execution_model.resolve_pending_vault_settlements(state=state, ts=native_datetime_utc_now())
+    if trade.get_status() != TradeStatus.vault_settlement_pending:
+        return False
+
     if trade.pair.is_lighter_pool():
-        # A pool phase waits on Lighter, not on a vault operator: resume it
-        # once through the shared sweep and stop if it still waits.
-        execution_model.resolve_pending_vault_settlements(state=state, ts=native_datetime_utc_now())
-        if trade.get_status() != TradeStatus.vault_settlement_pending:
-            return False
+        # The shared sweep above already tried this phase once. It waits on
+        # Lighter, so there is no vault operator to impersonate.
         logger.info("Lighter pool trade #%d still waits in phase %s; rerun perform-test-trade to resume it.", trade.trade_id, trade.other_data.get("lighter_pool_phase"))
         return True
 
@@ -1065,10 +1082,10 @@ def _resolve_satellite_async_settlement(
 
 def _resolve_home_chain_async_settlement(
     *,
-    trade,
+    trade: TradeExecution,
     web3: Web3,
     state: State,
-    execution_model,
+    execution_model: ExecutionModel,
     force_on_anvil: bool = True,
 ) -> bool:
     """Resolve a home-chain async vault trade left in ``vault_settlement_pending``.
@@ -1100,16 +1117,24 @@ def _resolve_home_chain_async_settlement(
 
     :param trade:
         The vault trade just executed (deposit or redeem).
-
     :param web3:
         Web3 connection for the vault's (home) chain.
-
+    :param state: Portfolio state holding the original request and any paid ticket.
+    :param execution_model: Runtime that first tries ordinary settlement before any fork intervention.
+    :param force_on_anvil: Permit an explicitly disclosed operator simulation if normal settlement stays pending.
     :return:
-        ``True`` if the caller should stop because settlement is still pending
-        off-chain (real chain). ``False`` to continue: either the trade is
-        synchronous (already ``success``/failed) or it was force-settled and
-        resolved on Anvil.
+        True when the caller must stop because the request remains pending,
+        including when fork intervention is disabled. False when normal
+        success/failure checks should continue: the request is no longer pending
+        or an ordinary public claim or permitted fork intervention finished it.
+        False alone does not establish trade success.
     """
+    if trade.get_status() != TradeStatus.vault_settlement_pending:
+        return False
+
+    # A staged public recovery already has everything needed to finish. Try
+    # normal settlement on live chains and forks before any operator simulation.
+    execution_model.resolve_pending_vault_settlements(state=state, ts=native_datetime_utc_now())
     if trade.get_status() != TradeStatus.vault_settlement_pending:
         return False
 
