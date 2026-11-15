@@ -244,3 +244,46 @@ def test_permissionless_policy_still_checks_deposit_capacity():
     assert result.can_deposit is False
     assert result.reason_code==DepositBlockReason.vault_max_deposit_zero
     manager.can_create_deposit_request.assert_called_once_with('0x01')
+
+
+def test_unsupported_protocol_is_blocked_for_default_and_opt_in_checks() -> None:
+    from eth_defi.vault.exception import UnsupportedVaultProtocol
+    for require in (False, True):
+        adapter=Mock()
+        adapter.is_permissionless.side_effect=UnsupportedVaultProtocol('Unsupported integration')
+        adapter.get_deposit_manager.return_value.can_create_deposit_request.side_effect=UnsupportedVaultProtocol('Unsupported integration')
+        result=check_live_deposit(timestamp=None,pair=vault(),vault=adapter,owner='0x01',stage=DepositCheckStage.unknown,require_permissionless=require)
+        assert not result.can_deposit
+        assert result.evidence_source=='unsupported_protocol'
+        assert result.evidence_status==Outcome.policy_blocked
+
+
+def test_unsupported_protocol_pair_is_diagnostic_only() -> None:
+    from tradingstrategy.vault import VaultDepositPermission
+    from tradeexecutor.analysis.vault import mark_whitelisted_vaults_ignored
+    from tradeexecutor.state.identifier import IGNORE_REASON_UNSUPPORTED_PROTOCOL
+    pair=Mock()
+    pair.get_vault_metadata.return_value=SimpleNamespace(deposit_permission=VaultDepositPermission.unsupported_protocol)
+    pair.get_ignore_reason.return_value=None
+    pair.other_data={}
+    universe=Mock();universe.iterate_pairs.return_value=[pair]
+    assert mark_whitelisted_vaults_ignored(universe)==[pair]
+    pair.set_ignore_reason.assert_called_once_with(IGNORE_REASON_UNSUPPORTED_PROTOCOL)
+    assert pair.other_data['unsupported_protocol'] is True
+    assert 'requires_deposit_whitelist' not in pair.other_data
+
+
+def test_unsupported_protocol_does_not_turn_into_unknown_cli_permission() -> None:
+    from eth_defi.vault.exception import UnsupportedVaultProtocol
+    from tradeexecutor.cli.vault_trade.runner import get_unknown_deposit_permission_detail
+    attempt=Mock();attempt.executable_vault.is_whitelisted_deposit.side_effect=UnsupportedVaultProtocol('Unsupported integration')
+    with pytest.raises(UnsupportedVaultProtocol):
+        get_unknown_deposit_permission_detail(attempt)
+
+
+def test_unsupported_protocol_blocks_without_custody_owner() -> None:
+    from eth_defi.erc_4626.vault_protocol.vault_morpho.vault import VaultMorphoVault
+    adapter=object.__new__(VaultMorphoVault)
+    for require in (False,True):
+        result=check_live_deposit(timestamp=None,pair=vault(),vault=adapter,owner=None,stage=DepositCheckStage.unknown,require_permissionless=require)
+        assert not result.can_deposit and result.evidence_source=='unsupported_protocol'

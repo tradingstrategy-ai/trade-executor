@@ -99,3 +99,12 @@ The result uses the existing `DepositCheckResult`: a known restriction is
 unsupported inspection is `unknown`. Capacity and window restrictions retain
 their existing meanings. Strategy membership and held-position handling belong
 to the strategy's separately reviewed policy consumer.
+
+
+`unsupported_protocol` is an explicit non-investable status, distinct from
+unknown or an actual whitelist. Shared source filtering and diagnostic ignore
+handling exclude it like a permissioned vault. The test-trade CLI reports the
+exact status before any deposit/Guard validation, and live checks block it even
+without a resolved custody owner. VaultMorpho uses this status on every chain
+and implementation; price/history reads and existing-position redemption remain
+available. The producer, JSON exporter and client enum preserve the same value.

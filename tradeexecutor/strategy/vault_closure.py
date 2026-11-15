@@ -27,6 +27,7 @@ Evidence and earlier fixes:
 import datetime
 
 from eth_defi.erc_4626.scan import DEPOSIT_PERMISSION_READ_EXCEPTIONS
+from eth_defi.vault.exception import UnsupportedVaultProtocol
 from collections.abc import Mapping
 from dataclasses import dataclass
 from decimal import Decimal
@@ -449,6 +450,15 @@ def check_live_deposit(
         pair_ticker=pair.get_ticker(),
         vault_address=pair.pool_address,
     )
+    unsupported_reason = getattr(vault, "unsupported_protocol_reason", None)
+    if isinstance(unsupported_reason, str) and unsupported_reason:
+        result.can_deposit = False
+        result.reason_code = DepositBlockReason.deposit_request_unavailable
+        result.evidence_status = VaultClosureOutcome.policy_blocked
+        result.evidence_source = "unsupported_protocol"
+        result.message = unsupported_reason
+        return result
+
     if require_permissionless:
         if owner is None:
             result.can_deposit = False
@@ -457,6 +467,13 @@ def check_live_deposit(
             return result
         try:
             allowed = vault.is_permissionless(owner)
+        except UnsupportedVaultProtocol as error:
+            result.can_deposit = False
+            result.reason_code = DepositBlockReason.deposit_request_unavailable
+            result.evidence_status = VaultClosureOutcome.policy_blocked
+            result.evidence_source = "unsupported_protocol"
+            result.message = str(error)
+            return result
         except DEPOSIT_PERMISSION_READ_EXCEPTIONS as error:
             result.can_deposit = False
             result.reason_code = DepositBlockReason.unknown
@@ -483,6 +500,13 @@ def check_live_deposit(
 
     try:
         can_create_request = deposit_manager.can_create_deposit_request(owner)
+    except UnsupportedVaultProtocol as error:
+        result.can_deposit = False
+        result.reason_code = DepositBlockReason.deposit_request_unavailable
+        result.evidence_status = VaultClosureOutcome.policy_blocked
+        result.evidence_source = "unsupported_protocol"
+        result.message = str(error)
+        return result
     except NotImplementedError:
         can_create_request = None
     except VaultFlowUnavailable as error:
@@ -500,6 +524,13 @@ def check_live_deposit(
 
     try:
         closed_reason = _fetch_live_deposit_closed_reason(vault, deposit_manager, owner)
+    except UnsupportedVaultProtocol as error:
+        result.can_deposit = False
+        result.reason_code = DepositBlockReason.deposit_request_unavailable
+        result.evidence_status = VaultClosureOutcome.policy_blocked
+        result.evidence_source = "unsupported_protocol"
+        result.message = str(error)
+        return result
     except VaultFlowUnavailable as error:
         result.can_deposit = False
         # An unsupported/unavailable adapter flow is not proof of closure.
@@ -515,6 +546,13 @@ def check_live_deposit(
 
     try:
         max_deposit = get_live_max_deposit(vault, owner)
+    except UnsupportedVaultProtocol as error:
+        result.can_deposit = False
+        result.reason_code = DepositBlockReason.deposit_request_unavailable
+        result.evidence_status = VaultClosureOutcome.policy_blocked
+        result.evidence_source = "unsupported_protocol"
+        result.message = str(error)
+        return result
     except VaultFlowUnavailable as error:
         result.can_deposit = False
         # An unsupported/unavailable adapter flow is not proof of closure.

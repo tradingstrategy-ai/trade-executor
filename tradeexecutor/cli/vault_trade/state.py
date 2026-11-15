@@ -57,6 +57,7 @@ VAULT_TEST_RESULTS = {
     "whitelisting-needed",
     "whitelisted-incorrectly",
     "deposit_permission_unknown",
+    "unsupported_protocol",
     "redemption_unavailable",
     "redemption_closed",
     "redemption_liquidity_unavailable",

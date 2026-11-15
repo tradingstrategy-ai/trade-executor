@@ -1,3 +1,4 @@
+- Preserve `unsupported_protocol` through metadata, admission and test-trade results; exclude unsupported vaults from new investment while retaining recovery (2026-11-15).
     **Note**: A full changelog is not available as long as `trade-executor` package is in active beta developmnt.
 
 - Add opt-in complete-route vault permission checks without changing ordinary deposit admission (2026-11-15).

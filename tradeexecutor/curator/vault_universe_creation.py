@@ -565,6 +565,8 @@ def private_vault_exclusion_reasons(entry: dict, *, historical_native_permission
     whitelist = entry.get("whitelist") or {}
     status = str(whitelist.get("status") or "").casefold()
     compatibility_closure = historical_native_permissions and is_native_public_deposit_closure(entry)
+    if "unsupported_protocol" in (permission, status):
+        reasons.append("Unsupported vault protocol")
     if (permission in restricted or status in restricted) and not compatibility_closure:
         reasons.append("Restricted deposit permission")
     flags = {str(flag).casefold().replace("-", "_") for flag in entry.get("flags") or []}
