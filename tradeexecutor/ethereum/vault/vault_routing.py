@@ -48,6 +48,7 @@ from tradeexecutor.utils.blockchain import get_block_timestamp
 from web3 import Web3
 
 from tradeexecutor.ethereum.tx import TransactionBuilder
+from tradeexecutor.strategy.vault_protocol import redemption_recovery_fee_limit
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradingstrategy.pair import PandasPairUniverse
 
@@ -540,7 +541,11 @@ class VaultRouting(RoutingModel):
                 redemption_preflight["manager_request_raw_shares"] = str(
                     request.raw_shares
                 )
-            is_async = not deposit_manager.has_synchronous_redemption()
+            is_async = request.requires_settlement or not deposit_manager.has_synchronous_redemption()
+            if request.requires_settlement:
+                # Request-level staging is already publicly finishable. The EVM
+                # execution model sweeps it after parsing, before account checks.
+                trade.other_data["vault_settlement_immediate"] = True
             direction = "redeem"
 
         txs: list[BlockchainTransaction] = []
@@ -923,7 +928,12 @@ def get_vault_for_pair(
     if token_cache is None:
         token_cache = get_default_token_cache()
 
+    # Execution authorisation follows today's reviewed rule, including for an
+    # existing position whose saved pair predates the capability. Historical
+    # fee/queue snapshots remain unchanged. Revocation also clears cached caps.
+    recovery_limit = redemption_recovery_fee_limit(target_pair.chain_id, target_pair.pool_address)
     if cached:
+        cached.redemption_recovery_max_fee_bps = recovery_limit
         return cached
 
     if features or is_explicit_generic_erc4626_pair(target_pair):
@@ -941,6 +951,7 @@ def get_vault_for_pair(
             token_cache=token_cache,
         )
 
+    cached.redemption_recovery_max_fee_bps = recovery_limit
     _vault_cache[cache_key] = cached
     return cached
 

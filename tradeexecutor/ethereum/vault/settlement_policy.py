@@ -49,22 +49,23 @@ def validate_single_redemption_ticket(data: dict) -> None:
 
 
 def capture_redemption_preflight(request: RedemptionRequest, data: dict) -> None:
-    """Retain Atoma's checked implementation across request reconstruction.
+    """Retain adapter evidence across receipt-only request reconstruction.
 
     The request can mine after a proxy upgrade. Its parser needs the original
     implementation to distinguish that change from an ordinary mined request.
-    Other request types need no extra metadata.
+    Staged recovery retains its authorised cap and exact submitted deallocation.
 
     :param request: Manager request before signing.
     :param data: Existing redemption preflight dictionary to update.
     :return: None; update the existing dictionary in place.
     """
+    data.update(request.get_preflight_data())
     if isinstance(request, AtomaRedemptionRequest):
         data["implementation"] = request.implementation
 
 
 def restore_redemption_preflight(request: RedemptionRequest, data: dict) -> None:
-    """Restore the implementation checked before the original request broadcast.
+    """Restore adapter evidence captured before the original request broadcast.
 
     Keep the existing field name so saved Atoma requests retain upgrade checks.
     Legacy records without this evidence keep the manager's existing default.
@@ -73,5 +74,6 @@ def restore_redemption_preflight(request: RedemptionRequest, data: dict) -> None
     :param data: Previously saved redemption preflight metadata.
     :return: None; restore evidence on the rebuilt request where needed.
     """
+    request.restore_preflight_data(data)
     if isinstance(request, AtomaRedemptionRequest) and data.get("implementation") is not None:
         request.implementation = data["implementation"]

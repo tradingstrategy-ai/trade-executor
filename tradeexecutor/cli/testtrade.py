@@ -883,6 +883,12 @@ def _force_vault_settlement_and_resolve(web3, state, trade, execution_model, web
     # guard, so the dev-account gas payer below can never reach a real chain.
     assert is_anvil(web3), "_force_vault_settlement_and_resolve() is Anvil-only (forces operator settlement)"
 
+    # close-position also enters here directly. Publicly claimable staged
+    # requests must finish before any Anvil-only operator intervention.
+    execution_model.resolve_pending_vault_settlements(state=state, ts=native_datetime_utc_now())
+    if trade.get_status() != TradeStatus.vault_settlement_pending:
+        return
+
     vault = get_vault_for_pair(web3, trade.pair)
     deposit_manager = vault.get_deposit_manager()
     direction = trade.other_data.get(
@@ -1023,12 +1029,13 @@ def _resolve_satellite_async_settlement(
     if trade.get_status() != TradeStatus.vault_settlement_pending:
         return False
 
+    execution_model.resolve_pending_vault_settlements(state=state, ts=native_datetime_utc_now())
+    if trade.get_status() != TradeStatus.vault_settlement_pending:
+        return False
+
     if trade.pair.is_lighter_pool():
-        # A pool phase waits on Lighter, not on a vault operator: resume it
-        # once through the shared sweep and stop if it still waits.
-        execution_model.resolve_pending_vault_settlements(state=state, ts=native_datetime_utc_now())
-        if trade.get_status() != TradeStatus.vault_settlement_pending:
-            return False
+        # The shared sweep above already tried this phase once. It waits on
+        # Lighter, so there is no vault operator to impersonate.
         logger.info("Lighter pool trade #%d still waits in phase %s; rerun perform-test-trade to resume it.", trade.trade_id, trade.other_data.get("lighter_pool_phase"))
         return True
 
@@ -1110,6 +1117,12 @@ def _resolve_home_chain_async_settlement(
         synchronous (already ``success``/failed) or it was force-settled and
         resolved on Anvil.
     """
+    if trade.get_status() != TradeStatus.vault_settlement_pending:
+        return False
+
+    # A staged public recovery already has everything needed to finish. Try
+    # normal settlement on live chains and forks before any operator simulation.
+    execution_model.resolve_pending_vault_settlements(state=state, ts=native_datetime_utc_now())
     if trade.get_status() != TradeStatus.vault_settlement_pending:
         return False
 

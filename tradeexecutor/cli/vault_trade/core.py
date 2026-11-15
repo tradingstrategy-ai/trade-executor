@@ -39,6 +39,7 @@ from tradeexecutor.strategy.trading_strategy_universe import (
     load_partial_data,
 )
 from tradeexecutor.strategy.universe_model import UniverseOptions
+from tradeexecutor.strategy.vault_protocol import redemption_recovery_fee_limit
 
 logger = logging.getLogger(__name__)
 
@@ -142,7 +143,9 @@ def _create_simulated_lagoon_chain_config(
         )
         display_name = getattr(vault, "name", None) or spec.vault_address
         features = _normalise_erc_4626_features(getattr(vault, "features", ()) or getattr(getattr(vault, "metadata", None), "features", ()))
-        whitelist_vaults.append(_SimulatedWhitelistVault(web3, spec, display_name, features=features or None))
+        descriptor = _SimulatedWhitelistVault(web3, spec, display_name, features=features or None)
+        descriptor.redemption_recovery_max_fee_bps = redemption_recovery_fee_limit(spec.chain_id, spec.vault_address)
+        whitelist_vaults.append(descriptor)
 
     # The hub may send to all supported satellites; a satellite needs only its
     # return route to the hub.  Unsupported chains still get a local Lagoon Safe

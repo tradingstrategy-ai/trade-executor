@@ -12,7 +12,7 @@ from eth_defi.erc_4626.core import ERC4626Feature
 
 from tradingstrategy.vault import VaultProtocolRules
 from tradeexecutor.state.identifier import TradingPairIdentifier
-from tradeexecutor.strategy.vault_protocol import atoma, autopool, d2, ipor
+from tradeexecutor.strategy.vault_protocol import atoma, autopool, d2, ipor, morpho
 
 
 #: Preserve historical waits for protocols lacking a positive metadata estimate.
@@ -44,6 +44,15 @@ def get_vault_test_trade_time_skip_seconds(pair: TradingPairIdentifier, requeste
         if rules.simulation_max_holding_seconds is not None:
             return min(requested_seconds, rules.simulation_max_holding_seconds)
     return requested_seconds
+
+
+def redemption_recovery_fee_limit(chain_id: int, address: str) -> int | None:
+    """Resolve reviewed execution exceptions for deployment descriptors and pairs.
+
+    Keep identity selection here, alongside pair enrichment. Generic deployment
+    and routing consumers pass the resulting capability to the adapter and Guard.
+    """
+    return morpho.REDEMPTION_RECOVERY_MAX_FEE_BPS.get((chain_id, address.lower()))
 
 
 def classify_vault_fee_profile(
@@ -109,6 +118,7 @@ def resolve_vault_protocol_rules(pair: TradingPairIdentifier) -> VaultProtocolRu
         deposit_windowed=ERC4626Feature.d2_like in features,
         redemption_windowed=ERC4626Feature.d2_like in features,
         provenance=pair.get_vault_protocol() or "generic_erc4626",
+        redemption_recovery_max_fee_bps=redemption_recovery_fee_limit(pair.chain_id, pair.pool_address),
         redemption_delay_is_deposit_lock=(
             atoma.REDEMPTION_DELAY_IS_DEPOSIT_LOCK if ERC4626Feature.atoma_like in features else False
         ),

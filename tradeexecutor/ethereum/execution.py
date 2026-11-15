@@ -1036,6 +1036,13 @@ class EthereumExecution(ExecutionModel):
                 stop_on_execution_failure=stop_on_execution_failure,
             )
 
+        if any(trade.other_data.get("vault_settlement_immediate") and trade.vault_settlement_pending_at is not None for trade in trades):
+            # Use the ordinary persisted resolver now, rather than leave freed
+            # public-vault assets idle until the next strategy cycle. A failed
+            # finish stays pending with its exact signed transaction and ticket.
+            self.sync_state_before_broadcast()
+            self.resolve_pending_vault_settlements(state=state, ts=ts)
+
     def create_default_routing_model(
         self,
         strategy_universe: TradingStrategyUniverse,

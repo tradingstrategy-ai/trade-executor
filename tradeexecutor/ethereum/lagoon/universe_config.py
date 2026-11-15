@@ -44,6 +44,7 @@ from web3 import Web3
 from tradeexecutor.state.identifier import TradingPairKind, normalise_custody_chain_id
 from tradeexecutor.strategy.trading_strategy_universe import \
     TradingStrategyUniverse
+from tradeexecutor.strategy.vault_protocol import redemption_recovery_fee_limit
 
 logger = logging.getLogger(__name__)
 
@@ -455,13 +456,9 @@ def translate_trading_universe_to_lagoon_config(
         if vault_addresses:
             erc4626_vaults = []
             for addr in vault_addresses:
-                # Guard setup resolves protocol policies from these features.
-                features = next(
-                    (pair.get_vault_features() for pair in universe.iterate_pairs()
-                     if pair.is_vault() and pair.base.chain_id == chain_id and pair.pool_address.lower() == addr.lower()),
-                    None,
-                )
-                vault_instance = ERC4626Vault(chain_web3[slug], VaultSpec(chain_id, addr), features=features or None)
+                vault_pair = next(pair for pair in universe.iterate_pairs() if pair.is_vault() and pair.base.chain_id == chain_id and pair.pool_address.lower() == addr.lower())
+                vault_instance = ERC4626Vault(chain_web3[slug], VaultSpec(chain_id, addr), features=vault_pair.get_vault_features() or None)
+                vault_instance.redemption_recovery_max_fee_bps = redemption_recovery_fee_limit(chain_id, addr)
                 erc4626_vaults.append(vault_instance)
             config.erc_4626_vaults = erc4626_vaults
             logger.info("ERC-4626 vaults configured for %s: %d vault(s) %s", slug, len(erc4626_vaults), vault_addresses)

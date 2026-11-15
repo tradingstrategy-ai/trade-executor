@@ -151,3 +151,61 @@ after two hours. Its IPOR overlay populates the existing
 wait does not alone cause staleness. The adapter still checks actual freshness.
 Other IPOR identities retain their defaults; the second HYPE Basis deployment
 was already stale before a test deposit and needs its authorised updater.
+
+### Morpho public liquidity recovery
+
+`morpho.py` authorises a maximum recovery penalty of one basis point for the
+reviewed Ethereum Api3 dCOMP USDC and Purinta USDC vaults. Their aggregate share
+claim can exceed the position in the configured exit market, causing Blue's
+supply-share subtraction to underflow. The module contains the addresses,
+measured shortfalls, source analysis and research links.
+
+`redemption_recovery_max_fee_bps` is an optional execution authorisation. It is
+neither a blanket withdrawal fee nor a historical settlement delay. Pair snapshots
+retain it for provenance. Live routing and deployment resolve the current manual
+execution authorisation, including for an existing position whose old snapshot
+has no cap. Removing the current rule disables future recovery even for cached
+adapters and formerly authorised snapshots. This does not rewrite historical
+fee/queue terms. Deployment descriptors carry the same current cap to Guard.
+Live reads, market choice and contract calls stay in eth-defi. Ordinary successful redemption
+always takes precedence and pays no recovery penalty.
+
+A qualifying failed redemption can create a staged request: public
+`forceDeallocate` releases existing assets and burns penalty shares; the existing
+settlement resolver redeems the exact remaining shares. The existing trade saves
+both transactions and its ticket. The reported disposal includes both burns,
+reserve cash includes only the final net payout, and `vault_withdrawal_fee`
+discloses the actual penalty without deducting it again. Pending valuation uses
+the remaining shares. A later route failure leaves the same trade pending;
+resumption does not repeat recovery or silently reduce the requested disposal.
+
+Guard internal version 6 and a linked `MorphoLib` are required. Normal ERC-4626
+whitelisting alone does not permit recovery. New deployments with authorised
+descriptors deploy the library and configure the owner-approved cap. Existing
+modules need replacement through the existing governance deployment workflow;
+this change performs no production migration. Guard checks custody ownership,
+registered adapter membership, the live penalty and the owner's position size.
+Historical universes, permission classifications and backtest queues are unchanged.
+
+Live EVM receipt handling checkpoints the paid recovery ticket and immediately
+runs the ordinary resolver, before the runner's account check. This is the
+existing whole-state sweep: other eligible pending vault trades can complete in
+the same call. A pending ticket
+reserves the whole original disposal for trading availability, but separately
+records shares still held in the wallet for custody reconciliation. Only the
+penalty burn is absent until the final redemption.
+
+The two calls are not atomic. Another withdrawal or allocator can still consume
+freed idle assets before the finish. If this happens, keep the trade pending and
+retain its transaction records. Inspect the paid burn, remaining custody shares
+and configured route; the vault's authorised operator must restore an executable
+exit route or idle liquidity. Then let the existing startup/cycle settlement
+resolver finish the same ticket. Do not clear the ticket, submit another recovery
+or redeem externally without a separately reviewed state reconciliation. No
+second automatic fee is authorised. No protocol repair or production state
+mutation is performed by this patch.
+
+The Guard cap is per call, not a cumulative loss budget: a compromised manager
+key can repeat an otherwise permitted operation. Revoking the recovery call site
+stops execution but retains its stored rate cap. Governance must review that cap
+when deliberately re-enabling the call site.
