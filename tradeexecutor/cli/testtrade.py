@@ -1030,10 +1030,11 @@ def _resolve_satellite_async_settlement(
     :param execution_model: Runtime that first tries ordinary settlement before any fork intervention.
     :param force_on_anvil: Permit an explicitly disclosed operator simulation if normal settlement stays pending.
     :return:
-        ``True`` if the caller should stop because settlement is still pending
-        off-chain (real chain). ``False`` to continue: either the trade is
-        synchronous (already ``success``/failed) or it was force-settled and
-        resolved on Anvil.
+        True when the caller must stop because the request remains pending,
+        including when fork intervention is disabled. False when normal
+        success/failure checks should continue: the request is no longer pending
+        or an ordinary public claim or permitted fork intervention finished it.
+        False alone does not establish trade success.
     """
     if trade.get_status() != TradeStatus.vault_settlement_pending:
         return False
@@ -1122,10 +1123,11 @@ def _resolve_home_chain_async_settlement(
     :param execution_model: Runtime that first tries ordinary settlement before any fork intervention.
     :param force_on_anvil: Permit an explicitly disclosed operator simulation if normal settlement stays pending.
     :return:
-        ``True`` if the caller should stop because settlement is still pending
-        off-chain (real chain). ``False`` to continue: either the trade is
-        synchronous (already ``success``/failed) or it was force-settled and
-        resolved on Anvil.
+        True when the caller must stop because the request remains pending,
+        including when fork intervention is disabled. False when normal
+        success/failure checks should continue: the request is no longer pending
+        or an ordinary public claim or permitted fork intervention finished it.
+        False alone does not establish trade success.
     """
     if trade.get_status() != TradeStatus.vault_settlement_pending:
         return False
