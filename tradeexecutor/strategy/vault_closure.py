@@ -450,6 +450,9 @@ def check_live_deposit(
         pair_ticker=pair.get_ticker(),
         vault_address=pair.pool_address,
     )
+    # A support exclusion blocks every new deposit, even without a custody owner
+    # or an opt-in permissionless check; it is not a temporary deposit closure.
+    # VaultMorpho case: https://github.com/tradingstrategy-ai/web3-ethereum-defi/pull/1782
     unsupported_reason = getattr(vault, "unsupported_protocol_reason", None)
     if isinstance(unsupported_reason, str) and unsupported_reason:
         result.can_deposit = False
