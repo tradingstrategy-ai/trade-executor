@@ -18,7 +18,7 @@ import plotly.io as pio
 from IPython.display import display
 
 
-from tradeexecutor.state.identifier import IGNORE_REASON_REQUIRES_WHITELIST, TradingPairIdentifier
+from tradeexecutor.state.identifier import IGNORE_REASON_UNSUPPORTED_PROTOCOL, IGNORE_REASON_REQUIRES_WHITELIST, TradingPairIdentifier
 from tradeexecutor.strategy.vault_risk import (
     BLACKLISTED_VAULT_DIAGNOSTIC_FLAG,
     is_blacklisted_vault,
@@ -48,18 +48,18 @@ BLACKLISTED_VAULT_COLUMNS = ["Name", "Protocol", "Chain", "Address", "Risk"]
 
 
 def is_whitelisted_vault(pair: TradingPairIdentifier) -> bool:
-    """Check whether a vault requires depositor allow-list approval.
+    """Check whether a vault is whitelist-gated or an unsupported integration.
 
     :param pair:
         Vault pair whose producer metadata has been loaded.
     :return:
-        ``True`` when the vault requires whitelisting to deposit.
+        ``True`` when whitelist/support policy excludes new investment.
     """
     if not pair.is_vault():
         return False
 
     metadata = pair.get_vault_metadata()
-    return getattr(metadata, "deposit_permission", None) == VaultDepositPermission.whitelisted
+    return getattr(metadata, "deposit_permission", None) in (VaultDepositPermission.whitelisted, VaultDepositPermission.unsupported_protocol)
 
 
 def mark_whitelisted_vaults_ignored(
@@ -67,7 +67,7 @@ def mark_whitelisted_vaults_ignored(
     *,
     historical_native_closure_keys: set[tuple[int, str]] | None = None,
 ) -> list[TradingPairIdentifier]:
-    """Retain whitelist-gated vaults for diagnostics but exclude them from allocation.
+    """Retain whitelist-gated/unsupported vaults as diagnostics, excluded from allocation.
 
     ``historical_native_closure_keys`` may contain native identities whose raw
     metadata passed ``is_native_public_deposit_closure`` and source access
@@ -82,7 +82,10 @@ def mark_whitelisted_vaults_ignored(
     """
     flagged = []
     for pair in strategy_universe.iterate_pairs():
-        if historical_native_closure_keys and (pair.is_hyperliquid_vault() or pair.is_lighter_pool()):
+        if not pair.is_vault():
+            continue
+        unsupported = getattr(pair.get_vault_metadata(), "deposit_permission", None) == VaultDepositPermission.unsupported_protocol
+        if not unsupported and historical_native_closure_keys and (pair.is_hyperliquid_vault() or pair.is_lighter_pool()):
             key = (int(pair.chain_id), pair.pool_address.lower())
             if key in historical_native_closure_keys:
                 continue
@@ -90,9 +93,9 @@ def mark_whitelisted_vaults_ignored(
             continue
 
         #: Keep an explicit support flag for diagnostics and availability charts.
-        pair.other_data[WHITELISTED_VAULT_DIAGNOSTIC_FLAG] = True
+        pair.other_data["unsupported_protocol" if unsupported else WHITELISTED_VAULT_DIAGNOSTIC_FLAG] = True
         if pair.get_ignore_reason() is None:
-            pair.set_ignore_reason(IGNORE_REASON_REQUIRES_WHITELIST)
+            pair.set_ignore_reason(IGNORE_REASON_UNSUPPORTED_PROTOCOL if unsupported else IGNORE_REASON_REQUIRES_WHITELIST)
         flagged.append(pair)
 
     return flagged

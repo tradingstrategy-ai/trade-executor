@@ -19,6 +19,7 @@ from typing import Any
 from eth_typing import HexAddress
 from eth_defi.compat import native_datetime_utc_now
 from eth_defi.provider.anvil import fund_erc20_on_anvil, is_anvil
+from eth_defi.vault.exception import UnsupportedVaultProtocol
 from eth_defi.vault.base import VaultSpec
 from eth_defi.vault.deposit_redeem import (
     UnsupportedVaultSimulation,
@@ -418,8 +419,13 @@ def get_whitelisting_needed_detail(attempt: "VaultAttempt") -> str | None:
 
 def get_unknown_deposit_permission_detail(attempt: "VaultAttempt") -> str | None:
     """Return a fail-closed result for an unrecognised deposit gate or hook."""
+    metadata = getattr(getattr(attempt, "vault", None), "metadata", None)
+    if getattr(metadata, "deposit_permission", None) == "unsupported_protocol":
+        raise UnsupportedVaultProtocol("Published metadata marks this protocol unsupported")
     try:
         attempt.executable_vault.is_whitelisted_deposit()
+    except UnsupportedVaultProtocol:
+        raise
     except NotImplementedError as error:
         reason = redact_vault_test_error_text(error).strip()
         if not reason:
@@ -1387,7 +1393,11 @@ class VaultTestBatchRunner:
         # Deposit/redemption window checks are diagnostic outcomes, not command
         # failures, and automatic mode continues with the next explicit id.
         if operation == "deposit":
-            permission_unknown = get_unknown_deposit_permission_detail(attempt)
+            try:
+                permission_unknown = get_unknown_deposit_permission_detail(attempt)
+            except UnsupportedVaultProtocol as error:
+                self._record_terminal_result(attempt, alarm, result="unsupported_protocol", detail=str(error))
+                return False
             if permission_unknown is not None:
                 self._record_terminal_result(
                     attempt,

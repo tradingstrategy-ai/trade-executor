@@ -258,6 +258,19 @@ class PricingModel(abc.ABC):
         """
         return True
 
+    def check_permissionless_deposit(self, ts: datetime.datetime | None, pair: TradingPairIdentifier, *, stage: DepositCheckStage = DepositCheckStage.unknown) -> DepositCheckResult:
+        """Opt into complete-route permission policy; unsupported models stay unknown.
+
+        :param ts: Decision timestamp.
+        :param pair: Candidate vault.
+        :param stage: Recorded decision stage.
+        :return: Explicit unknown result unless a live adapter implements policy.
+        """
+        return DepositCheckResult(timestamp=ts, stage=stage, can_deposit=False,
+                                  pair_ticker=pair.get_ticker(), vault_address=pair.pool_address,
+                                  reason_code=DepositBlockReason.unknown,
+                                  message="Complete-route permission inspection is unsupported")
+
     def check_deposit(
         self,
         ts: datetime.datetime | None,

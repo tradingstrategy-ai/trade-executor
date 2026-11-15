@@ -198,6 +198,16 @@ class GenericPricing(PricingModel):
         route = self.route(pair)
         return route.can_deposit(ts, pair)
 
+    def check_permissionless_deposit(self, ts: datetime.datetime | None, pair: TradingPairIdentifier, *, stage: DepositCheckStage = DepositCheckStage.unknown) -> DepositCheckResult:
+        """Dispatch the opt-in route policy check to the pricing model.
+
+        :param ts: Decision timestamp.
+        :param pair: Candidate vault.
+        :param stage: Recorded decision stage.
+        :return: Adapter policy result, or unknown for unsupported routes.
+        """
+        return self.route(pair).check_permissionless_deposit(ts, pair, stage=stage)
+
     def check_deposit(
         self,
         ts: datetime.datetime | None,

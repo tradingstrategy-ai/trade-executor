@@ -143,3 +143,10 @@ def test_select_top_vaults_can_retain_closed_hypercore_vaults():
 
     # 3. The current closure must not remove the vault from the source universe.
     assert [entry.address for entry in selected[9999]] == [vault.address]
+
+
+def test_unsupported_protocol_is_excluded_like_permissioned_vault() -> None:
+    from tradeexecutor.curator.vault_universe_creation import private_vault_exclusion_reasons
+    for entry in ({'deposit_permission':'unsupported_protocol'}, {'whitelist':{'status':'unsupported_protocol'}}):
+        assert 'Unsupported vault protocol' in private_vault_exclusion_reasons(entry)
+        assert 'Unsupported vault protocol' in private_vault_exclusion_reasons(entry, historical_native_permissions=True)

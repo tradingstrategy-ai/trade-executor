@@ -66,6 +66,9 @@ IGNORE_REASON_LACKS_FEE_DATA = "lacks_fee_data"
 #: diagnostics, but a strategy must not allocate capital to it.
 IGNORE_REASON_REQUIRES_WHITELIST = "requires_whitelist"
 
+#: Unsupported integrations are retained for diagnostics, excluded from investment.
+IGNORE_REASON_UNSUPPORTED_PROTOCOL = "unsupported_protocol"
+
 
 #: Ignore reason for a vault that the data pipeline classifies as blacklisted.
 #:
@@ -1123,6 +1126,7 @@ class TradingPairIdentifier:
 
         - Known values: :py:data:`IGNORE_REASON_LACKS_FEE_DATA`,
           :py:data:`IGNORE_REASON_REQUIRES_WHITELIST`,
+          :py:data:`IGNORE_REASON_UNSUPPORTED_PROTOCOL`,
           :py:data:`IGNORE_REASON_BLACKLISTED_VAULT`
 
         - See :py:meth:`set_ignore_reason`

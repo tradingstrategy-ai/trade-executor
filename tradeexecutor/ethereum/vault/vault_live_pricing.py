@@ -281,6 +281,18 @@ class VaultPricing(PricingModel):
     ) -> bool:
         return self.check_deposit(ts, pair).can_deposit
 
+    def check_permissionless_deposit(self, ts: datetime.datetime | None, pair: TradingPairIdentifier, *, stage: DepositCheckStage = DepositCheckStage.unknown) -> DepositCheckResult:
+        """Require adapter-proven permissionless entry and exit before availability checks.
+
+        :param ts: Decision timestamp.
+        :param pair: Candidate vault.
+        :param stage: Recorded decision stage.
+        :return: Policy and ordinary deposit availability result.
+        """
+        return check_live_deposit(timestamp=ts, pair=pair, vault=self.get_vault(pair),
+                                  owner=self.get_owner_address(pair), stage=stage,
+                                  require_permissionless=True)
+
     def check_deposit(
         self,
         ts: datetime.datetime | None,
