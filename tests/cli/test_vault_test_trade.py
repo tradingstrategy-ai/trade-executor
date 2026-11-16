@@ -3145,6 +3145,8 @@ def test_async_settlement_parses_only_manager_request_transactions(
 ) -> None:
     """Async settlement gives manager parsing only persisted request calls.
 
+    Mock the manager and receipts to isolate transaction selection from RPC calls.
+
     1. Model an approval and an arbitrarily named async manager request.
     2. Settle the trade with successful receipts for both transactions.
     3. Verify the manager sees only the request hash and no global selector is used.
@@ -3177,7 +3179,7 @@ def test_async_settlement_parses_only_manager_request_transactions(
     trade.is_buy.return_value = True
     manager = MagicMock()
     manager_request = MagicMock(funcs=[MagicMock()])
-    manager.create_deposit_request.return_value = manager_request
+    manager.create_deposit_request_for_analysis.return_value = manager_request
     manager.serialize_deposit_ticket.return_value = {"ticket": "request"}
     vault = MagicMock()
     vault.get_deposit_manager.return_value = manager
@@ -3198,6 +3200,7 @@ def test_async_settlement_parses_only_manager_request_transactions(
     )
 
     # 3. Verify the manager sees only the request hash and no global selector is used.
+    manager.create_deposit_request.assert_not_called()
     manager_request.parse_deposit_transaction.assert_called_once_with([request_hash])
     state.mark_vault_settlement_pending.assert_called_once()
 

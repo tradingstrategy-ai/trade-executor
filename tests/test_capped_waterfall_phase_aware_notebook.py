@@ -4,7 +4,7 @@
 base ``AlphaModel`` for ``PhaseAwareAlphaModel``, adding a hub-chain synchronous USDC vault as a
 ``YieldManager`` queue venue, and modelling closed deposit/redemption windows for D2 (HYPE++) and
 Ostium. The notebook self-verifies its acceptance criteria (Ostium + D2 present, daily rebalance,
-park -> deposit-on-open events in the durable log, idle cash routed to the yield venue) in a
+settled or pending allocations in both gated vaults, idle cash routed to the yield venue) in a
 dedicated acceptance cell, so a criteria regression surfaces here as a failing notebook cell.
 
 1. Copy the checked-in notebook to a temporary path so in-place execution does not touch the repo copy.

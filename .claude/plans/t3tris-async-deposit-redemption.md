@@ -186,7 +186,7 @@ passed, bringing the focused total to 71. The final bounded Claude CLI
 against all 18 deposit-request implementations: each supports the analysis hook's
 keywords. The documentation placement nit was corrected.
 
-Local dependency commits are `78529d853e081d47f5f9a21c5c75166c2c65b45b`
+The reviewed local dependency commits were `78529d853e081d47f5f9a21c5c75166c2c65b45b`
 (trading-strategy, merging the existing settlement metadata work) and
 `d226068671398249998dcccd6dd15e1c78666c1f` (eth-defi, mined deposit analysis
 plus the T3tris integration documentation correction).
@@ -220,5 +220,21 @@ were published on 16 November 2026:
 - [trading-strategy #268](https://github.com/tradingstrategy-ai/trading-strategy/pull/268)
   integrates #247's settlement metadata work with current permission handling.
 
-The executor pins these published branch revisions. Update the pins to merged
-revisions before merging the executor PR if the dependency PRs are squash-merged.
+Both dependency PRs passed CI and were squash-merged on 16 November 2026. The
+executor now pins their merged revisions: eth-defi
+`2e4eb5bd17bdec29db1188a68ed9fca3f030a558` and trading-strategy
+`cf40e189ee01425d877c8491641c3dacc5f52de7`. Their source trees match the reviewed
+branch revisions.
+
+Executor CI exposed an outdated receipt-parser mock and a notebook assumption
+that each window-gated vault must have settled shares by the end of its short
+run. The mock now uses the analysis hook. A local notebook reproduction found
+HYPE++'s 13 February 2026 deposit still pending: its last loaded settlement was
+16 January, before the request. The acceptance table now reports settled shares
+and committed pending deposits separately and requires positive exposure in each
+gated vault. Universe membership, schedules, admission and the evaluation window
+are unchanged; the executor does not invent a settlement to satisfy the notebook.
+The notebook also requires at least one gated vault to have settled holdings,
+so a general settlement failure cannot pass on pending requests alone. The
+focused CLI regression and notebook both passed locally. A completed Opus 5.5
+follow-up found no blocking issues; its suggested settled-holdings guard was added.
