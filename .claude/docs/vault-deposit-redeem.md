@@ -39,6 +39,7 @@ We support:
 |---|---|---|
 | Synchronous ERC-4626 | IPOR, Morpho, Euler | Immediately, in the deposit/redeem transaction |
 | ERC-7540 | Lagoon | The vault's operator settles the queue manually — there is **no schedule** and the wait is unknowable in advance |
+| T3tris | Closed-mode T3tris vaults | The curator settles deposit and redemption epochs; the existing manager handles T3tris request/claim calls through the shared async lifecycle |
 | Ostium V1.5 | Ostium OLP | A settlement id is assigned when the request is made; `tryNewSettlement()` becomes eligible after the vault's on-chain interval |
 | Atoma | Index / RWA on Arbitrum | Deposit is synchronous; `requestWithdrawal(shares)` escrows shares, the operator settles an epoch, and `claimWithdrawal(epoch)` pays net USDC |
 | Hypercore-native | Hyperliquid HLP | Not on-chain ERC-20 flows at all; handled by a separate Hypercore code path and out of scope here |
@@ -425,7 +426,7 @@ deliberately non-zero to make this visible; pass an explicit
 still settles no earlier than the next cycle).
 
 Otherwise a vault counts as asynchronous when its feature flags include
-`erc_7540_like`, `lagoon_like` or `ostium_like`, except Accountable and Plutus
+`erc_7540_like`, `lagoon_like`, `t3tris_like` or `ostium_like`, except Accountable and Plutus
 deposits, which mint shares synchronously despite overlapping ERC-7540 flags.
 Gains (including Nova Markets' inherited epoch manager), Ember, Accountable, Atoma and Upshift have synchronous deposits and
 conservatively delayed redemption proceeds. Plutus Hedge is identified by
@@ -444,7 +445,7 @@ their features in `VaultMetadata`.
 does not reliably express a new deposit request for Lagoon, Morpho V2 or
 Yearn. Backtests therefore keep those protocols open by default until their
 readers expose a protocol-specific admission signal; other vaults still honour
-an explicit closed marker or a zero hard cap. D2 and Lagoon deposits
+an explicit closed marker or a zero hard cap. D2, Lagoon and T3tris deposits
 use the two-stage flow in backtests. Their reported `estimated_settlement`
 metadata is the minimum delay (D2 uses a documented 14-day fallback
 when it is absent). If the historical feed contains settlement observations,
@@ -481,7 +482,7 @@ The simulation mirrors the live lifecycle:
   the input for later settlement.
 - On each later cycle the backtest's settlement resolver (the same hook the
   live runner calls) settles every ordinary async trade whose due time has
-  arrived. D2 and Lagoon deposits additionally follow the historical
+  arrived. D2, Lagoon and T3tris deposits additionally follow the historical
   settlement-evidence rule above. The earliest a trade can settle is the *next*
   cycle, even with a zero delay, because requests are created after the resolver
   step within a cycle.
@@ -675,6 +676,7 @@ The protocol layer, in eth_defi:
 |---|---|
 | `eth_defi/vault/deposit_redeem.py` | `VaultDepositManager` interface, request status enum, ticket (de)serialisation |
 | `eth_defi/erc_4626/vault_protocol/lagoon/deposit_redeem.py` | ERC-7540 implementation (Lagoon) |
+| `eth_defi/erc_4626/vault_protocol/t3tris/deposit_redeem.py` | T3tris request/claim ABI, owner preflights and Anvil curator settlement |
 | `eth_defi/erc_4626/vault_protocol/gains/deposit_redeem.py` | Ostium V1.5 implementation |
 | `eth_defi/erc_4626/vault_protocol/atoma/deposit_redeem.py` | Atoma request parsing, epoch tickets, attributed claim quotes and real receipt analysis |
 | `eth_defi/erc_4626/vault_protocol/lagoon/testing.py` | `force_lagoon_settle()` for acting as the operator in tests |
@@ -702,6 +704,11 @@ The execution layer, in trade-executor:
 | [tradeexecutor/cli/loop.py](../../tradeexecutor/cli/loop.py) | Startup-time settlement retry (non-halting, unlike CCTP) |
 | [tradeexecutor/cli/trade_ui_tui.py](../../tradeexecutor/cli/trade_ui_tui.py) | Settlement ETA display for pending deposits |
 | [tradeexecutor/cli/testtrade.py](../../tradeexecutor/cli/testtrade.py) | Test-trade pending-settlement handling: forced settlement on Anvil forks, and the cross-chain satellite resolver (`_resolve_satellite_async_settlement()`) that keeps a pending satellite deposit/redeem from being misread as a failure |
+
+Mined deposit and redemption requests are reconstructed through the manager's
+`create_deposit_request_for_analysis()` and
+`create_redemption_request_for_analysis()` hooks. Parsing must not rerun
+admission checks against the pending request or require tokens already escrowed.
 
 ## Tests to read
 
@@ -738,6 +745,9 @@ Each test doubles as a worked example:
   pending windows, and that a persisted state survives a simulated restart.
 - [tests/erc_4626/test_vault_async_ostium_v15.py](../../tests/erc_4626/test_vault_async_ostium_v15.py)
   — the same lifecycle for the time-window (Ostium) flavour.
+- [tests/erc_4626/test_vault_async_t3tris.py](../../tests/erc_4626/test_vault_async_t3tris.py)
+  — T3tris through the shared live checks, Lagoon Safe/Guard routing and
+  settlement retry, including pending-state reload and restricted requests.
 - [tests/erc_4626/test_vault_async_cli_commands.py](../../tests/erc_4626/test_vault_async_cli_commands.py)
   — the flow driven through the CLI (`init`/`start`) as a black box.
 - [tests/units_tests/test_cross_chain_satellite_async_settlement.py](../../tests/units_tests/test_cross_chain_satellite_async_settlement.py)

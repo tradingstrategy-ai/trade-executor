@@ -84,6 +84,7 @@ ASYNC_VAULT_FEATURES = {
     ERC4626Feature.erc_7540_like,
     ERC4626Feature.lagoon_like,
     ERC4626Feature.ostium_like,
+    ERC4626Feature.t3tris_like,
 }
 
 
@@ -1034,7 +1035,7 @@ class TradingPairIdentifier:
     def is_async_vault(self) -> bool:
         """Does this vault's classification require a queued deposit?
 
-        ERC-7540 (Lagoon) and Ostium-style vaults queue deposit and redemption
+        ERC-7540 (Lagoon), T3tris and Ostium-style vaults queue deposit and redemption
         requests for a later claim instead of settling in the same transaction.
         Capital committed to such a request is unavailable until the vault
         operator (or epoch) settles the queue.

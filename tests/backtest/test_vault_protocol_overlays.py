@@ -59,9 +59,20 @@ def test_loaded_protocol_rules_and_real_settlement() -> None:
     assert atoma.base.get_sell_tax() is None
     assert pairs['HYPE++'].get_vault_protocol_rules().deposit_windowed
     assert pairs['Lagoon'].get_vault_protocol_rules().deposit_requires_settlement_event
+    t3tris = pairs['T3tris']
+    assert t3tris.is_async_vault() and t3tris.has_delayed_vault_redemption()
+    assert t3tris.get_vault_protocol_rules().deposit_requires_settlement_event
+    assert t3tris.get_vault_protocol_rules().deposit_delay_seconds == 259200
+    assert t3tris.get_vault_protocol_rules().redemption_delay_seconds == 259200
+    restored = TradingPairIdentifier.from_json(t3tris.to_json())
+    assert restored.get_vault_protocol_rules() == t3tris.get_vault_protocol_rules()
     # 2. Check direction-specific rules and matching strategy/executor timing.
     execution = BacktestExecution(SimulatedWallet())
     ts = datetime.datetime(2025, 4, 1)
+    assert execution._is_async_vault(restored, is_buy=True)
+    assert execution._is_async_vault(restored, is_buy=False)
+    assert execution._get_settlement_due(restored, ts, is_buy=True) == ts + datetime.timedelta(days=3)
+    assert execution._get_settlement_due(restored, ts) == ts + datetime.timedelta(days=3)
     assert not execution._is_async_vault(atoma, is_buy=True)
     assert execution._is_async_vault(atoma, is_buy=False)
     assert execution._get_settlement_due(atoma, ts) == ts + datetime.timedelta(days=7)
@@ -165,7 +176,8 @@ def test_partial_loader_preserves_protocol_for_window_buckets(tmp_path: Path, mo
     # 1. Write hardcoded observations with and without the optional protocol field.
     frame = pd.DataFrame([dict(chain=42161, address=pair.pool_address,
         protocol='D2 Finance', timestamp=pd.Timestamp('2026-02-11 02:32:56'),
-        share_price=1., total_assets=100000., deposits_open=False, redemption_open=True)])
+        share_price=1., total_assets=100000., deposits_open=False, redemption_open=True,
+        vault_settlement_at=pd.Timestamp('2026-02-11 02:32:56'))])
     if not with_protocol:
         frame = frame.drop(columns='protocol')
     path = tmp_path / 'prices.parquet'
@@ -184,6 +196,7 @@ def test_partial_loader_preserves_protocol_for_window_buckets(tmp_path: Path, mo
     # 3. Check D2 closes only in the next decision bucket; old files still load.
     expected = '2026-02-12' if with_protocol else '2026-02-11'
     assert dataset.vault_state.timestamp.iloc[0] == pd.Timestamp(expected)
+    assert dataset.vault_state.vault_settlement_at.iloc[0] == pd.Timestamp('2026-02-11 02:32:56')
 
 
 def test_other_d2_unknown_history_keeps_existing_policy() -> None:

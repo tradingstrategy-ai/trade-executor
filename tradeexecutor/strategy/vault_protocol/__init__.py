@@ -109,12 +109,12 @@ def resolve_vault_protocol_rules(pair: TradingPairIdentifier) -> VaultProtocolRu
         ERC4626Feature.atoma_like in features
         and atoma.fee_profile(pair.chain_id, pair.pool_address, 0, redemption_fee) == "atoma_standard_exit"
     )
-    event_gated = bool(features & {ERC4626Feature.d2_like, ERC4626Feature.lagoon_like})
+    event_gated = bool(features & {ERC4626Feature.d2_like, ERC4626Feature.lagoon_like, ERC4626Feature.t3tris_like})
     queued_deposit = pair.is_async_vault() or event_gated
     queued_redemption = pair.has_delayed_vault_redemption()
     fallback = next((delay.total_seconds() for feature, delay in VAULT_SETTLEMENT_DELAY_FALLBACKS.items()
                      if feature in features), None)
-    uses_estimate = fallback is not None or bool(features & {ERC4626Feature.lagoon_like, ERC4626Feature.upshift_like})
+    uses_estimate = fallback is not None or bool(features & {ERC4626Feature.lagoon_like, ERC4626Feature.upshift_like, ERC4626Feature.t3tris_like})
     # Preserve the established timing policy: a reported estimate must not
     # replace schedules for protocol families that never used it.
     estimate = pair.get_vault_estimated_settlement() if uses_estimate else None

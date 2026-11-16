@@ -1,3 +1,4 @@
+- Support T3tris async deposits and redemptions through the shared vault lifecycle. Restore loading of settlement estimates and deposit events for all already-supported families, so historical backtest timing can change when published data is available (2026-11-16).
 - Add fee-capped public Morpho V2 liquidity recovery for reviewed Api3 and Purinta exits, with persisted tickets, exact penalty-share accounting and adapter-owned preflight evidence (2026-11-15).
 - Preserve `unsupported_protocol` through metadata, admission and test-trade results; exclude unsupported vaults from new investment while retaining recovery (2026-11-15).
     **Note**: A full changelog is not available as long as `trade-executor` package is in active beta developmnt.

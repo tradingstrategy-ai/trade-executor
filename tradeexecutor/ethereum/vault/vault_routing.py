@@ -696,10 +696,9 @@ class VaultRouting(RoutingModel):
             owner_address = HexAddress(trade.other_data["vault_owner_address"])
 
             if direction == "deposit":
-                # Reconstruct deposit request using raw_amount (int) —
-                # all adapters support this path for deposits. int() accepts
-                # both the current string form and the legacy int form.
-                deposit_request = deposit_manager.create_deposit_request(
+                # Mined deposits have already changed owner balances and admission.
+                # Managers with request-sensitive preflights override this hook.
+                deposit_request = deposit_manager.create_deposit_request_for_analysis(
                     owner=owner_address,
                     raw_amount=int(trade.other_data["vault_raw_amount"]),
                 )
