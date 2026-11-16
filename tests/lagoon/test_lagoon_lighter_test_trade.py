@@ -35,9 +35,13 @@ from pytest_mock import MockerFixture
 from typer.main import get_command
 from web3 import Web3
 
+from tradeexecutor.cli.commands import lagoon_lighter_test_trade
 from tradeexecutor.cli.main import app
+from tradeexecutor.ethereum.lagoon.vault import LagoonVaultSyncModel
 from tradeexecutor.exchange_account.lighter import LIGHTER_PROTOCOL
+from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
+from tradeexecutor.state.trade import TradeFlag
 
 
 #: Optional upstream RPC used to enable the fixed-block Ethereum fork.
@@ -123,24 +127,21 @@ def _lighter_equity(total: Decimal) -> LighterEquity:
     )
 
 
-@pytest.mark.timeout(600)
-def test_cli_lagoon_lighter_test_trade_resumes_after_lighter_failure(
+def _prepare_command(
+    *,
     web3_ethereum: Web3,
     deployer: HotWallet,
     strategy_file: Path,
     mocker: MockerFixture,
     tmp_path: Path,
-    capsys: CaptureFixture[str],
-    caplog: LogCaptureFixture,
-) -> None:
-    """Resume the complete Typer-managed Lighter test trade after an API failure.
+    fail_open_once: bool,
+) -> dict:
+    """Deploy a funded Lagoon vault and mock Lighter for the Typer command.
 
-    1. Deploy and fund a real Lagoon vault on the fixed Ethereum Anvil block.
-    2. Omit the deposit option, mock Lighter-only steps and interrupt after deposit.
-    3. Re-run the real Typer command and resume the open, close, withdrawal and NAV phases.
-    4. Verify persisted external-account accounting, Safe balance, journal and secret redaction.
+    The fake deposit moves USDC out of the real Safe and reports its tx hash
+    through ``tx_observer``, and the fake claim moves it back, so the booked
+    reserve can be checked against the Safe at every treasury sync.
     """
-    # 1. Deploy and fund a real Lagoon vault on the fixed Ethereum Anvil block.
     usdc = fetch_erc20_details(web3_ethereum, USDC_NATIVE_TOKEN[1], chain_id=1)
     funding_tx = usdc.transfer(
         deployer.address,
@@ -211,10 +212,12 @@ def test_cli_lagoon_lighter_test_trade_resumes_after_lighter_failure(
         },
     }))
 
-    # 2. Omit the deposit option, mock Lighter-only steps and interrupt after deposit.
     session = mocker.Mock()
-    lighter_state = {"equity": Decimal(0), "position": Decimal(0), "fail_open_once": True}
-    observed = {"deposits": 0, "orders": [], "withdrawals": 0, "claims": 0}
+    lighter_state = {"equity": Decimal(0), "position": Decimal(0), "fail_open_once": fail_open_once}
+    observed = {"deposits": 0, "orders": [], "withdrawals": 0, "claims": 0, "deposit_tx_hashes": []}
+    safe_address = deployment.safe_address
+    web3_ethereum.provider.make_request("anvil_impersonateAccount", [safe_address])
+    web3_ethereum.provider.make_request("anvil_setBalance", [safe_address, hex(10**18)])
 
     def fetch_equity(*_args: object, **_kwargs: object) -> LighterEquity:
         return _lighter_equity(lighter_state["equity"])
@@ -233,9 +236,14 @@ def test_cli_lagoon_lighter_test_trade_resumes_after_lighter_failure(
     def fake_deposit(*_args: object, **kwargs: object) -> str:
         deposit = kwargs["deposit_usdc"]
         assert deposit == LIGHTER_DEPOSIT_USDC
+        deposit_tx = usdc.transfer(USDC_WHALE[1], deposit).build_transaction({"from": safe_address})
+        tx_hash = web3_ethereum.eth.send_transaction(deposit_tx)
+        kwargs["tx_observer"](Web3.to_hex(tx_hash), 0, "Deposit USDC from Safe to Lighter")
+        assert_transaction_success_with_explanation(web3_ethereum, tx_hash)
         lighter_state["equity"] += deposit
         observed["deposits"] += 1
-        return "0x" + "12" * 32
+        observed["deposit_tx_hashes"].append(Web3.to_hex(tx_hash))
+        return Web3.to_hex(tx_hash)
 
     def fake_wait_for_collateral(*args: object, **_kwargs: object) -> Decimal:
         assert args[2] == LIGHTER_DEPOSIT_USDC
@@ -285,7 +293,21 @@ def test_cli_lagoon_lighter_test_trade_resumes_after_lighter_failure(
         observed["claims"] += 1
         return Web3.to_hex(claim_tx)
 
+    # The recorded reserve must match the Safe before each treasury sync, so
+    # a booking error cannot be hidden by the sync replacing the reserve.
+    reserve_checks = []
+    original_sync_treasury = LagoonVaultSyncModel.sync_treasury
+
+    def checked_sync_treasury(self, strategy_cycle_ts, state, *args, **kwargs):
+        if state.portfolio.reserves:
+            reserve_checks.append((
+                state.portfolio.get_default_reserve_position().quantity,
+                usdc.fetch_balance_of(safe_address),
+            ))
+        return original_sync_treasury(self, strategy_cycle_ts, state, *args, **kwargs)
+
     command_module = "tradeexecutor.cli.commands.lagoon_lighter_test_trade"
+    mocker.patch.object(LagoonVaultSyncModel, "sync_treasury", checked_sync_treasury)
     mocker.patch(f"{command_module}.create_lighter_session", return_value=session)
     mocker.patch(f"{command_module}.fetch_lighter_total_equity", side_effect=fetch_equity)
     mocker.patch(f"{command_module}.fetch_lighter_account_by_index", side_effect=fetch_account)
@@ -327,39 +349,161 @@ def test_cli_lagoon_lighter_test_trade_resumes_after_lighter_failure(
         "UNIT_TESTING": "true",
     }
     mocker.patch.dict("os.environ", environment, clear=True)
-    caplog.set_level(logging.INFO, logger="tradeexecutor.cli.commands.lagoon_lighter_test_trade")
-    cli = get_command(app)
-    with pytest.raises(RuntimeError, match="temporarily unavailable"):
-        cli.main(args=["lagoon-lighter-test-trade"], standalone_mode=False)
-    interrupted_journal = json.loads(journal_file.read_text())
-    assert interrupted_journal["phase"] == "deposited"
-    assert observed["deposits"] == 1
+    return {
+        "cli": get_command(app),
+        "usdc": usdc,
+        "deployment": deployment,
+        "state_file": state_file,
+        "journal_file": journal_file,
+        "observed": observed,
+        "session": session,
+        "reserve_checks": reserve_checks,
+        "delegated_private_key": delegated_private_key,
+    }
 
-    # 3. Re-run the real Typer command and resume the open, close, withdrawal and NAV phases.
-    cli.main(args=["lagoon-lighter-test-trade"], standalone_mode=False)
 
-    # 4. Verify persisted external-account accounting, Safe balance, journal and secret redaction.
-    state = State.read_json_file(state_file)
+def _assert_transfers_booked(context: dict) -> TradingPosition:
+    """The round trip is two transfer trades, so the share price stays at 1.0."""
+    state = State.read_json_file(context["state_file"])
+    journal = json.loads(context["journal_file"].read_text())
     lighter_positions = [
         position
         for position in state.portfolio.open_positions.values()
         if position.pair.get_exchange_account_protocol() == LIGHTER_PROTOCOL
     ]
+    assert len(lighter_positions) == 1
+    position = lighter_positions[0]
+    transfers = [t for t in position.trades.values() if TradeFlag.external_account_transfer in t.flags]
+    assert [(t.is_success(), t.executed_quantity) for t in transfers] == [
+        (True, LIGHTER_DEPOSIT_USDC),
+        (True, -LIGHTER_DEPOSIT_USDC),
+    ]
+    assert journal["deposit_trade_id"] == transfers[0].trade_id
+    assert journal["withdrawal_trade_id"] == transfers[1].trade_id
+    assert transfers[0].other_data["lighter_deposit_tx_hashes"] == context["observed"]["deposit_tx_hashes"]
+    assert all(bu.quantity != -LIGHTER_DEPOSIT_USDC for bu in position.balance_updates.values())
+    sps = position.share_price_state
+    assert sps.total_invested == pytest.approx(float(LIGHTER_DEPOSIT_USDC))
+    assert sps.total_withdrawn == pytest.approx(float(LIGHTER_DEPOSIT_USDC))
+    assert sps.current_share_price == pytest.approx(1.0)
+    assert position.get_value() == pytest.approx(0)
+    safe_balance = context["usdc"].fetch_balance_of(context["deployment"].safe_address)
+    assert safe_balance == pytest.approx(SAFE_USDC)
+    assert state.portfolio.get_default_reserve_position().quantity == pytest.approx(safe_balance)
+    # The first sync imports the Safe balance into the fresh reserve
+    assert context["reserve_checks"][1:]
+    for recorded, onchain in context["reserve_checks"][1:]:
+        assert recorded == pytest.approx(onchain)
+    return position
+
+
+@pytest.mark.timeout(600)
+def test_cli_lagoon_lighter_test_trade_resumes_after_lighter_failure(
+    web3_ethereum: Web3,
+    deployer: HotWallet,
+    strategy_file: Path,
+    mocker: MockerFixture,
+    tmp_path: Path,
+    capsys: CaptureFixture[str],
+    caplog: LogCaptureFixture,
+) -> None:
+    """Resume the complete Typer-managed Lighter test trade after an API failure.
+
+    1. Deploy and fund a real Lagoon vault on the fixed Ethereum Anvil block.
+    2. Omit the deposit option, mock Lighter-only steps and interrupt after deposit.
+    3. Re-run the real Typer command and resume the open, close, withdrawal and NAV phases.
+    4. Verify the transfers are booked as trades, the reserve, journal and secret redaction.
+    """
+    # 1-2. Deploy, fund, mock Lighter and interrupt after the deposit.
+    context = _prepare_command(
+        web3_ethereum=web3_ethereum,
+        deployer=deployer,
+        strategy_file=strategy_file,
+        mocker=mocker,
+        tmp_path=tmp_path,
+        fail_open_once=True,
+    )
+    caplog.set_level(logging.INFO, logger="tradeexecutor.cli.commands.lagoon_lighter_test_trade")
+    cli = context["cli"]
+    journal_file = context["journal_file"]
+    with pytest.raises(RuntimeError, match="temporarily unavailable"):
+        cli.main(args=["lagoon-lighter-test-trade"], standalone_mode=False)
+    interrupted_journal = json.loads(journal_file.read_text())
+    assert interrupted_journal["phase"] == "deposited"
+    assert context["observed"]["deposits"] == 1
+
+    # 3. Re-run the real Typer command and resume the open, close, withdrawal and NAV phases.
+    cli.main(args=["lagoon-lighter-test-trade"], standalone_mode=False)
+
+    # 4. Verify the transfers are booked as trades, the reserve, journal and secret redaction.
+    _assert_transfers_booked(context)
     journal = json.loads(journal_file.read_text())
     captured_output = capsys.readouterr()
-    assert len(lighter_positions) == 1
-    assert lighter_positions[0].get_value() == pytest.approx(0)
-    assert usdc.fetch_balance_of(deployment.safe_address) == pytest.approx(SAFE_USDC + LIGHTER_DEPOSIT_USDC)
+    observed = context["observed"]
+    delegated_private_key = context["delegated_private_key"]
     assert journal["phase"] == "complete"
     assert stat.S_IMODE(journal_file.stat().st_mode) == 0o600
-    assert observed == {
+    assert {key: observed[key] for key in ("deposits", "orders", "withdrawals", "claims")} == {
         "deposits": 1,
         "orders": [(False, False), (False, False), (True, True)],
         "withdrawals": 1,
         "claims": 1,
     }
-    assert session.close.call_count == 2
+    assert context["session"].close.call_count == 2
     assert delegated_private_key not in journal_file.read_text()
     assert delegated_private_key not in caplog.text
     assert delegated_private_key not in captured_output.out + captured_output.err
     assert "secure-withdrawal delay of 1800 seconds" in caplog.text
+
+
+@pytest.mark.timeout(600)
+def test_cli_lagoon_lighter_test_trade_books_transfers_once_across_crashes(
+    web3_ethereum: Web3,
+    deployer: HotWallet,
+    strategy_file: Path,
+    mocker: MockerFixture,
+    tmp_path: Path,
+) -> None:
+    """A crash after a transfer is booked but before the journal advances books nothing twice.
+
+    1. Crash after the deposit trade completes, before the journal reaches ``deposited``.
+    2. Crash after the withdrawal trade completes, before the journal reaches ``withdrawn``.
+    3. The third run completes with one deposit, one withdrawal and one claim.
+    """
+    context = _prepare_command(
+        web3_ethereum=web3_ethereum,
+        deployer=deployer,
+        strategy_file=strategy_file,
+        mocker=mocker,
+        tmp_path=tmp_path,
+        fail_open_once=False,
+    )
+    original_update_journal = lagoon_lighter_test_trade._update_journal
+    crash_phases = {"deposited", "withdrawn"}
+
+    def crashing_update_journal(config, journal, phase, **values):
+        if phase in crash_phases:
+            crash_phases.remove(phase)
+            raise RuntimeError(f"crash before journal phase {phase}")
+        return original_update_journal(config, journal, phase, **values)
+
+    mocker.patch.object(lagoon_lighter_test_trade, "_update_journal", side_effect=crashing_update_journal)
+    cli = context["cli"]
+    journal_file = context["journal_file"]
+
+    # 1. Crash after the deposit trade completes
+    with pytest.raises(RuntimeError, match="crash before journal phase deposited"):
+        cli.main(args=["lagoon-lighter-test-trade"], standalone_mode=False)
+    assert json.loads(journal_file.read_text())["phase"] == "created"
+
+    # 2. Crash after the withdrawal trade completes
+    with pytest.raises(RuntimeError, match="crash before journal phase withdrawn"):
+        cli.main(args=["lagoon-lighter-test-trade"], standalone_mode=False)
+    assert json.loads(journal_file.read_text())["phase"] == "withdrawal_requested"
+
+    # 3. Complete
+    cli.main(args=["lagoon-lighter-test-trade"], standalone_mode=False)
+    assert json.loads(journal_file.read_text())["phase"] == "complete"
+    observed = context["observed"]
+    assert (observed["deposits"], observed["withdrawals"], observed["claims"]) == (1, 1, 1)
+    _assert_transfers_booked(context)

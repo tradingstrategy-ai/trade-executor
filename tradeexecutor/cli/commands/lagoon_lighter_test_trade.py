@@ -68,18 +68,24 @@ from tradeexecutor.cli.commands.lagoon_utils import (
 from tradeexecutor.cli.log import setup_logging
 from tradeexecutor.ethereum.lagoon.vault import LagoonVaultSyncModel
 from tradeexecutor.exchange_account.lighter import (
+    LIGHTER_PROTOCOL,
     create_lighter_exchange_account_pair,
     create_lighter_vault_valuation_func,
     is_lighter_exchange_account_pair,
     is_lighter_sub_account_pair,
 )
 from tradeexecutor.exchange_account.pricing import ExchangeAccountPricingModel
-from tradeexecutor.exchange_account.state import open_exchange_account_position
+from tradeexecutor.exchange_account.state import (
+    complete_exchange_account_transfer,
+    create_exchange_account_transfer,
+    open_exchange_account_position,
+)
 from tradeexecutor.exchange_account.valuation import ExchangeAccountValuator
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.store import JSONFileStore
+from tradeexecutor.state.trade import TradeExecution, TradeStatus
 from tradeexecutor.strategy.execution_model import AssetManagementMode
 from tradeexecutor.strategy.strategy_module import read_strategy_module
 
@@ -602,6 +608,94 @@ def _get_lighter_position(state: State) -> TradingPosition:
     return positions[0]
 
 
+#: Trade ``other_data`` key linking a custody transfer to its test-trade run.
+#:
+#: The value is the journal's ``created_at``, unique per run, so a resumed
+#: run finds the transfer it already booked instead of booking another.
+TEST_TRADE_RUN_KEY = "lighter_test_trade_run"
+
+#: How long to wait for the Lagoon treasury snapshot block to include a custody transaction.
+SAFE_SNAPSHOT_TIMEOUT = 600
+
+
+def _find_run_transfer(position: TradingPosition, journal: dict[str, Any], deposit: bool) -> TradeExecution | None:
+    """Return this run's deposit or withdrawal transfer trade, if booked."""
+    trades = [
+        trade
+        for trade in position.trades.values()
+        if (trade.other_data or {}).get(TEST_TRADE_RUN_KEY) == journal["created_at"]
+        and trade.is_buy() == deposit
+    ]
+    if len(trades) > 1:
+        raise LighterTestTradeError("Executor state has several transfers for one test-trade run")
+    return trades[0] if trades else None
+
+
+def _start_run_transfer(
+    *,
+    state: State,
+    store: JSONFileStore,
+    position: TradingPosition,
+    reserve_asset: AssetIdentifier,
+    journal: dict[str, Any],
+    amount: Decimal,
+    deposit: bool,
+) -> TradeExecution:
+    """Book a Safe and Lighter custody movement before it happens.
+
+    The transfer trade keeps the internal share price measuring trading
+    results: a deposit mints shares and a withdrawal burns them. Booked as
+    valuation changes instead, the test capital leaving the account read as a
+    trading loss. Starting a deposit allocates its reserve, so the following
+    NAV checkpoint cannot count the USDC in both the Safe and Lighter.
+    """
+    trade = create_exchange_account_transfer(
+        state=state,
+        position=position,
+        strategy_cycle_at=native_datetime_utc_now(),
+        reserve_currency=reserve_asset,
+        amount=amount,
+        deposit=deposit,
+        notes=f"Lagoon Lighter test trade {'deposit' if deposit else 'withdrawal'}",
+        metadata={
+            TEST_TRADE_RUN_KEY: journal["created_at"],
+            "direction": "deposit" if deposit else "withdraw",
+            "protocol": LIGHTER_PROTOCOL,
+            "account_index": int(position.pair.get_exchange_account_id()),
+            "requested_amount": str(amount),
+        },
+    )
+    state.start_execution(native_datetime_utc_now(), trade, underflow_check=True)
+    store.sync(state)
+    return trade
+
+
+def _is_run_deposit_completed(store: JSONFileStore, journal: dict[str, Any]) -> bool:
+    """Has this run's deposit transfer completed in the saved state?"""
+    if store.is_pristine():
+        return False
+    state = store.load()
+    return any(
+        (trade := _find_run_transfer(position, journal, deposit=True)) is not None and trade.is_success()
+        for position in _get_lighter_positions(state)
+    )
+
+
+def _wait_for_safe_snapshot(sync_model: LagoonVaultSyncModel, min_block: int, timeout: float = SAFE_SNAPSHOT_TIMEOUT) -> None:
+    """Wait until the treasury snapshot block includes a custody transaction.
+
+    Treasury sync replaces the recorded reserve with Safe USDC read at a
+    buffered block. A snapshot older than the deposit or claim would undo the
+    reserve change the transfer trade just booked.
+    """
+    deadline = time.monotonic() + timeout
+    while (snapshot := sync_model.get_safe_latest_block()) < min_block:
+        if time.monotonic() > deadline:
+            raise LighterTestTradeError(f"Treasury snapshot block {snapshot} did not reach custody block {min_block}")
+        logger.info("Waiting for the treasury snapshot block %d to reach custody block %d", snapshot, min_block)
+        time.sleep(12)
+
+
 def checkpoint_lagoon_nav(
     *,
     state: State,
@@ -611,8 +705,15 @@ def checkpoint_lagoon_nav(
     session: LighterSession,
     operator: LighterOperatorRecord,
     expected_long: bool,
+    min_safe_block: int | None = None,
 ) -> None:
-    """Synchronise external equity, Safe reserve and on-chain Lagoon NAV."""
+    """Synchronise external equity, Safe reserve and on-chain Lagoon NAV.
+
+    :param min_safe_block:
+        Block of the last custody transaction, which the treasury snapshot must include.
+    """
+    if min_safe_block is not None:
+        _wait_for_safe_snapshot(sync_model, min_safe_block)
     position = _get_lighter_position(state)
     equity = fetch_lighter_total_equity(session, operator.account_index)
     _assert_non_negative(equity.get_total(), "Lighter equity")
@@ -854,7 +955,11 @@ def lagoon_lighter_test_trade(
             )
             if phase not in {"created", "deposited", "opened", "closed", "withdrawal_requested", "withdrawn", "complete"}:
                 raise LighterTestTradeError(f"Unknown Lighter recovery phase: {phase}")
-            if phase == "created":
+            _state_path, store = resolve_state_store(executor_id, config.state_file)
+            # A deposit booked in state before the journal advanced has moved
+            # custody legitimately; the step below only advances the journal.
+            deposit_completed = phase == "created" and _is_run_deposit_completed(store, journal)
+            if phase == "created" and not deposit_completed:
                 baseline_collateral = Decimal(str(journal["baseline_lighter_collateral"]))
                 baseline_safe_balance = Decimal(str(journal["baseline_safe_usdc"]))
                 if public_position != 0:
@@ -867,13 +972,15 @@ def lagoon_lighter_test_trade(
                     raise LighterTestTradeError(
                         "Lighter collateral changed before the deposit was journalled; refusing to retry it",
                     )
+            elif phase == "created" and public_position != 0:
+                raise LighterTestTradeError("Fresh test run refuses an existing Lighter ETH position")
             elif phase == "opened" and public_position <= 0:
                 raise LighterTestTradeError("Journal says the ETH long is open, but Lighter reports no long")
             elif phase != "opened" and public_position != 0:
                 raise LighterTestTradeError(
                     f"Journal phase {phase} requires a flat ETH position; inspect Lighter before resuming",
                 )
-            if safe_balance < config.deposit_usdc and phase == "created":
+            if safe_balance < config.deposit_usdc and phase == "created" and not deposit_completed:
                 raise LighterTestTradeError(
                     f"Lagoon Safe has {safe_balance} USDC, but the requested Lighter deposit requires "
                     f"{config.deposit_usdc} USDC",
@@ -883,7 +990,6 @@ def lagoon_lighter_test_trade(
             if not config.auto_approve and not unit_testing:
                 typer.confirm("Continue with the live Lighter test trade?", abort=True)
 
-            _state_path, store = resolve_state_store(executor_id, config.state_file)
             valuation_func = create_lighter_vault_valuation_func(
                 web3,
                 vault.safe_address,
@@ -934,21 +1040,80 @@ def lagoon_lighter_test_trade(
                 raise LighterTestTradeError("Executor state Lighter account does not match the operator record")
 
             if phase == "created":
-                logger.info("Step 2: depositing %s USDC from Safe to Lighter", config.deposit_usdc)
-                deposit_tx_hash = deposit_usdc_from_lagoon_safe_into_lighter(
-                    web3,
-                    hot_wallet,
-                    vault=vault,
-                    usdc=usdc,
-                    deposit_usdc=config.deposit_usdc,
+                position = _get_lighter_position(state)
+                deposit_trade = _find_run_transfer(position, journal, deposit=True)
+                if deposit_trade is None:
+                    # Record the reserve and any Lighter balance already there,
+                    # so the deposit mints shares on top of the existing capital.
+                    logger.info("Step 2: synchronising NAV before the deposit")
+                    checkpoint_lagoon_nav(
+                        state=state,
+                        store=store,
+                        sync_model=sync_model,
+                        reserve_asset=reserve_asset,
+                        session=session,
+                        operator=operator,
+                        expected_long=False,
+                    )
+                    deposit_trade = _start_run_transfer(
+                        state=state,
+                        store=store,
+                        position=position,
+                        reserve_asset=reserve_asset,
+                        journal=journal,
+                        amount=config.deposit_usdc,
+                        deposit=True,
+                    )
+                elif not deposit_trade.is_success() and deposit_trade.other_data.get("lighter_deposit_tx_hashes"):
+                    raise LighterTestTradeError(
+                        f"Deposit transfer #{deposit_trade.trade_id} sent transactions this run did not confirm; "
+                        "inspect the Safe and Lighter before resuming",
+                    )
+                if not deposit_trade.is_success():
+                    logger.info("Step 2: depositing %s USDC from Safe to Lighter", config.deposit_usdc)
+
+                    def record_deposit_tx(tx_hash: str, _nonce: int, _description: str) -> None:
+                        deposit_trade.other_data.setdefault("lighter_deposit_tx_hashes", []).append(tx_hash)
+                        store.sync(state)
+
+                    safe_before = usdc.fetch_balance_of(vault.safe_address)
+                    deposit_tx_hash = deposit_usdc_from_lagoon_safe_into_lighter(
+                        web3,
+                        hot_wallet,
+                        vault=vault,
+                        usdc=usdc,
+                        deposit_usdc=config.deposit_usdc,
+                        tx_observer=record_deposit_tx,
+                    )
+                    deposit_trade.other_data["lighter_deposit_tx_hash"] = deposit_tx_hash
+                    deposit_trade.mark_broadcasted(native_datetime_utc_now())
+                    store.sync(state)
+                    wait_for_lighter_collateral(
+                        session,
+                        operator.account_index,
+                        equity.collateral + config.deposit_usdc,
+                        timeout=config.deposit_timeout,
+                    )
+                    safe_after = usdc.fetch_balance_of(vault.safe_address)
+                    if usdc.convert_to_raw(safe_before - safe_after) != usdc.convert_to_raw(config.deposit_usdc):
+                        raise LighterTestTradeError("Safe USDC did not decrease by the Lighter deposit")
+                    complete_exchange_account_transfer(
+                        state=state,
+                        position=position,
+                        trade=deposit_trade,
+                        executed_amount=config.deposit_usdc,
+                        executed_reserve=config.deposit_usdc,
+                        executed_at=native_datetime_utc_now(),
+                    )
+                    store.sync(state)
+                _update_journal(
+                    config,
+                    journal,
+                    "deposited",
+                    deposit_tx_hash=deposit_trade.other_data.get("lighter_deposit_tx_hash", ""),
+                    deposit_trade_id=deposit_trade.trade_id,
+                    deposit_block=web3.eth.block_number,
                 )
-                wait_for_lighter_collateral(
-                    session,
-                    operator.account_index,
-                    equity.collateral + config.deposit_usdc,
-                    timeout=config.deposit_timeout,
-                )
-                _update_journal(config, journal, "deposited", deposit_tx_hash=deposit_tx_hash)
                 phase = "deposited"
                 logger.info("Step 3: synchronising NAV after deposit")
                 checkpoint_lagoon_nav(
@@ -959,6 +1124,7 @@ def lagoon_lighter_test_trade(
                     session=session,
                     operator=operator,
                     expected_long=False,
+                    min_safe_block=int(journal["deposit_block"]),
                 )
 
             if phase == "deposited":
@@ -1075,30 +1241,79 @@ def lagoon_lighter_test_trade(
                     withdrawal_pending_before=str(pending_before),
                 )
                 phase = "withdrawal_requested"
-                asyncio.run(request_lighter_withdrawal(operator, withdraw_amount))
+                withdrawal_trade = _find_run_transfer(_get_lighter_position(state), journal, deposit=False) or _start_run_transfer(
+                    state=state,
+                    store=store,
+                    position=_get_lighter_position(state),
+                    reserve_asset=reserve_asset,
+                    journal=journal,
+                    amount=withdraw_amount,
+                    deposit=False,
+                )
+                try:
+                    asyncio.run(request_lighter_withdrawal(operator, withdraw_amount))
+                except LighterWithdrawalRejected:
+                    state.mark_trade_failed(native_datetime_utc_now(), withdrawal_trade)
+                    withdrawal_trade.other_data["outcome"] = "withdrawal_rejected"
+                    store.sync(state)
+                    raise
+                withdrawal_trade.mark_broadcasted(native_datetime_utc_now())
+                store.sync(state)
 
             if phase == "withdrawal_requested":
                 withdraw_amount = Decimal(str(journal["withdrawal_usdc"]))
-                logger.info("Step 9: waiting for %s USDC to become claimable", withdraw_amount)
-                safe_before = usdc.fetch_balance_of(vault.safe_address)
-                claimable = asyncio.run(
-                    wait_for_lighter_withdrawal_claimable(
-                        operator,
-                        withdraw_amount,
-                        config.withdraw_timeout,
-                        int(journal["withdrawal_requested_at"]),
-                    ),
+                position = _get_lighter_position(state)
+                # A journal from before transfers were booked has no trade yet
+                withdrawal_trade = _find_run_transfer(position, journal, deposit=False) or _start_run_transfer(
+                    state=state,
+                    store=store,
+                    position=position,
+                    reserve_asset=reserve_asset,
+                    journal=journal,
+                    amount=withdraw_amount,
+                    deposit=False,
                 )
-                claim_tx_hash = _claim_unless_paid(web3, hot_wallet, vault, usdc, claimable, journal, hypersync_api_key=hypersync_api_key)
-                safe_after = usdc.fetch_balance_of(vault.safe_address)
-                if claim_tx_hash and usdc.convert_to_raw(safe_after - safe_before) != usdc.convert_to_raw(claimable):
-                    raise LighterTestTradeError("Safe did not receive the claimed Lighter withdrawal")
+                if withdrawal_trade.other_data.get("outcome") == "withdrawal_rejected":
+                    raise LighterTestTradeError(
+                        f"Lighter rejected withdrawal transfer #{withdrawal_trade.trade_id}; check Lighter and start a new run with a new journal",
+                    )
+                claim_tx_hash = withdrawal_trade.other_data.get("lighter_claim_tx_hash", "")
+                if not withdrawal_trade.is_success():
+                    logger.info("Step 9: waiting for %s USDC to become claimable", withdraw_amount)
+                    safe_before = usdc.fetch_balance_of(vault.safe_address)
+                    claimable = asyncio.run(
+                        wait_for_lighter_withdrawal_claimable(
+                            operator,
+                            withdraw_amount,
+                            config.withdraw_timeout,
+                            int(journal["withdrawal_requested_at"]),
+                        ),
+                    )
+                    claim_tx_hash = _claim_unless_paid(web3, hot_wallet, vault, usdc, claimable, journal, hypersync_api_key=hypersync_api_key)
+                    safe_after = usdc.fetch_balance_of(vault.safe_address)
+                    if claim_tx_hash and usdc.convert_to_raw(safe_after - safe_before) != usdc.convert_to_raw(claimable):
+                        raise LighterTestTradeError("Safe did not receive the claimed Lighter withdrawal")
+                    withdrawal_trade.other_data["lighter_claim_tx_hash"] = claim_tx_hash or ""
+                    if withdrawal_trade.get_status() == TradeStatus.started:
+                        # Booked on resume after the request was already sent
+                        withdrawal_trade.mark_broadcasted(native_datetime_utc_now())
+                    complete_exchange_account_transfer(
+                        state=state,
+                        position=position,
+                        trade=withdrawal_trade,
+                        executed_amount=-claimable,
+                        executed_reserve=claimable,
+                        executed_at=native_datetime_utc_now(),
+                    )
+                    store.sync(state)
                 _update_journal(
                     config,
                     journal,
                     "withdrawn",
-                    withdrawal_usdc=str(claimable),
+                    withdrawal_usdc=str(abs(withdrawal_trade.executed_quantity)),
                     claim_tx_hash=claim_tx_hash or "",
+                    withdrawal_trade_id=withdrawal_trade.trade_id,
+                    withdrawal_block=web3.eth.block_number,
                 )
                 phase = "withdrawn"
 
@@ -1112,6 +1327,7 @@ def lagoon_lighter_test_trade(
                     session=session,
                     operator=operator,
                     expected_long=False,
+                    min_safe_block=int(journal["withdrawal_block"]) if "withdrawal_block" in journal else None,
                 )
                 _update_journal(config, journal, "complete")
                 logger.info("Step 11: Lighter Lagoon test trade completed successfully")
