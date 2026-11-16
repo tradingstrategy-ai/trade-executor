@@ -7,10 +7,8 @@ import logging
 
 from tabulate import tabulate
 
-from eth_defi.erc_4626.core import ERC4626Feature
-
 from tradeexecutor.strategy.vault_protocol import (
-    settlement_expectation, OSTIUM_BACKTEST_SETTLEMENT_HOUR, VAULT_SETTLEMENT_DELAY_FALLBACKS,
+    resolve_vault_protocol_rules, settlement_expectation, OSTIUM_BACKTEST_SETTLEMENT_HOUR, VAULT_SETTLEMENT_DELAY_FALLBACKS,
 )
 from tradeexecutor.backtest.vault_fees import FEE_KEY, calculate_vault_fees, externalised_rates, vault_exit_rate
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel, BacktestRoutingState
@@ -495,7 +493,7 @@ class BacktestExecution(ExecutionModel):
     def _requires_historical_deposit_settlement(pair: TradingPairIdentifier) -> bool:
         """Does a backtest deposit need historical settlement evidence?
 
-        D2 and Lagoon deposits remain event-gated when the historical
+        D2, Lagoon and T3tris deposits remain event-gated when the historical
         feed includes settlement observations. A two-day grace period is used
         only when no observations exist at all.
 
@@ -506,15 +504,13 @@ class BacktestExecution(ExecutionModel):
         :param pair:
             Pair being checked for simulated deposit settlement.
         :return:
-            True for D2/Lagoon vaults; false for other pairs.
+            Whether the resolved protocol rules require deposit settlement evidence.
         """
         if not pair.is_vault():
             return False
-        features = pair.get_vault_features() or set()
-        return bool(features & {
-            ERC4626Feature.lagoon_like,
-            ERC4626Feature.d2_like,
-        })
+        # Resolve the capability afresh: older pair snapshots may default this
+        # flag to false even though their protocol has always required events.
+        return resolve_vault_protocol_rules(pair).deposit_requires_settlement_event
 
     def _get_settlement_due(self, pair: TradingPairIdentifier, ts: datetime.datetime, *, is_buy: bool = False) -> datetime.datetime:
         """Compute the minimum simulated settlement time for a queued request.
@@ -527,7 +523,7 @@ class BacktestExecution(ExecutionModel):
         1. Per-vault override (``vault_settlement_delay_overrides``) — a fixed
            delay from the request time.
         2. The vault's positive ``estimated_settlement`` metadata for Lagoon,
-           D2, Plutus, Atoma and Upshift.
+           T3tris, D2, Plutus, Atoma and Upshift.
         3. Conservative protocol defaults in
            :py:data:`VAULT_SETTLEMENT_DELAY_FALLBACKS`.
         4. Ostium-style vaults (``ostium_like`` feature) — the next day at
@@ -674,7 +670,7 @@ class BacktestExecution(ExecutionModel):
                         trade.other_data["vault_settlement_fallback_used"] = True
                         trade.other_data["vault_settlement_fallback_reason"] = "no_historical_settlement_observations"
                     else:
-                        # A D2 or Lagoon deposit is not allocated merely
+                        # An event-gated deposit is not allocated merely
                         # because its average delay elapsed when the historical
                         # feed does contain settlement observations. It needs a
                         # real event after this request's delay.

@@ -3,7 +3,7 @@
 `DEXPair` already carries `VaultMetadata` in `other_data["token_metadata"]`,
 including published fees, protocol identity and feature flags. Pair translation
 reuses these and the existing asynchronous-deposit, delayed-redemption and
-settlement-estimate helpers; no extra upstream metadata schema is needed.
+settlement-estimate helpers.
 `DEXPair.buy_tax`/`sell_tax` describe token-transfer taxes and are translated onto
 the base asset. They do not describe operation queues or fee-support profiles;
 vault economics must not mutate that shared asset metadata.
@@ -67,7 +67,20 @@ protocol-specific execution path.
   Price histories remain loaded and redemption checks remain operation-specific.
   Earlier NB04 results using assumed Growi admission predate this correction;
   they must not be described as results of the corrected engine.
-- The dispatcher retains existing Lagoon/D2 event gates, metadata-estimate
+- The dispatcher applies the existing Lagoon/D2 deposit event gate to T3tris
+  and accepts its published positive settlement estimate for both directions.
+  Only `DepositsSettled` contributes T3tris historical markers; redemption
+  simulation uses the estimate, never deposit events. Missing estimates retain
+  the global two-day delay, with the existing additional two-day grace period
+  for deposits lacking observations. The API-derived estimate is a weak average,
+  not a live deadline or claimability check. Upstream migration 079 and normal
+  scanner/history publication supply this data.
+- Settlement metadata loading also serves existing protocols. Lagoon, Upshift,
+  D2, Plutus and Atoma use positive published estimates where available;
+  Lagoon and D2 deposits can now use loaded settlement events instead of the
+  no-observation fallback. Runs using this loader may therefore differ from
+  earlier backtests even with the same investment universe and timing rules.
+- The dispatcher retains existing metadata-estimate
   eligibility, protocol/default delays and Ostium's next-day 18:00 UTC rule.
   The shared settlement helper applies explicit backtest overrides first;
   overrides retain their historical both-directions-queued behaviour.

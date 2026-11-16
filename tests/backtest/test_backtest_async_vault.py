@@ -943,9 +943,10 @@ def test_backtest_async_vault_settlement_due_defaults() -> None:
 @pytest.mark.parametrize("feature", [
     ERC4626Feature.lagoon_like,
     ERC4626Feature.d2_like,
+    ERC4626Feature.t3tris_like,
 ])
 def test_backtest_protocol_deposit_requires_historical_settlement_event(feature: ERC4626Feature) -> None:
-    """D2 and Lagoon deposits need both delay and event evidence.
+    """D2, Lagoon and T3tris deposits need both delay and event evidence.
 
     The request on 1 January has passed its two-day delay before the historical
     event on 4 January. It must remain in the queue until that event is visible;
@@ -999,6 +1000,7 @@ def test_backtest_protocol_deposit_requires_historical_settlement_event(feature:
 @pytest.mark.parametrize("feature", [
     ERC4626Feature.lagoon_like,
     ERC4626Feature.d2_like,
+    ERC4626Feature.t3tris_like,
 ])
 def test_backtest_protocol_deposit_without_observations_uses_grace_period(feature: ERC4626Feature) -> None:
     """No observed settlement history falls back to estimate plus two days.
@@ -1049,6 +1051,51 @@ def test_backtest_protocol_deposit_without_observations_uses_grace_period(featur
     row = table.iloc[0]
     assert row["No-data settlement delay"] == "4 days"
     assert row["Simulated no-data settlements"] == 1
+
+
+def test_backtest_t3tris_round_trip_without_overrides() -> None:
+    """T3tris metadata must queue both directions without a forced async override.
+
+    1. Load T3tris-only features with an estimate and deposit settlement history.
+    2. Request a deposit and a later redemption through normal strategy execution.
+    3. Check deposit evidence, delayed exit cash and the final wallet balances.
+    """
+    # 1. Load T3tris-only features with an estimate and deposit settlement history.
+    universe, pairs = _make_multi_vault_universe([
+        ("VT3", "0x" + "f3" * 20, {ERC4626Feature.t3tris_like}),
+    ])
+    pair = universe.get_pair_by_id(pairs["VT3"].internal_id)
+    pair.other_data["vault_estimated_settlement"] = SETTLEMENT_DELAY
+    event_at = START_AT + datetime.timedelta(days=3)
+    universe.vault_state = pd.DataFrame([
+        dict(timestamp=START_AT + datetime.timedelta(days=day), pair_id=pair.internal_id,
+             address=pair.pool_address, vault_settlement_at=START_AT + datetime.timedelta(days=day))
+        for day in (1, 3)
+    ])
+
+    # 2. Request a deposit and a later redemption through normal strategy execution.
+    def decide(input: StrategyInput) -> list[TradeExecution]:
+        manager = input.get_position_manager()
+        if input.cycle == 1:
+            return manager.open_spot(pair, value=5000)
+        if input.cycle == 6:
+            return manager.close_all()
+        if input.cycle == 7:
+            assert input.state.portfolio.get_cash() == pytest.approx(5000)
+            assert input.state.portfolio.get_total_equity() == pytest.approx(INITIAL_DEPOSIT)
+        return []
+
+    state, _, _ = _run(universe, decide=decide, delay_overrides={})
+
+    # 3. Check deposit evidence, delayed exit cash and the final wallet balances.
+    buy, sell = list(state.portfolio.get_all_trades())
+    assert buy.is_success() and sell.is_success()
+    assert buy.executed_at == event_at
+    assert buy.other_data["vault_settlement_historical_event_at"] == event_at.isoformat()
+    assert sell.executed_at == sell.opened_at + SETTLEMENT_DELAY
+    assert not sell.other_data.get("vault_settlement_historical_event_required")
+    assert state.portfolio.get_cash() == pytest.approx(INITIAL_DEPOSIT)
+    assert not state.portfolio.open_positions
 
 
 def test_vault_settlement_observations_chart():
@@ -1536,6 +1583,7 @@ def test_position_has_pending_vault_settlement_shapes():
     {ERC4626Feature.ember_like},
     {ERC4626Feature.accountable_like, ERC4626Feature.erc_7540_like},
     {ERC4626Feature.plutus_like, ERC4626Feature.erc_7540_like},
+    {ERC4626Feature.t3tris_like},
 ])
 def test_backtest_async_vault_sell_proceeds_cannot_fund_buys(features: set[ERC4626Feature] | None) -> None:
     """Delayed vault withdrawals cannot fund purchases before settlement.
@@ -1543,7 +1591,7 @@ def test_backtest_async_vault_sell_proceeds_cannot_fund_buys(features: set[ERC46
     A redemption requested from an async vault pays out only after settlement,
     so a rotation that sells the async vault and buys another vault in the same
     cycle must fit its buys in the actually-free cash. Protocol cases deposit
-    synchronously and must be classified before their first withdrawal. The
+    either synchronously or through their deposit queue. The
     no-feature case uses the existing override and position-history fallback.
 
     1. Configure a 90% allocation into VO followed by rotation into synchronous VS.
@@ -1556,7 +1604,8 @@ def test_backtest_async_vault_sell_proceeds_cannot_fund_buys(features: set[ERC46
         ("VO", VAULT_A_ADDRESS, features),
         ("VS", VAULT_B_ADDRESS, None),
     ])
-    assert not pairs["VO"].is_async_vault()
+    queued_deposit = pairs["VO"].is_async_vault()
+    assert queued_deposit == bool(features and ERC4626Feature.t3tris_like in features)
 
     one_day = datetime.timedelta(days=1)
     allocation = 0.9
@@ -1569,7 +1618,12 @@ def test_backtest_async_vault_sell_proceeds_cannot_fund_buys(features: set[ERC46
         START_AT + 5 * one_day: {"VS": 1.0},   # redeem settled: redeploy proceeds
         START_AT + 6 * one_day: {"VS": 1.0},
     }
-    rotation_ts = START_AT + 3 * one_day
+    # Event-gated deposits without observations also wait the existing grace period.
+    # Let them finish before rotation so this scenario still exercises exit funding.
+    if queued_deposit:
+        weights_schedule = {timestamp + 3 * one_day: weights for timestamp, weights in weights_schedule.items()}
+        weights_schedule[START_AT] = {"VO": 1.0}
+    rotation_ts = START_AT + (6 if queued_deposit else 3) * one_day
     flags_by_cycle: dict[datetime.datetime, set] = {}
 
     def decide(input: StrategyInput) -> list[TradeExecution]:
@@ -1582,7 +1636,7 @@ def test_backtest_async_vault_sell_proceeds_cannot_fund_buys(features: set[ERC46
         portfolio = state.portfolio
         pair_by_symbol = {p.base.token_symbol: p for p in input.strategy_universe.iterate_pairs()}
 
-        # Calibrate the synthetic Hedge epoch without making its deposits async.
+        # Set the synthetic delay while retaining each protocol's queue directions.
         pair_by_symbol["VO"].other_data["vault_estimated_settlement"] = SETTLEMENT_DELAY
 
         alpha_model = AlphaModel(input.timestamp, close_position_weight_epsilon=0.001)

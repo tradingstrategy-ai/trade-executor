@@ -42,7 +42,7 @@ from tradingstrategy.utils.groupeduniverse import filter_for_pairs, NoDataAvaila
 from tradingstrategy.utils.token_extra_data import load_extra_metadata
 from tradingstrategy.utils.token_filter import add_base_quote_address_columns
 from tradingstrategy.vault import VaultMetadata, VaultUniverse
-from tradingstrategy.alternative_data.vault import load_multiple_vaults, load_vault_price_data, convert_vault_prices_to_candles, convert_vault_prices_to_vault_state, DEFAULT_VAULT_PRICE_BUNDLE, filter_vault_price_history, read_vault_price_history_parquet, VAULT_STATE_COLUMNS, VAULT_STATE_METADATA_COLUMNS, read_vault_permission_history_parquet
+from tradingstrategy.alternative_data.vault import load_multiple_vaults, load_vault_price_data, convert_vault_prices_to_candles, convert_vault_prices_to_vault_state, DEFAULT_VAULT_PRICE_BUNDLE, filter_vault_price_history, read_vault_price_history_parquet, VAULT_STATE_COLUMNS, VAULT_STATE_METADATA_COLUMNS, VAULT_SETTLEMENT_COLUMNS, read_vault_permission_history_parquet
 from tradingstrategy.vault_data_client import VaultDataAccessDenied, VaultDataClient, VaultDataset
 
 from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
@@ -3169,6 +3169,7 @@ def load_partial_data(
                     "protocol",
                     *VAULT_STATE_COLUMNS,
                     *VAULT_STATE_METADATA_COLUMNS,
+                    *VAULT_SETTLEMENT_COLUMNS,
                 ],
             )
 
