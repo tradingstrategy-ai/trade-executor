@@ -12,6 +12,7 @@ from .commands.close_position import close_position
 from .commands.console import console
 from .commands.correct_accounts import correct_accounts
 from .commands.correct_history import correct_history
+from .commands.rebuild_exchange_account_share_price import rebuild_exchange_account_share_price
 from .commands.deploy_guard import deploy_guard
 from .commands.enzyme_asset_list import enzyme_asset_list
 from .commands.export import export
@@ -56,7 +57,7 @@ __all__ = [
     app, backtest, blacklist, check_accounts, claim_hypercore_vault_dust, check_position_triggers,
     check_universe, check_wallet, close_all, close_position, console,
     correct_accounts, correct_history, deploy_guard, distribute_gas_funds, enzyme_asset_list, enzyme_deploy_vault,
-    export, hello, init, lagoon_deploy_vault, lagoon_first_deposit, lagoon_hypercore_vault_whitelist_status, lagoon_lighter_test_trade, lagoon_manual_settle, lagoon_reclaim_satellites, lagoon_redeem, lagoon_settle, lighter_move_funds, perform_test_trade, prepare_report, prune_state,
+    export, hello, init, lagoon_deploy_vault, lagoon_first_deposit, lagoon_hypercore_vault_whitelist_status, lagoon_lighter_test_trade, lagoon_manual_settle, lagoon_reclaim_satellites, lagoon_redeem, lagoon_settle, lighter_move_funds, perform_test_trade, prepare_report, prune_state, rebuild_exchange_account_share_price,
     repair, repair_hypercore_dust, reset, reset_deposits, retry, send_log_message, show_hypercore_rebalance_costs, show_positions,
     show_valuation, start, token_cache, trade_ui, trading_pair, vault_test_trade,
     version, visualise, webapi,
