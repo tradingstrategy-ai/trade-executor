@@ -1,7 +1,7 @@
 name: Slow test group
 on:
   push:
-    branches: [ master, ci/benchmark-slow-ubuntu-latest-20261123-095628 ]
+    branches: [ master, ci/benchmark-slow-ubuntu-24-04-20261123-095628 ]
     tags: [ v* ]
   pull_request:
     branches: [ master ]
@@ -9,7 +9,7 @@ on:
 jobs:
   slow-test-suite:
     timeout-minutes: 40
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
         with:
