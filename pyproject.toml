@@ -91,7 +91,8 @@ quantstats = {version = "^0.0.62"}
 #    299     if matplotlib_inline:
 #--> 300         get_ipython().magic("matplotlib inline")
 ipython = "<8"
-lxml = "^5.3"
+# Python 3.14 wheels and libxml2 2.15 build support for Ubuntu 26.04.
+lxml = "^6.0.2"
 
 # Needed for Plotly Express scatter(trendline="ols)
 # https://www.statsmodels.org/stable/index.html
