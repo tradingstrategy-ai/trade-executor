@@ -1,7 +1,7 @@
 name: Slow test group
 on:
   push:
-    branches: [ master ]
+    branches: [ master, ci/benchmark-slow-ubuntu-latest-20261123-095628 ]
     tags: [ v* ]
   pull_request:
     branches: [ master ]
@@ -9,8 +9,7 @@ on:
 jobs:
   slow-test-suite:
     timeout-minutes: 40
-    runs-on:
-      group: Beefy runners
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
         with:
