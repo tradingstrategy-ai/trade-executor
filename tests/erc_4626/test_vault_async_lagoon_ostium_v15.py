@@ -172,7 +172,9 @@ def automated_lagoon_vault(
         any_asset=False,
         erc_4626_vaults=[ostium_vault],
         from_the_scratch=True,
-        use_forge=True,
+        # The packaged contracts exercise settlement without Forge requesting
+        # historical fee data that the Arbitrum fork RPC may be unable to serve.
+        use_forge=False,
     )
 
     # Verify the Ostium vault was whitelisted in the guard
