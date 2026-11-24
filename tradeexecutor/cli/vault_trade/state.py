@@ -749,12 +749,14 @@ def export_vault_test_report(
     for row in rows:
         vault_id = row["vault id"]
         row_attempt_id = row.get("attempt")
-        matches = [
-            candidate
-            for candidate in state.portfolio.get_all_positions()
-            if candidate.other_data.get("vault_test_attempt", {}).get("vault_id")
-            == vault_id
-        ]
+        matches = []
+        if row.get("status") != "skipped":
+            matches = [
+                candidate
+                for candidate in state.portfolio.get_all_positions()
+                if candidate.other_data.get("vault_test_attempt", {}).get("vault_id")
+                == vault_id
+            ]
         if row_attempt_id:
             matches = [
                 candidate

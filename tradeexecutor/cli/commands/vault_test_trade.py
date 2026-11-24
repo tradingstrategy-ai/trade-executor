@@ -194,7 +194,8 @@ def vault_test_trade(
 
     Unlike ``perform-test-trade``, this command has no strategy file.  The
     runner constructs a minimal universe from downloaded vault metadata for
-    each individual action.
+    each individual action. New deposits below USD 5,000 TVL are reported
+    as skipped when a TVL observation is available.
     """
 
     _validate_vault_test_options(

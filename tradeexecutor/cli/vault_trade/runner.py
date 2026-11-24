@@ -7,6 +7,7 @@ the CLI entry point small and makes deposit/redemption continuation rules
 readable without wading through bootstrap code.
 """
 
+import datetime
 import logging
 import signal
 import uuid
@@ -14,11 +15,13 @@ from collections import defaultdict, deque
 from copy import deepcopy
 from dataclasses import dataclass, field
 from decimal import Decimal
+from math import isfinite
 from typing import Any
 
 from eth_typing import HexAddress
 from eth_defi.compat import native_datetime_utc_now
 from eth_defi.provider.anvil import fund_erc20_on_anvil, is_anvil
+from eth_defi.token import BRIDGED_USDC_TOKEN, USDC_NATIVE_TOKEN, USDT_NATIVE_TOKEN
 from eth_defi.vault.exception import UnsupportedVaultProtocol
 from eth_defi.vault.base import VaultSpec
 from eth_defi.vault.deposit_redeem import (
@@ -78,6 +81,10 @@ from tradeexecutor.strategy.generic.generic_valuation import GenericValuation
 from tradeexecutor.strategy.valuation import revalue_state
 
 logger = logging.getLogger(__name__)
+
+#: Same numeric default as eth-defi publishing, applied to pre-deposit USD TVL.
+MIN_VAULT_TEST_TVL_USD = 5_000
+SKIPPED_TVL_TOO_SMALL = "skipped_tvl_too_small"
 
 
 #: Initial estimate plus four proportional raw-unit corrections bound fork work.
@@ -1369,6 +1376,23 @@ class VaultTestBatchRunner:
             )
             return False
 
+        # A bridge continuation may already have sent the funds to the satellite.
+        previous = getattr(attempt, "previous", None)
+        previous_phase = previous.other_data.get("vault_test_attempt", {}).get("phase") if previous else None
+        if operation == "deposit" and previous_phase != "bridge_out_pending":
+            tvl = self._read_deposit_tvl(attempt)
+            if tvl is None or not isfinite(tvl) or tvl < 0:
+                logger.info("Vault %s TVL unavailable, continuing with deposit preflight", spec.as_string_id())
+            elif tvl < MIN_VAULT_TEST_TVL_USD:
+                alarm.disarm()
+                self._append_result(
+                    attempt.vault,
+                    spec,
+                    f"Skipped because vault TVL is USD {tvl:,}, below USD {MIN_VAULT_TEST_TVL_USD:,}",
+                    deposit_skip=SKIPPED_TVL_TOO_SMALL,
+                )
+                return False
+
         # The default async simulation verifies requestDeposit only. The explicit
         # Anvil option invokes eth-defi's supported settlement helper instead.
         if (
@@ -1559,6 +1583,50 @@ class VaultTestBatchRunner:
 
         self._append_result(attempt.vault, spec)
         return False
+
+    def _read_deposit_tvl(self, attempt: VaultAttempt) -> float | Decimal | None:
+        """Read pre-deposit USD TVL, or return None if the read is unavailable.
+
+        Use nominal USD for known USDC and USDT contracts. Other denominations
+        need published USD TVL available at the tested time, so newer metadata
+        cannot classify an older fork.
+        """
+
+        try:
+            chain_id = attempt.spec.chain_id
+            quote_address = getattr(attempt.pair.quote, "address", None)
+            usd_tokens = (USDC_NATIVE_TOKEN, BRIDGED_USDC_TOKEN, USDT_NATIVE_TOKEN)
+            usd_stablecoin = quote_address in {
+                addresses.get(chain_id, "").lower() for addresses in usd_tokens
+            }
+            fork_block = (
+                self.runtime.simulated_runtime.pinned_fork_blocks[ChainId(chain_id)]
+                if self.auto_simulated
+                else None
+            )
+            if usd_stablecoin:
+                block_identifier = fork_block if fork_block is not None else "latest"
+                return attempt.executable_vault.fetch_total_assets(block_identifier=block_identifier)
+
+            metadata = getattr(attempt.vault, "metadata", None)
+            observed_at = getattr(metadata, "last_updated_at", None)
+            if not isinstance(observed_at, datetime.datetime):
+                return None
+
+            decision_at = native_datetime_utc_now()
+            if fork_block is not None:
+                web3 = self.runtime.web3config.get_connection(ChainId(chain_id))
+                timestamp = web3.eth.get_block(fork_block)["timestamp"]
+                decision_at = datetime.datetime.fromtimestamp(timestamp, datetime.UTC).replace(tzinfo=None)
+
+            if observed_at.tzinfo is not None:
+                observed_at = observed_at.astimezone(datetime.UTC).replace(tzinfo=None)
+            if observed_at <= decision_at:
+                return metadata.tvl
+        except Exception as error:
+            # TVL is an optional admission check. Keep provider URLs out of logs.
+            logger.debug("Vault TVL read failed (%s)", type(error).__name__)
+        return None
 
     def _choose_operation(
         self,
@@ -2471,10 +2539,12 @@ class VaultTestBatchRunner:
         vault: Any,
         spec: VaultSpec,
         detail: str | None = None,
+        *,
+        deposit_skip: str | None = None,
     ) -> None:
-        """Append one compact row using the latest position as authority."""
+        """Append a position result or a report-only deposit skip."""
 
-        position = get_latest_vault_position(self.state, spec)
+        position = None if deposit_skip else get_latest_vault_position(self.state, spec)
         attempt = position.other_data.get("vault_test_attempt", {}) if position else {}
         detail = detail or attempt.get("detail")
         if detail:
@@ -2493,10 +2563,10 @@ class VaultTestBatchRunner:
                 )(),
                 "protocol": getattr(vault, "protocol_name", "unknown"),
                 "mode": self.mode,
-                "status": get_vault_test_status(position),
-                "operation": attempt.get("operation"),
+                "status": "skipped" if deposit_skip else get_vault_test_status(position),
+                "operation": "deposit" if deposit_skip else attempt.get("operation"),
                 "phase": attempt.get("phase"),
-                "result": attempt.get("result"),
+                "result": deposit_skip or attempt.get("result"),
                 "attempt": attempt.get("attempt_id"),
                 "position": position.position_id if position else None,
                 "detail": detail,

@@ -82,6 +82,17 @@ behaviour. It is not:
 Any other attribute is the strategy's own and is read only by its
 `decide_trades()`, `create_trading_universe()` and indicator functions.
 
+### Minimum vault TVL
+
+Every vault strategy module must enforce a minimum USD 5,000 TVL in
+`decide_trades()` before opening or increasing a vault allocation, including
+top-ups and cash parking. Use USD TVL available at the decision time and
+apply any stricter strategy minimum. Keep existing holdings in the universe
+for valuation, reductions, exits and settlement. Preserve the strategy’s
+existing policy for missing historical TVL and record any new exclusions in
+a changed backtest. The CLI’s `vault-test-trade` floor uses the same numeric
+default as the [eth-defi publishing guideline](https://github.com/tradingstrategy-ai/web3-ethereum-defi/blob/01a34c9eaef38ae110a980430594de1aaf54ecbb/eth_defi/vault/top_vaults_json.py#L113-L149).
+
 ### Exchange accounts and Lighter sub-accounts
 
 A strategy that keeps capital on an external exchange declares the
