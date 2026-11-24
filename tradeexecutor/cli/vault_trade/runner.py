@@ -1594,7 +1594,7 @@ class VaultTestBatchRunner:
             if not stablecoin and not isinstance(observed_at, datetime.datetime):
                 return None
 
-            decision_at = datetime.datetime.now(datetime.UTC)
+            decision_at = native_datetime_utc_now()
             if self.auto_simulated:
                 chain_id = ChainId(attempt.spec.chain_id)
                 fork_block = self.runtime.simulated_runtime.pinned_fork_blocks[chain_id]
@@ -1603,10 +1603,10 @@ class VaultTestBatchRunner:
 
                 web3 = self.runtime.web3config.get_connection(chain_id)
                 timestamp = web3.eth.get_block(fork_block)["timestamp"]
-                decision_at = datetime.datetime.fromtimestamp(timestamp, datetime.UTC)
+                decision_at = datetime.datetime.fromtimestamp(timestamp, datetime.UTC).replace(tzinfo=None)
 
-            if observed_at.tzinfo is None:
-                observed_at = observed_at.replace(tzinfo=datetime.UTC)
+            if observed_at.tzinfo is not None:
+                observed_at = observed_at.astimezone(datetime.UTC).replace(tzinfo=None)
             if observed_at <= decision_at:
                 return metadata.tvl
         except Exception as error:

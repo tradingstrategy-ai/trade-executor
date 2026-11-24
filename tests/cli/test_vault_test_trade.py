@@ -1746,8 +1746,14 @@ def test_simulated_vault_detects_incorrect_json_whitelist_status() -> None:
     ],
 )
 def test_vault_test_trade_minimum_tvl(operation, tvl, expect_skip, caplog):
-    """Skip only fresh deposits with observed low TVL and retain the report result."""
+    """Skip only fresh deposits with observed low TVL.
 
+    1. Prepare a vault attempt with a pinned TVL observation.
+    2. Run the deposit or redemption decision.
+    3. Verify the preflight and report outcome.
+    """
+
+    # 1. Prepare a vault attempt with a pinned TVL observation.
     spec = VaultSpec(ChainId.ethereum.value, "0x" + "44" * 20)
     state = State()
     runner = VaultTestBatchRunner(
@@ -1771,6 +1777,7 @@ def test_vault_test_trade_minimum_tvl(operation, tvl, expect_skip, caplog):
         executable_vault=SimpleNamespace(fetch_total_assets=MagicMock(return_value=tvl)),
         previous=None,
     )
+    # 2. Run the deposit or redemption decision.
     alarm = MagicMock()
     with (
         caplog.at_level(logging.INFO),
@@ -1789,6 +1796,7 @@ def test_vault_test_trade_minimum_tvl(operation, tvl, expect_skip, caplog):
         attempt.pricing_model.can_redeem.return_value = False
         assert runner._process_attempt(attempt, alarm) is False
 
+    # 3. Verify the preflight and report outcome.
     if operation == "deposit":
         attempt.executable_vault.fetch_total_assets.assert_called_once_with(block_identifier=123)
     else:
