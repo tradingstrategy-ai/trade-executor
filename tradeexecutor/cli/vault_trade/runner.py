@@ -21,6 +21,7 @@ from typing import Any
 from eth_typing import HexAddress
 from eth_defi.compat import native_datetime_utc_now
 from eth_defi.provider.anvil import fund_erc20_on_anvil, is_anvil
+from eth_defi.token import BRIDGED_USDC_TOKEN, USDC_NATIVE_TOKEN, USDT_NATIVE_TOKEN
 from eth_defi.vault.exception import UnsupportedVaultProtocol
 from eth_defi.vault.base import VaultSpec
 from eth_defi.vault.deposit_redeem import (
@@ -81,7 +82,7 @@ from tradeexecutor.strategy.valuation import revalue_state
 
 logger = logging.getLogger(__name__)
 
-# Mirrors the standard eth-defi publishing threshold, applied to pre-deposit TVL.
+#: Same numeric default as eth-defi publishing, applied to pre-deposit USD TVL.
 MIN_VAULT_TEST_TVL_USD = 5_000
 SKIPPED_TVL_TOO_SMALL = "skipped_tvl_too_small"
 
@@ -1375,12 +1376,14 @@ class VaultTestBatchRunner:
             )
             return False
 
-        if operation == "deposit":
+        # A bridge continuation may already have sent the funds to the satellite.
+        previous = getattr(attempt, "previous", None)
+        previous_phase = previous.other_data.get("vault_test_attempt", {}).get("phase") if previous else None
+        if operation == "deposit" and previous_phase != "bridge_out_pending":
             tvl = self._read_deposit_tvl(attempt)
             if tvl is None or not isfinite(tvl) or tvl < 0:
                 logger.info("Vault %s TVL unavailable, continuing with deposit preflight", spec.as_string_id())
-            # A resumed deposit already has funds bridged to the satellite.
-            elif tvl < MIN_VAULT_TEST_TVL_USD and not self._is_resuming_bridge_out(attempt):
+            elif tvl < MIN_VAULT_TEST_TVL_USD:
                 alarm.disarm()
                 self._append_result(
                     attempt.vault,
@@ -1582,26 +1585,37 @@ class VaultTestBatchRunner:
         return False
 
     def _read_deposit_tvl(self, attempt: VaultAttempt) -> float | Decimal | None:
-        """Read pre-deposit TVL at the live tip or the original simulation block."""
+        """Read pre-deposit USD TVL, or return None if the read is unavailable.
+
+        Use nominal USD for known USDC and USDT contracts. Other denominations
+        need published USD TVL available at the tested time, so newer metadata
+        cannot classify an older fork.
+        """
 
         try:
-            stablecoin = attempt.pair.quote.is_stablecoin() is True
-            if stablecoin and not self.auto_simulated:
-                return attempt.pricing_model.get_usd_tvl(native_datetime_utc_now(), attempt.pair)
+            chain_id = attempt.spec.chain_id
+            quote_address = getattr(attempt.pair.quote, "address", None)
+            usd_tokens = (USDC_NATIVE_TOKEN, BRIDGED_USDC_TOKEN, USDT_NATIVE_TOKEN)
+            usd_stablecoin = quote_address in {
+                addresses.get(chain_id, "").lower() for addresses in usd_tokens
+            }
+            fork_block = (
+                self.runtime.simulated_runtime.pinned_fork_blocks[ChainId(chain_id)]
+                if self.auto_simulated
+                else None
+            )
+            if usd_stablecoin:
+                block_identifier = fork_block if fork_block is not None else "latest"
+                return attempt.executable_vault.fetch_total_assets(block_identifier=block_identifier)
 
             metadata = getattr(attempt.vault, "metadata", None)
             observed_at = getattr(metadata, "last_updated_at", None)
-            if not stablecoin and not isinstance(observed_at, datetime.datetime):
+            if not isinstance(observed_at, datetime.datetime):
                 return None
 
             decision_at = native_datetime_utc_now()
-            if self.auto_simulated:
-                chain_id = ChainId(attempt.spec.chain_id)
-                fork_block = self.runtime.simulated_runtime.pinned_fork_blocks[chain_id]
-                if stablecoin:
-                    return attempt.executable_vault.fetch_total_assets(block_identifier=fork_block)
-
-                web3 = self.runtime.web3config.get_connection(chain_id)
+            if fork_block is not None:
+                web3 = self.runtime.web3config.get_connection(ChainId(chain_id))
                 timestamp = web3.eth.get_block(fork_block)["timestamp"]
                 decision_at = datetime.datetime.fromtimestamp(timestamp, datetime.UTC).replace(tzinfo=None)
 

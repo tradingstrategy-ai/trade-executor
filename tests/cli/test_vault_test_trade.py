@@ -13,6 +13,7 @@ import pytest
 from eth_defi.middleware import ProbablyNodeHasNoBlock
 from eth_defi.erc_4626.core import ERC4626Feature
 from eth_defi.testing.fork_blocks import MIDNIGHT_BLOCKS
+from eth_defi.token import USDC_NATIVE_TOKEN
 from eth_defi.vault.base import VaultSpec
 from eth_defi.vault.deposit_redeem import (
     UnsupportedVaultSimulation,
@@ -1737,15 +1738,24 @@ def test_simulated_vault_detects_incorrect_json_whitelist_status() -> None:
 
 
 @pytest.mark.parametrize(
-    ("operation", "tvl", "expect_skip"),
+    ("operation", "tvl", "expect_skip", "simulated", "bridge_continuation"),
     [
-        ("deposit", Decimal("4999.99"), True),
-        ("deposit", Decimal("5000"), False),
-        ("deposit", None, False),
-        ("redeem", Decimal("4999.99"), False),
+        ("deposit", Decimal("4999.99"), True, True, False),
+        ("deposit", Decimal("4999.99"), True, False, False),
+        ("deposit", Decimal("5000"), False, True, False),
+        ("deposit", None, False, True, False),
+        ("deposit", Decimal("4999.99"), False, False, True),
+        ("redeem", Decimal("4999.99"), False, True, False),
     ],
 )
-def test_vault_test_trade_minimum_tvl(operation, tvl, expect_skip, caplog):
+def test_vault_test_trade_minimum_tvl(
+    operation: str,
+    tvl: Decimal | None,
+    expect_skip: bool,
+    simulated: bool,
+    bridge_continuation: bool,
+    caplog: pytest.LogCaptureFixture,
+):
     """Skip only fresh deposits with observed low TVL.
 
     1. Prepare a vault attempt with a pinned TVL observation.
@@ -1765,7 +1775,7 @@ def test_vault_test_trade_minimum_tvl(operation, tvl, expect_skip, caplog):
         vault_specs=[spec],
         amount=Decimal("100"),
         max_slippage=0.01,
-        auto_simulated=True,
+        auto_simulated=simulated,
         rerun=True,
     )
     runner.current_attempt = SimpleNamespace()
@@ -1773,10 +1783,14 @@ def test_vault_test_trade_minimum_tvl(operation, tvl, expect_skip, caplog):
     attempt = SimpleNamespace(
         spec=spec,
         vault=SimpleNamespace(),
-        pair=SimpleNamespace(quote=SimpleNamespace(is_stablecoin=lambda: True)),
+        pair=SimpleNamespace(quote=SimpleNamespace(address=USDC_NATIVE_TOKEN[1].lower())),
         executable_vault=SimpleNamespace(fetch_total_assets=MagicMock(return_value=tvl)),
         previous=None,
     )
+    if bridge_continuation:
+        attempt.previous = SimpleNamespace(
+            other_data={"vault_test_attempt": {"phase": "bridge_out_pending"}},
+        )
     # 2. Run the deposit or redemption decision.
     alarm = MagicMock()
     with (
@@ -1797,8 +1811,10 @@ def test_vault_test_trade_minimum_tvl(operation, tvl, expect_skip, caplog):
         assert runner._process_attempt(attempt, alarm) is False
 
     # 3. Verify the preflight and report outcome.
-    if operation == "deposit":
-        attempt.executable_vault.fetch_total_assets.assert_called_once_with(block_identifier=123)
+    if operation == "deposit" and not bridge_continuation:
+        attempt.executable_vault.fetch_total_assets.assert_called_once_with(
+            block_identifier=123 if simulated else "latest"
+        )
     else:
         attempt.executable_vault.fetch_total_assets.assert_not_called()
     if tvl is None:
@@ -1807,7 +1823,15 @@ def test_vault_test_trade_minimum_tvl(operation, tvl, expect_skip, caplog):
         preflight.assert_not_called()
         assert runner.rows[0]["result"] == "skipped_tvl_too_small"
         assert "4,999.99" in runner.rows[0]["detail"]
-        assert export_vault_test_report(state, runner.rows)["results"][0]["result"] == "skipped_tvl_too_small"
+        previous = SimpleNamespace(
+            position_id=1,
+            other_data={"vault_test_attempt": {"vault_id": spec.as_string_id(), "result": "success"}},
+        )
+        # A saved success for this vault cannot replace this invocation's skip.
+        with patch.object(type(state.portfolio), "get_all_positions", return_value=[previous]):
+            result = export_vault_test_report(state, runner.rows)["results"][0]
+        assert result["result"] == "skipped_tvl_too_small"
+        assert result["position_id"] is None
         alarm.disarm.assert_called_once()
     elif operation == "deposit":
         preflight.assert_called_once_with(attempt)
@@ -1816,8 +1840,13 @@ def test_vault_test_trade_minimum_tvl(operation, tvl, expect_skip, caplog):
 
 
 def test_simulated_vault_tvl_ignores_metadata_newer_than_fork():
-    """A non-USD vault's current metadata cannot classify an older fork."""
+    """Keep newer EUR-pegged vault metadata out of older forks.
 
+    1. Prepare a historical fork and a later USD TVL observation.
+    2. Check that the observation becomes eligible at its timestamp.
+    """
+
+    # 1. Prepare a historical fork and a later USD TVL observation.
     chain_id = ChainId.ethereum
     runner = object.__new__(VaultTestBatchRunner)
     runner.auto_simulated = True
@@ -1829,10 +1858,11 @@ def test_simulated_vault_tvl_ignores_metadata_newer_than_fork():
     metadata = SimpleNamespace(tvl=100, last_updated_at=fork_at + datetime.timedelta(days=1))
     attempt = SimpleNamespace(
         spec=SimpleNamespace(chain_id=chain_id.value),
-        pair=SimpleNamespace(quote=SimpleNamespace(is_stablecoin=lambda: False)),
+        pair=SimpleNamespace(quote=SimpleNamespace(token_symbol="EURC", address="0x" + "11" * 20)),
         vault=SimpleNamespace(metadata=metadata),
     )
 
+    # 2. Check that the observation becomes eligible at its timestamp.
     assert runner._read_deposit_tvl(attempt) is None
     metadata.last_updated_at = fork_at
     assert runner._read_deposit_tvl(attempt) == 100
