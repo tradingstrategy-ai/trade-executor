@@ -7,6 +7,7 @@ the CLI entry point small and makes deposit/redemption continuation rules
 readable without wading through bootstrap code.
 """
 
+import datetime
 import logging
 import signal
 import uuid
@@ -14,6 +15,7 @@ from collections import defaultdict, deque
 from copy import deepcopy
 from dataclasses import dataclass, field
 from decimal import Decimal
+from math import isfinite
 from typing import Any
 
 from eth_typing import HexAddress
@@ -78,6 +80,10 @@ from tradeexecutor.strategy.generic.generic_valuation import GenericValuation
 from tradeexecutor.strategy.valuation import revalue_state
 
 logger = logging.getLogger(__name__)
+
+# Mirrors the standard eth-defi publishing threshold, applied to pre-deposit TVL.
+MIN_VAULT_TEST_TVL_USD = 5_000
+SKIPPED_TVL_TOO_SMALL = "skipped_tvl_too_small"
 
 
 #: Initial estimate plus four proportional raw-unit corrections bound fork work.
@@ -1369,6 +1375,21 @@ class VaultTestBatchRunner:
             )
             return False
 
+        if operation == "deposit":
+            tvl = self._read_deposit_tvl(attempt)
+            if tvl is None or not isfinite(tvl) or tvl < 0:
+                logger.info("Vault %s TVL unavailable, continuing with deposit preflight", spec.as_string_id())
+            # A resumed deposit already has funds bridged to the satellite.
+            elif tvl < MIN_VAULT_TEST_TVL_USD and not self._is_resuming_bridge_out(attempt):
+                alarm.disarm()
+                self._append_result(
+                    attempt.vault,
+                    spec,
+                    f"Skipped because vault TVL is USD {tvl:,}, below USD {MIN_VAULT_TEST_TVL_USD:,}",
+                    deposit_skip=SKIPPED_TVL_TOO_SMALL,
+                )
+                return False
+
         # The default async simulation verifies requestDeposit only. The explicit
         # Anvil option invokes eth-defi's supported settlement helper instead.
         if (
@@ -1559,6 +1580,39 @@ class VaultTestBatchRunner:
 
         self._append_result(attempt.vault, spec)
         return False
+
+    def _read_deposit_tvl(self, attempt: VaultAttempt) -> float | Decimal | None:
+        """Read pre-deposit TVL at the live tip or the original simulation block."""
+
+        try:
+            stablecoin = attempt.pair.quote.is_stablecoin() is True
+            if stablecoin and not self.auto_simulated:
+                return attempt.pricing_model.get_usd_tvl(native_datetime_utc_now(), attempt.pair)
+
+            metadata = getattr(attempt.vault, "metadata", None)
+            observed_at = getattr(metadata, "last_updated_at", None)
+            if not stablecoin and not isinstance(observed_at, datetime.datetime):
+                return None
+
+            decision_at = datetime.datetime.now(datetime.UTC)
+            if self.auto_simulated:
+                chain_id = ChainId(attempt.spec.chain_id)
+                fork_block = self.runtime.simulated_runtime.pinned_fork_blocks[chain_id]
+                if stablecoin:
+                    return attempt.executable_vault.fetch_total_assets(block_identifier=fork_block)
+
+                web3 = self.runtime.web3config.get_connection(chain_id)
+                timestamp = web3.eth.get_block(fork_block)["timestamp"]
+                decision_at = datetime.datetime.fromtimestamp(timestamp, datetime.UTC)
+
+            if observed_at.tzinfo is None:
+                observed_at = observed_at.replace(tzinfo=datetime.UTC)
+            if observed_at <= decision_at:
+                return metadata.tvl
+        except Exception as error:
+            # TVL is an optional admission check. Keep provider URLs out of logs.
+            logger.debug("Vault TVL read failed (%s)", type(error).__name__)
+        return None
 
     def _choose_operation(
         self,
@@ -2471,10 +2525,12 @@ class VaultTestBatchRunner:
         vault: Any,
         spec: VaultSpec,
         detail: str | None = None,
+        *,
+        deposit_skip: str | None = None,
     ) -> None:
-        """Append one compact row using the latest position as authority."""
+        """Append a position result or a report-only deposit skip."""
 
-        position = get_latest_vault_position(self.state, spec)
+        position = None if deposit_skip else get_latest_vault_position(self.state, spec)
         attempt = position.other_data.get("vault_test_attempt", {}) if position else {}
         detail = detail or attempt.get("detail")
         if detail:
@@ -2493,10 +2549,10 @@ class VaultTestBatchRunner:
                 )(),
                 "protocol": getattr(vault, "protocol_name", "unknown"),
                 "mode": self.mode,
-                "status": get_vault_test_status(position),
-                "operation": attempt.get("operation"),
+                "status": "skipped" if deposit_skip else get_vault_test_status(position),
+                "operation": "deposit" if deposit_skip else attempt.get("operation"),
                 "phase": attempt.get("phase"),
-                "result": attempt.get("result"),
+                "result": deposit_skip or attempt.get("result"),
                 "attempt": attempt.get("attempt_id"),
                 "position": position.position_id if position else None,
                 "detail": detail,

@@ -1736,6 +1736,100 @@ def test_simulated_vault_detects_incorrect_json_whitelist_status() -> None:
     assert get_incorrect_whitelisting_detail(unknown_attempt) is None
 
 
+@pytest.mark.parametrize(
+    ("operation", "tvl", "expect_skip"),
+    [
+        ("deposit", Decimal("4999.99"), True),
+        ("deposit", Decimal("5000"), False),
+        ("deposit", None, False),
+        ("redeem", Decimal("4999.99"), False),
+    ],
+)
+def test_vault_test_trade_minimum_tvl(operation, tvl, expect_skip, caplog):
+    """Skip only fresh deposits with observed low TVL and retain the report result."""
+
+    spec = VaultSpec(ChainId.ethereum.value, "0x" + "44" * 20)
+    state = State()
+    runner = VaultTestBatchRunner(
+        runtime=MagicMock(),
+        client=None,
+        vault_universe=None,
+        state=state,
+        store=MagicMock(),
+        vault_specs=[spec],
+        amount=Decimal("100"),
+        max_slippage=0.01,
+        auto_simulated=True,
+        rerun=True,
+    )
+    runner.current_attempt = SimpleNamespace()
+    runner.runtime.simulated_runtime.pinned_fork_blocks = {ChainId.ethereum: 123}
+    attempt = SimpleNamespace(
+        spec=spec,
+        vault=SimpleNamespace(),
+        pair=SimpleNamespace(quote=SimpleNamespace(is_stablecoin=lambda: True)),
+        executable_vault=SimpleNamespace(fetch_total_assets=MagicMock(return_value=tvl)),
+        previous=None,
+    )
+    alarm = MagicMock()
+    with (
+        caplog.at_level(logging.INFO),
+        patch.object(VaultTestBatchRunner, "_choose_operation", return_value=operation),
+        patch.object(VaultTestBatchRunner, "_record_terminal_result"),
+        patch.object(runner_module, "get_adapter_unsupported_detail", return_value=None),
+        patch.object(runner_module, "has_async_vault_lifecycle", return_value=False),
+        patch.object(
+            runner_module,
+            "get_unknown_deposit_permission_detail",
+            return_value="Preflight reached",
+        ) as preflight,
+    ):
+        # Stub the existing preflight and let the real TVL check and report run.
+        attempt.pricing_model = MagicMock()
+        attempt.pricing_model.can_redeem.return_value = False
+        assert runner._process_attempt(attempt, alarm) is False
+
+    if operation == "deposit":
+        attempt.executable_vault.fetch_total_assets.assert_called_once_with(block_identifier=123)
+    else:
+        attempt.executable_vault.fetch_total_assets.assert_not_called()
+    if tvl is None:
+        assert "TVL unavailable" in caplog.text
+    if expect_skip:
+        preflight.assert_not_called()
+        assert runner.rows[0]["result"] == "skipped_tvl_too_small"
+        assert "4,999.99" in runner.rows[0]["detail"]
+        assert export_vault_test_report(state, runner.rows)["results"][0]["result"] == "skipped_tvl_too_small"
+        alarm.disarm.assert_called_once()
+    elif operation == "deposit":
+        preflight.assert_called_once_with(attempt)
+    else:
+        attempt.pricing_model.can_redeem.assert_called_once()
+
+
+def test_simulated_vault_tvl_ignores_metadata_newer_than_fork():
+    """A non-USD vault's current metadata cannot classify an older fork."""
+
+    chain_id = ChainId.ethereum
+    runner = object.__new__(VaultTestBatchRunner)
+    runner.auto_simulated = True
+    runner.runtime = MagicMock()
+    runner.runtime.simulated_runtime.pinned_fork_blocks = {chain_id: 123}
+    fork_at = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
+    web3 = runner.runtime.web3config.get_connection.return_value
+    web3.eth.get_block.return_value = {"timestamp": int(fork_at.timestamp())}
+    metadata = SimpleNamespace(tvl=100, last_updated_at=fork_at + datetime.timedelta(days=1))
+    attempt = SimpleNamespace(
+        spec=SimpleNamespace(chain_id=chain_id.value),
+        pair=SimpleNamespace(quote=SimpleNamespace(is_stablecoin=lambda: False)),
+        vault=SimpleNamespace(metadata=metadata),
+    )
+
+    assert runner._read_deposit_tvl(attempt) is None
+    metadata.last_updated_at = fork_at
+    assert runner._read_deposit_tvl(attempt) == 100
+
+
 def test_simulated_vault_records_incorrect_json_whitelist_status() -> None:
     """The simulated deposit runner persists a whitelist metadata disagreement.
 
