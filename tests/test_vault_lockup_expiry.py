@@ -3,10 +3,15 @@
 import datetime
 from decimal import Decimal
 
+from tradingstrategy.alternative_data.vault import convert_vaults_to_trading_pairs, load_vault_database_with_metadata
+from tradingstrategy.chain import ChainId
+from tradingstrategy.pair import PandasPairUniverse
+
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution, TradeType
+from tradeexecutor.strategy.dex_data_translation import translate_trading_pair
 
 
 def _make_vault_pair(lockup_days: float | None = 30.0) -> TradingPairIdentifier:
@@ -76,24 +81,39 @@ def _make_trade(
 
 
 def test_estimated_vault_lockup_expiry_is_stored_after_buy() -> None:
-    """A successful vault buy stores an estimated lockup expiry.
+    """A Plutus buy stores a 30-day expiry from a seconds-valued export.
 
     Steps:
-    1. Build a vault position and a successful buy with lockup metadata.
-    2. Apply the lockup expiry helper.
-    3. Assert the position stores the estimated expiry and marker.
+    1. Load the Plutus lockup from the public JSON metadata format.
+    2. Apply the lockup expiry helper to a buy of the translated vault pair.
+    3. Assert the position stores the estimated expiry 30 days after the buy.
     """
 
-    # 1. Build a vault position and a successful buy with lockup metadata.
-    pair = _make_vault_pair(lockup_days=30.0)
+    # 1. Load the actual Plutus lockup value with the fields needed for pair conversion.
+    vaults = load_vault_database_with_metadata({"vaults": [{
+        "chain_id": ChainId.arbitrum.value,
+        "address": "0x58bfc95a864e18e8f3041d2fcd3418f48393fe6a",
+        "name": "Plutus Hedge Token",
+        "protocol": "Plutus",
+        "protocol_slug": "plutus",
+        "share_token": "plvHedge",
+        "share_token_decimals": 6,
+        "denomination": "USDC",
+        "denomination_token_address": "0xaf88d065e77c8cc2239327c5edb3a432268e5831",
+        "denomination_decimals": 6,
+        "lockup": 2_592_000.0,
+    }]})
+    _, pairs_df = convert_vaults_to_trading_pairs(vaults.export_all_vaults())
+    pair = translate_trading_pair(next(PandasPairUniverse(pairs_df).iterate_pairs()))
+
+    # 2. Apply the expiry helper to the successful buy.
     position = _make_position(pair)
     executed_at = datetime.datetime(2026, 6, 1, 12, 0, 0)
     trade = _make_trade(pair, executed_at)
-
-    # 2. Apply the lockup expiry helper.
     State().maybe_set_vault_lockup_expiry(position, trade)
 
-    # 3. The position stores the estimated expiry and marker.
+    # 3. Pair metadata and the persisted estimate agree on the 30-day duration.
+    assert pair.other_data["vault_lockup_days"] == 30.0
     assert position.other_data["vault_lockup_expires_at"] == "2026-07-01T12:00:00"
     assert position.other_data["vault_lockup_estimated"] is True
 
