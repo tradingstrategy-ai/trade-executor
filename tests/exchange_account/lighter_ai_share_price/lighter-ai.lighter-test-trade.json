@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "phase": "complete",
+  "vault_address": "0xaADc62356890F6C581D88BD06D310bEb2A90f1b5",
+  "account_index": 748071,
+  "deposit_usdc": "17",
+  "baseline_lighter_equity": "1",
+  "created_at": "2026-09-17T16:05:00",
+  "withdrawal_usdc": "16.995365",
+  "withdrawal_requested_at": 1789662600,
+  "updated_at": "2026-09-17T16:40:00"
+}
